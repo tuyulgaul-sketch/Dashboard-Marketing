@@ -450,13 +450,17 @@ const Index: React.FC = () => {
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-right">
-            <div className="text-[9px] font-bold uppercase text-slate-400">
-              Login sebagai
-            </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <DashboardTransactionExport />
 
-            <div className="mt-0.5 text-xs font-black text-slate-800">
-              {currentUser.name}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-right">
+              <div className="text-[9px] font-bold uppercase text-slate-400">
+                Login sebagai
+              </div>
+
+              <div className="mt-0.5 text-xs font-black text-slate-800">
+                {currentUser.name}
+              </div>
             </div>
           </div>
         </div>

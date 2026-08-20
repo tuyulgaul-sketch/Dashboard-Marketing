@@ -18,9 +18,7 @@ import {
   formatRupiahInput,
   sanitizeRupiahInput,
 } from '@/utils/currencyInput';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { SlaBadge } from '@/components/common/SlaBadge';
 import {
   Card,
   CardContent,
@@ -431,9 +429,8 @@ export const BookingPipelinePage: React.FC = () => {
   // Final Booking + WIN/LOSE approval now belongs to
   // RR Endah Wasis Wuwuh Mumpuni — DH Marketing Administration.
   const isTLMS =
-    store.canActAsMarketingAdministrationHead(
-      currentUser.id
-    );
+    currentUser.id ===
+    'USR-000028';
 
   const isMarketingSupportViewer =
     currentUser.unit ===
@@ -3628,35 +3625,6 @@ export const BookingPipelinePage: React.FC = () => {
             </p>
           </div>
 
-          <ExcelExportButton
-            data={visiblePipelines.map(
-              (pipeline) => ({
-                ID:
-                  pipeline.id,
-                Customer:
-                  pipeline.customerName,
-                Product:
-                  pipeline.productName,
-                Value:
-                  pipeline.currentCommercialValue,
-                PIC:
-                  pipeline.picName,
-                Status:
-                  pipeline.status,
-                Handler:
-                  pipeline.currentHandler,
-                OutcomeRequest:
-                  pipeline.outcomeRequest ||
-                  '',
-                OutcomeWorkflow:
-                  pipeline.outcomeWorkflowStatus ||
-                  '',
-                Lapse:
-                  pipeline.dayLapse,
-              })
-            )}
-            filename="Pipeline_Active"
-          />
         </div>
 
         <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-[11px] text-blue-900">
@@ -4096,13 +4064,6 @@ export const BookingPipelinePage: React.FC = () => {
                                     {renderPipelineStatus(
                                       pipeline.status
                                     )}
-
-                                    <SlaBadge
-                                      startedAt={
-                                        pipeline.lastProgressAt
-                                      }
-                                      compact
-                                    />
 
                                     {pipeline.outcomeRequest &&
                                       (

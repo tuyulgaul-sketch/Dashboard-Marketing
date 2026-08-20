@@ -10,7 +10,6 @@ import {
   User,
 } from '@/types';
 import { formatRupiah } from '@/utils/formatters';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
 import {
   exportToExcel,
   getRowValue,
@@ -4927,48 +4926,6 @@ export const TargetRkapPage: React.FC = () => {
 
           </div>
 
-          <ExcelExportButton
-            data={
-              targets.map(
-                target => ({
-                  Tahun:
-                    target.year,
-
-                  User:
-                    target.userName,
-
-                  Jabatan:
-                    target.position,
-
-                  Department:
-                    target.department !==
-                    'None'
-                      ? target.department
-                      : target.unit,
-
-                  TargetTahunan:
-                    target.annualTargetTotal,
-
-                  TargetTahunanNB:
-                    target.annualTargetNewBusiness,
-
-                  TargetTahunanRN:
-                    target.annualTargetRenewal,
-
-                  TargetPribadi:
-                    target.personalTargetTotal,
-
-                  TargetPribadiNB:
-                    target.personalTargetNewBusiness,
-
-                  TargetPribadiRN:
-                    target.personalTargetRenewal,
-                })
-              )
-            }
-            filename={`Master_Target_Published_${selectedTargetYear}`}
-            label="Export Target Published"
-          />
 
         </div>
 

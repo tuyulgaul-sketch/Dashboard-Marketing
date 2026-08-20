@@ -19,7 +19,6 @@ import {
   formatRupiahInput,
   sanitizeRupiahInput,
 } from '@/utils/currencyInput';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import {
   Card,
@@ -1958,31 +1957,6 @@ export const ProduksiPage: React.FC = () => {
             </p>
           </div>
 
-          <ExcelExportButton
-            data={officialProductions.map(
-              row => ({
-                Tahun:
-                  row.productionYear,
-                Bulan:
-                  row.productionMonth,
-                Fungsi:
-                  row.marketingFunction,
-                JenisBisnis:
-                  row.businessType,
-                Produk:
-                  row.productName,
-                PIC:
-                  row.picName,
-                Department:
-                  row.department,
-                JumlahTransaksi:
-                  row.transactionCount,
-                Realisasi:
-                  row.productionAmount,
-              })
-            )}
-            filename="Realisasi_Produksi_Official"
-          />
         </div>
 
         <Tabs

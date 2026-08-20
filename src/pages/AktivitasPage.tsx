@@ -32,9 +32,7 @@ import {
   downloadMarketingSupportFile,
   saveMarketingSupportFile,
 } from '@/services/marketingSupportFileStorage';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { SlaBadge } from '@/components/common/SlaBadge';
 import {
   ActionHistoryModal,
   ActionHistoryEntry,
@@ -845,9 +843,8 @@ export const AktivitasPage: React.FC = () => {
     );
 
   const isEndah =
-    store.canActAsMarketingAdministrationHead(
-      currentUser.id
-    );
+    currentUser.id ===
+    'USR-000028';
 
   const isArianie =
     currentUser.id ===
@@ -2771,44 +2768,6 @@ export const AktivitasPage: React.FC = () => {
           )
       )?.position;
 
-  const getReimbursementSlaStartedAt =
-    (
-      reimbursement:
-        Reimbursement
-    ): string | undefined => {
-      if (
-        reimbursement.status ===
-          'Submitted'
-      ) {
-        return reimbursement.createdAt;
-      }
-
-      if (
-        reimbursement.status ===
-          'Approved Superior'
-      ) {
-        return (
-          reimbursement.superiorApprovedAt ||
-          reimbursement.updatedAt
-        );
-      }
-
-      if (
-        reimbursement.status ===
-          'Verified Marketing Administration' ||
-        reimbursement.status ===
-          'Verified MS'
-      ) {
-        return (
-          reimbursement.marketingAdminVerifiedAt ||
-          reimbursement.msVerifiedAt ||
-          reimbursement.updatedAt
-        );
-      }
-
-      return undefined;
-    };
-
   const buildReimbursementHistory =
     (
       reimbursement:
@@ -3057,37 +3016,6 @@ export const AktivitasPage: React.FC = () => {
               Tambah Aktivitas
             </Button>
 
-            <ExcelExportButton
-              data={
-                visibleActivities.map(
-                  activity => ({
-                    ID:
-                      activity.id,
-                    Tanggal:
-                      activity.activityDate,
-                    PIC:
-                      activity.ownerName,
-                    Department:
-                      activity.department,
-                    Perusahaan:
-                      activity.companyName,
-                    Produk:
-                      activity.discussedProduct,
-                    Pipeline:
-                      activity.relatedPipelineId ||
-                      '',
-                    Jenis:
-                      activity.activityType,
-                    Status:
-                      activity.status,
-                    'Jumlah Peserta Internal':
-                      activity.taggedUserIds?.length ||
-                      0,
-                  })
-                )
-              }
-              filename="Aktivitas_Pemasaran"
-            />
 
           </div>
 
@@ -4208,16 +4136,6 @@ export const AktivitasPage: React.FC = () => {
                                       {getReimbursementWorkflowLabel(
                                         reimbursement
                                       )}
-                                    </div>
-
-                                    <div className="mt-2">
-                                      <SlaBadge
-                                        startedAt={
-                                          getReimbursementSlaStartedAt(
-                                            reimbursement
-                                          )
-                                        }
-                                      />
                                     </div>
 
                                     {isMarketingSupportUser &&
