@@ -123,6 +123,7 @@ export const AdministrasiPage: React.FC = () => {
           <ExcelExportButton
             data={auditLogs.map(l => ({ Timestamp: l.timestamp, User: l.userName, Role: l.userRole, Module: l.module, Action: l.action, Record: l.recordId }))}
             filename="System_Audit_Log"
+            label="Export Audit Log"
           />
         </div>
 
