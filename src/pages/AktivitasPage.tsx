@@ -598,6 +598,16 @@ export const AktivitasPage: React.FC = () => {
   ] = useState('');
 
   const [
+    productPickerOpen,
+    setProductPickerOpen,
+  ] = useState(false);
+
+  const [
+    productSearch,
+    setProductSearch,
+  ] = useState('');
+
+  const [
     expenseAmount,
     setExpenseAmount,
   ] = useState('');
@@ -1459,6 +1469,12 @@ export const AktivitasPage: React.FC = () => {
 
       setDiscussedProduct('');
 
+      setProductPickerOpen(
+        false
+      );
+
+      setProductSearch('');
+
       setExpenseAmount('');
 
       setRelatedToPipeline(
@@ -1579,6 +1595,84 @@ export const AktivitasPage: React.FC = () => {
       );
     };
 
+  const activeProductOptions =
+    store
+      .getProducts()
+      .filter(
+        product =>
+          product.status ===
+          'Active'
+      )
+      .sort((a, b) => {
+        const categoryA = `${a.insuranceType} ${a.customerCategory}`;
+        const categoryB = `${b.insuranceType} ${b.customerCategory}`;
+
+        const categoryCompare =
+          categoryA.localeCompare(
+            categoryB,
+            'id'
+          );
+
+        if (categoryCompare !== 0) {
+          return categoryCompare;
+        }
+
+        return a.productName.localeCompare(
+          b.productName,
+          'id'
+        );
+      });
+
+  const normalizedProductSearch =
+    productSearch
+      .trim()
+      .toLowerCase();
+
+  const filteredProductOptions =
+    activeProductOptions.filter(
+      product => {
+        if (!normalizedProductSearch) {
+          return true;
+        }
+
+        const haystack =
+          [
+            product.productCode,
+            product.productName,
+            product.insuranceType,
+            product.customerCategory,
+          ]
+            .join(' ')
+            .toLowerCase();
+
+        return haystack.includes(
+          normalizedProductSearch
+        );
+      }
+    );
+
+  const productCategoryLabel =
+    (product: {
+      insuranceType: string;
+      customerCategory: string;
+    }) =>
+      `${product.insuranceType} • ${product.customerCategory}`;
+
+  const handleProductSelect =
+    (
+      productName: string
+    ) => {
+      setDiscussedProduct(
+        productName
+      );
+
+      setProductSearch('');
+
+      setProductPickerOpen(
+        false
+      );
+    };
+
   const handlePipelineChange =
     (
       pipelineId: string
@@ -1605,6 +1699,12 @@ export const AktivitasPage: React.FC = () => {
       setDiscussedProduct(
         pipeline.productName
       );
+
+      setProductPickerOpen(
+        false
+      );
+
+      setProductSearch('');
 
       setPipelineSearch('');
     };
@@ -5369,25 +5469,180 @@ export const AktivitasPage: React.FC = () => {
                           Produk Dibahas
                         </label>
 
-                        <Input
-                          value={
-                            discussedProduct
-                          }
-                          onChange={
-                            event =>
-                              setDiscussedProduct(
-                                event.target.value
-                              )
-                          }
-                          disabled={
-                            relatedToPipeline &&
-                            Boolean(
-                              relatedPipelineId
-                            )
-                          }
-                          placeholder="Nama produk"
-                          className="text-xs"
-                        />
+                        {relatedToPipeline &&
+                        Boolean(
+                          relatedPipelineId
+                        ) ? (
+
+                          <div>
+
+                            <Input
+                              value={
+                                discussedProduct
+                              }
+                              disabled
+                              placeholder="Produk mengikuti pipeline"
+                              className="bg-gray-50 text-xs font-semibold"
+                            />
+
+                            <p className="mt-1 text-[9px] text-gray-500">
+                              Produk otomatis mengikuti Pipeline Aktif yang dipilih.
+                            </p>
+
+                          </div>
+
+                        ) : (
+
+                          <div className="relative">
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setProductPickerOpen(
+                                  current =>
+                                    !current
+                                )
+                              }
+                              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-left text-xs ring-offset-background hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            >
+
+                              <span
+                                className={
+                                  discussedProduct
+                                    ? 'truncate font-semibold text-gray-900'
+                                    : 'truncate text-muted-foreground'
+                                }
+                              >
+                                {discussedProduct ||
+                                  'Cari / pilih produk...'}
+                              </span>
+
+                              <Search className="ml-2 h-4 w-4 shrink-0 text-gray-400" />
+
+                            </button>
+
+                            {productPickerOpen && (
+
+                              <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[230] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+
+                                <div className="border-b border-gray-100 p-2">
+
+                                  <div className="relative">
+
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                                    <Input
+                                      value={
+                                        productSearch
+                                      }
+                                      onChange={
+                                        event =>
+                                          setProductSearch(
+                                            event.target.value
+                                          )
+                                      }
+                                      placeholder="Cari nama produk, kode, jenis asuransi..."
+                                      className="h-9 bg-white pl-9 text-xs"
+                                      autoFocus
+                                    />
+
+                                  </div>
+
+                                </div>
+
+                                <div className="max-h-72 overflow-y-auto">
+
+                                  {discussedProduct && (
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleProductSelect(
+                                          ''
+                                        )
+                                      }
+                                      className="w-full border-b border-gray-100 px-3 py-2 text-left text-[10px] font-semibold text-gray-500 hover:bg-gray-50"
+                                    >
+                                      Kosongkan pilihan produk
+                                    </button>
+
+                                  )}
+
+                                  {filteredProductOptions.length ===
+                                  0 ? (
+
+                                    <div className="px-4 py-6 text-center text-[10px] text-gray-400">
+                                      Produk aktif tidak ditemukan.
+                                    </div>
+
+                                  ) : (
+
+                                    filteredProductOptions.map(
+                                      product => (
+
+                                        <button
+                                          key={
+                                            product.id
+                                          }
+                                          type="button"
+                                          onClick={() =>
+                                            handleProductSelect(
+                                              product.productName
+                                            )
+                                          }
+                                          className={`w-full border-b border-gray-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-blue-50 ${
+                                            discussedProduct ===
+                                            product.productName
+                                              ? 'bg-blue-50'
+                                              : 'bg-white'
+                                          }`}
+                                        >
+
+                                          <div className="flex items-start justify-between gap-3">
+
+                                            <div className="min-w-0">
+
+                                              <div className="truncate text-[11px] font-black text-gray-900">
+                                                {product.productName}
+                                              </div>
+
+                                              <div className="mt-0.5 truncate text-[9px] text-gray-500">
+                                                {productCategoryLabel(
+                                                  product
+                                                )}
+                                              </div>
+
+                                            </div>
+
+                                            <Badge
+                                              variant="outline"
+                                              className="shrink-0 font-mono text-[8px]"
+                                            >
+                                              {product.productCode}
+                                            </Badge>
+
+                                          </div>
+
+                                        </button>
+
+                                      )
+                                    )
+
+                                  )}
+
+                                </div>
+
+                                <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 text-[9px] text-gray-500">
+                                  Sumber pilihan: Product Master aktif. Ketik nama/kode untuk mempersempit hasil.
+                                </div>
+
+                              </div>
+
+                            )}
+
+                          </div>
+
+                        )}
 
                       </div>
 
