@@ -801,6 +801,19 @@ export const BookingPipelinePage: React.FC = () => {
           selectedProductId
       );
 
+  // Business rule:
+  // Renewal hanya berlaku untuk produk Asuransi Jiwa Kumpulan.
+  // Asuransi Kesehatan Kumpulan serta seluruh produk Individu
+  // selalu menggunakan New Business.
+  const renewalAllowedForSelectedProduct =
+    Boolean(
+      selectedProduct &&
+      selectedProduct.insuranceType ===
+        'Asuransi Jiwa' &&
+      selectedProduct.customerCategory ===
+        'Kumpulan'
+    );
+
   const normalizeOpportunityName = (
     value: string
   ) =>
@@ -1020,7 +1033,7 @@ export const BookingPipelinePage: React.FC = () => {
           !businessType
         ) {
           alert(
-            'Pilih Jenis Bisnis New Business atau Renewal.'
+            'Pilih Jenis Bisnis terlebih dahulu.'
           );
 
           return false;
@@ -1230,6 +1243,26 @@ export const BookingPipelinePage: React.FC = () => {
         !selectedProduct ||
         !businessType
       ) {
+        return;
+      }
+
+      if (
+        businessType ===
+          'Renewal Business' &&
+        !renewalAllowedForSelectedProduct
+      ) {
+        alert(
+          'Renewal hanya tersedia untuk produk Asuransi Jiwa Kumpulan. Untuk produk ini, Jenis Bisnis wajib New Business.'
+        );
+
+        setBusinessType(
+          'New Business'
+        );
+
+        setBookingStep(
+          3
+        );
+
         return;
       }
 
@@ -6767,81 +6800,109 @@ export const BookingPipelinePage: React.FC = () => {
                             3B. Jenis Bisnis *
                           </label>
 
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {!selectedProduct && (
 
-                            {[
-                              {
-                                value:
-                                  'New Business',
-                                title:
-                                  'New Business',
-                                description:
-                                  'Opportunity baru / belum memiliki polis existing.',
-                              },
-                              {
-                                value:
-                                  'Renewal Business',
-                                title:
-                                  'Renewal',
-                                description:
-                                  'Perpanjangan / kelanjutan polis existing.',
-                              },
-                            ].map(
-                              (
-                                option
-                              ) => {
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                              Pilih Produk terlebih dahulu untuk menampilkan Jenis Bisnis yang sesuai.
+                            </div>
 
-                                const selected =
-                                  businessType ===
-                                  option.value;
+                          )}
 
-                                return (
+                          {selectedProduct && !renewalAllowedForSelectedProduct && (
 
-                                  <button
-                                    key={
-                                      option.value
-                                    }
-                                    type="button"
-                                    onClick={() => {
-                                      const nextBusinessType =
-                                        option.value as BusinessType;
+                            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                              Produk ini menggunakan Jenis Bisnis <span className="font-bold">New Business</span>. Opsi Renewal hanya tersedia untuk Asuransi Jiwa Kumpulan.
+                            </div>
 
-                                      setBusinessType(
-                                        nextBusinessType
-                                      );
+                          )}
 
-                                      // Produk + Jenis Bisnis = Tahap 3 selesai.
-                                      // Langsung masuk ke Detail Penawaran.
-                                      if (
-                                        selectedProductId
-                                      ) {
-                                        setBookingStep(
-                                          4
-                                        );
+                          {selectedProduct && (
+
+                            <div className={`grid grid-cols-1 gap-3 ${
+                              renewalAllowedForSelectedProduct
+                                ? 'md:grid-cols-2'
+                                : 'md:grid-cols-1'
+                            }`}>
+
+                              {[
+                                {
+                                  value:
+                                    'New Business',
+                                  title:
+                                    'New Business',
+                                  description:
+                                    'Opportunity baru / belum memiliki polis existing.',
+                                },
+                                ...(renewalAllowedForSelectedProduct
+                                  ? [
+                                      {
+                                        value:
+                                          'Renewal Business',
+                                        title:
+                                          'Renewal',
+                                        description:
+                                          'Perpanjangan / kelanjutan polis existing.',
+                                      },
+                                    ]
+                                  : []),
+                              ].map(
+                                (
+                                  option
+                                ) => {
+
+                                  const selected =
+                                    businessType ===
+                                    option.value;
+
+                                  return (
+
+                                    <button
+                                      key={
+                                        option.value
                                       }
-                                    }}
-                                    className={`rounded-xl border p-4 text-left transition ${
-                                      selected
-                                        ? 'border-sky-500 bg-sky-50'
-                                        : 'border-gray-200 bg-white hover:border-sky-300'
-                                    }`}
-                                  >
+                                      type="button"
+                                      onClick={() => {
+                                        const nextBusinessType =
+                                          option.value as BusinessType;
 
-                                    <div className="text-sm font-black text-gray-900">
-                                      {option.title}
-                                    </div>
+                                        setBusinessType(
+                                          nextBusinessType
+                                        );
 
-                                    <div className="mt-1 text-[11px] text-gray-500">
-                                      {option.description}
-                                    </div>
+                                        // Produk + Jenis Bisnis = Tahap 3 selesai.
+                                        // Langsung masuk ke Detail Penawaran.
+                                        if (
+                                          selectedProductId
+                                        ) {
+                                          setBookingStep(
+                                            4
+                                          );
+                                        }
+                                      }}
+                                      className={`rounded-xl border p-4 text-left transition ${
+                                        selected
+                                          ? 'border-sky-500 bg-sky-50'
+                                          : 'border-gray-200 bg-white hover:border-sky-300'
+                                      }`}
+                                    >
 
-                                  </button>
+                                      <div className="text-sm font-black text-gray-900">
+                                        {option.title}
+                                      </div>
 
-                                );
-                              }
-                            )}
+                                      <div className="mt-1 text-[11px] text-gray-500">
+                                        {option.description}
+                                      </div>
 
-                          </div>
+                                    </button>
+
+                                  );
+                                }
+                              )}
+
+                            </div>
+
+                          )}
 
                         </div>
 
