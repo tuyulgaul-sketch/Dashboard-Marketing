@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DashboardTransactionExport } from '@/components/common/DashboardTransactionExport';
 import {
   Tabs,
   TabsList,
@@ -675,20 +676,28 @@ export const MarketingSupportDashboard: React.FC = () => {
 
         </div>
 
-        <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
 
-          <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-lg shrink-0">
-            {currentUser.name.charAt(0)}
-          </div>
+          <DashboardTransactionExport
+            className="h-10 border-slate-600 bg-white text-slate-900 hover:bg-slate-100"
+          />
 
-          <div className="text-xs">
+          <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center gap-3">
 
-            <div className="font-bold text-slate-100">
-              {currentUser.name}
+            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-lg shrink-0">
+              {currentUser.name.charAt(0)}
             </div>
 
-            <div className="text-[10px] text-slate-400">
-              {currentUser.unit} - {currentUser.department}
+            <div className="text-xs">
+
+              <div className="font-bold text-slate-100">
+                {currentUser.name}
+              </div>
+
+              <div className="text-[10px] text-slate-400">
+                {currentUser.unit} - {currentUser.department}
+              </div>
+
             </div>
 
           </div>
