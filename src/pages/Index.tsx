@@ -10,10 +10,9 @@ import {
   User,
 } from '@/types';
 import { formatRupiah } from '@/utils/formatters';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
+import { DashboardTransactionExport } from '@/components/common/DashboardTransactionExport';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { MarketingSupportDashboard } from '@/components/dashboard/MarketingSupportDashboard';
-import { GovernanceSlaDelegationPanel } from '@/components/dashboard/GovernanceSlaDelegationPanel';
 import {
   AlertTriangle,
   BarChart3,
@@ -504,8 +503,6 @@ const Index: React.FC = () => {
     return (
       <AppLayout>
         <div className="space-y-5">
-          <GovernanceSlaDelegationPanel currentUser={currentUser} />
-
           {servicePageHeader(
             'Dashboard Team Leader Marketing Support',
             'Fokus pada governance data Marketing: Target RKAP, Realisasi Produksi, dan Bulk Pipeline. Card yang memiliki proses lanjutan dapat diklik langsung.',
@@ -648,8 +645,6 @@ const Index: React.FC = () => {
     return (
       <AppLayout>
         <div className="space-y-5">
-          <GovernanceSlaDelegationPanel currentUser={currentUser} />
-
           {servicePageHeader(
             'Dashboard Operasional Marketing Administration',
             'Fokus pada First Action Wins Booking Case, operasional Pipeline Marketing Support, serta upload SPAJ/SPAK. Target premi Marketing tidak ditampilkan.',
@@ -838,8 +833,6 @@ const Index: React.FC = () => {
     return (
       <AppLayout>
         <div className="space-y-5">
-          <GovernanceSlaDelegationPanel currentUser={currentUser} />
-
           {servicePageHeader(
             'Dashboard Marketing Administration',
             'Fokus pada final approval Booking Case, governance Pipeline, WIN/LOSE, serta repository SPAJ dan SPAK. Target premi Marketing tidak ditampilkan pada dashboard ini.',
@@ -1325,8 +1318,6 @@ const Index: React.FC = () => {
     return (
       <AppLayout>
         <div className="space-y-5">
-          <GovernanceSlaDelegationPanel currentUser={currentUser} />
-
           {servicePageHeader(
             isAndi
               ? 'Dashboard Marketing Communication — Andi Rita'
@@ -3519,72 +3510,10 @@ const Index: React.FC = () => {
       ? 'Perbandingan LOSE antar department dalam scope terpilih'
       : 'Perbandingan LOSE antar personel dalam hierarchy scope terpilih';
 
-  // ============================================================
-  // EXPORT
-  // ============================================================
-
-  const exportOverviewData = [
-    {
-      Indicator:
-        'Target Premi',
-      Value:
-        totalTarget,
-    },
-    {
-      Indicator:
-        'Realisasi Produksi',
-      Value:
-        totalRealisasi,
-    },
-    {
-      Indicator:
-        'Achievement Pct',
-      Value:
-        `${achievementPct.toFixed(1)}%`,
-    },
-    {
-      Indicator:
-        'Gap Target',
-      Value:
-        gapTarget,
-    },
-    {
-      Indicator:
-        'Pipeline Aktif (Jumlah Case)',
-      Value:
-        activePipelines.length,
-    },
-    {
-      Indicator:
-        'Pipeline Aktif (Nominal)',
-      Value:
-        activePipelineValue,
-    },
-    {
-      Indicator:
-        'WIN Pending Invoice (Nominal)',
-      Value:
-        winPendingValue,
-    },
-    {
-      Indicator:
-        'Pipeline Lapse lebih dari 30 Hari (Jumlah Case)',
-      Value:
-        lapseOver30.length,
-    },
-    {
-      Indicator:
-        'Pipeline Lapse lebih dari 30 Hari (Nominal)',
-      Value:
-        lapseOver30Value,
-    },
-  ];
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <GovernanceSlaDelegationPanel currentUser={currentUser} />
-
 
         <Tabs
           value={activeTab}
@@ -3770,13 +3699,7 @@ const Index: React.FC = () => {
               </Button>
 
             )}
-
-            <ExcelExportButton
-              data={
-                exportOverviewData
-              }
-              filename={`Overview_Marketing_${selectedYear}`}
-            />
+            <DashboardTransactionExport />
 
           </div>
 
