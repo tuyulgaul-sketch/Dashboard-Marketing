@@ -266,6 +266,44 @@ export const AppSidebar:
         );
       };
 
+    if (isSysAdmin) {
+      return (
+        <aside className="flex min-h-[calc(100vh-64px)] w-60 shrink-0 flex-col border-r border-slate-800/80 bg-slate-950">
+          <div className="px-4 pb-2 pt-5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Administrasi Sistem
+            </div>
+          </div>
+
+          <nav className="flex-1 space-y-1 p-3">
+            <NavLink
+              to="/administrasi"
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                }`
+              }
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span>Administrasi Sistem</span>
+            </NavLink>
+          </nav>
+
+          <div className="border-t border-slate-800/80 p-4 text-[11px] text-slate-500">
+            <div className="font-semibold text-slate-400">
+              Perta Life Marketing OS
+            </div>
+
+            <div>
+              System Administration
+            </div>
+          </div>
+        </aside>
+      );
+    }
+
     return (
       <aside className="flex min-h-[calc(100vh-64px)] w-60 shrink-0 flex-col border-r border-slate-800/80 bg-slate-950">
         <div className="px-4 pb-2 pt-5">
