@@ -18,7 +18,9 @@ import {
   PipelineCanonicalStatus,
   CurrentHandlerBucket,
   PipelineDocument,
-  LoseReason
+  LoseReason,
+  DocumentHandover,
+  DocumentHandoverItem
 } from '@/types';
 
 import {
@@ -512,7 +514,8 @@ const STORAGE_KEYS = {
   SUPPORTING_DOCS: 'pertalife_supporting_docs',
   AUDIT_LOGS: 'pertalife_audit_logs',
   NOTIFICATIONS: 'pertalife_notifications',
-  APPROVER_DELEGATIONS: 'pertalife_approver_delegations'
+  APPROVER_DELEGATIONS: 'pertalife_approver_delegations',
+  DOCUMENT_HANDOVERS: 'pertalife_document_handovers'
 };
 
 export type ActingApproverArea =
@@ -7247,6 +7250,349 @@ class StoreService {
   }
 
   // ============================================================
+  // TANDA TERIMA DOKUMEN / PHYSICAL DOCUMENT HANDOVER
+  // ============================================================
+
+  private isMarketingBusinessRole(role: User['role']): boolean {
+    return [
+      'DIRECTOR_MARKETING',
+      'ADVISOR_MARKETING_DIRECTOR',
+      'VP_CAPTIVE_MARKETING',
+      'VP_CORPORATE_RETAIL_MARKETING',
+      'DEPARTMENT_HEAD_MARKETING',
+      'SUPERVISOR_MARKETING',
+      'STAFF_MARKETING',
+    ].includes(role);
+  }
+
+  private isMarketingAdministrationRole(role: User['role']): boolean {
+    return [
+      'DEPARTMENT_HEAD_MARKETING_ADMINISTRATION',
+      'SUPERVISOR_MARKETING_ADMINISTRATION',
+      'STAFF_MARKETING_ADMINISTRATION',
+    ].includes(role);
+  }
+
+  public canCreateDocumentHandover(user: User = this.getCurrentUser()): boolean {
+    return this.isMarketingBusinessRole(user.role) || this.isMarketingAdministrationRole(user.role);
+  }
+
+  public getDocumentHandovers(): DocumentHandover[] {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.DOCUMENT_HANDOVERS) || '[]');
+  }
+
+  public getVisibleDocumentHandovers(user: User = this.getCurrentUser()): DocumentHandover[] {
+    if (user.role === 'SYSTEM_ADMIN') return [];
+
+    const records = this.getDocumentHandovers();
+
+    if (
+      user.role === 'TEAM_LEADER_MARKETING_SUPPORT' ||
+      user.role === 'DEPARTMENT_HEAD_MARKETING_ADMINISTRATION' ||
+      user.role === 'SUPERVISOR_MARKETING_ADMINISTRATION'
+    ) {
+      return records;
+    }
+
+    return records.filter(receipt => {
+      if (receipt.senderUserId === user.id || receipt.receiverUserId === user.id) return true;
+
+      if (this.isMarketingBusinessRole(user.role)) {
+        return (
+          this.isUserInScope(user, receipt.senderUserId) ||
+          this.isUserInScope(user, receipt.receiverUserId)
+        );
+      }
+
+      return false;
+    });
+  }
+
+  public getNextDocumentHandoverId(
+    handoverDate: string = new Date().toISOString().slice(0, 10)
+  ): string {
+    const [year, month] = handoverDate.split('-');
+    const prefix = `TRM-${year}-${month}-`;
+    const maxSequence = this.getDocumentHandovers()
+      .map(item => item.id)
+      .filter(id => id.startsWith(prefix))
+      .map(id => Number(id.slice(prefix.length)))
+      .filter(value => Number.isFinite(value))
+      .reduce((max, value) => Math.max(max, value), 0);
+
+    return `${prefix}${String(maxSequence + 1).padStart(5, '0')}`;
+  }
+
+  public getEligibleDocumentHandoverReceivers(sender: User = this.getCurrentUser()): User[] {
+    const users = this.getUsers().filter(user => user.status === 'Active' && user.id !== sender.id);
+
+    if (this.isMarketingBusinessRole(sender.role)) {
+      return users.filter(user => this.isMarketingAdministrationRole(user.role));
+    }
+
+    if (this.isMarketingAdministrationRole(sender.role)) {
+      return users.filter(user => this.isMarketingBusinessRole(user.role));
+    }
+
+    return [];
+  }
+
+  public createDocumentHandover(input: {
+    handoverType: DocumentHandover['handoverType'];
+    handoverDate: string;
+    receiverUserId: string;
+    relatedModule: DocumentHandover['relatedModule'];
+    relatedTransactionId?: string;
+    relatedDescription?: string;
+    relatedReceiptId?: string;
+    items: Omit<DocumentHandoverItem, 'id' | 'receivedQuantity' | 'receiverNotes'>[];
+  }): DocumentHandover {
+    const sender = this.getCurrentUser();
+
+    if (!this.canCreateDocumentHandover(sender)) {
+      throw new Error('Tanda Terima hanya dapat dibuat oleh Marketing atau Marketing Administration.');
+    }
+
+    if (!input.handoverDate) throw new Error('Tanggal penyerahan wajib diisi.');
+
+    const receiver = this.getUsers().find(user => user.id === input.receiverUserId && user.status === 'Active');
+    if (!receiver) throw new Error('Penerima tidak valid / tidak aktif.');
+
+    const eligibleReceiverIds = this.getEligibleDocumentHandoverReceivers(sender).map(user => user.id);
+    if (!eligibleReceiverIds.includes(receiver.id)) {
+      throw new Error('Penerima harus berasal dari fungsi lawan: Marketing ↔ Marketing Administration.');
+    }
+
+    if (input.handoverType === 'PENGEMBALIAN DOKUMEN' && !input.relatedReceiptId) {
+      throw new Error('Pengembalian dokumen wajib ditautkan ke Nomor Tanda Terima sebelumnya.');
+    }
+
+    if (input.items.length < 1) throw new Error('Minimal terdapat 1 dokumen pada Tanda Terima.');
+    if (input.items.some(item => !item.description.trim() || item.quantity < 1)) {
+      throw new Error('Deskripsi dokumen dan jumlah wajib diisi dengan benar.');
+    }
+
+    const now = new Date().toISOString();
+    const receiptId = this.getNextDocumentHandoverId(input.handoverDate);
+
+    const receipt: DocumentHandover = {
+      id: receiptId,
+      handoverType: input.handoverType,
+      handoverDate: input.handoverDate,
+      senderUserId: sender.id,
+      senderName: sender.name,
+      senderRole: sender.role,
+      senderUnit: sender.unit,
+      senderDepartment: sender.department,
+      receiverUserId: receiver.id,
+      receiverName: receiver.name,
+      receiverRole: receiver.role,
+      receiverUnit: receiver.unit,
+      receiverDepartment: receiver.department,
+      relatedModule: input.relatedModule,
+      relatedTransactionId: input.relatedTransactionId,
+      relatedDescription: input.relatedDescription,
+      relatedReceiptId: input.relatedReceiptId,
+      items: input.items.map((item, index) => ({
+        ...item,
+        id: `${receiptId}-ITEM-${String(index + 1).padStart(2, '0')}`,
+      })),
+      status: 'MENUNGGU PENERIMAAN',
+      submittedAt: now,
+      submittedByUserId: sender.id,
+      submittedByName: sender.name,
+    };
+
+    const records = this.getDocumentHandovers();
+    records.unshift(receipt);
+    localStorage.setItem(STORAGE_KEYS.DOCUMENT_HANDOVERS, JSON.stringify(records));
+
+    this.addAuditLog(
+      'TANDA_TERIMA',
+      'SUBMIT_HANDOVER',
+      'DocumentHandover',
+      receipt.id,
+      undefined,
+      receipt.status,
+      undefined,
+      `${receipt.handoverType} dari ${sender.name} kepada ${receiver.name}; ${receipt.items.length} item dokumen`
+    );
+
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId: receiver.id,
+      title: 'Dokumen Menunggu Penerimaan',
+      message: `${sender.name} menyerahkan ${receipt.items.length} item dokumen kepada Anda (${receipt.id}).`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+
+    this.notify();
+    return receipt;
+  }
+
+  public confirmDocumentHandover(
+    receiptId: string,
+    input: {
+      status: 'DITERIMA' | 'SELISIH DOKUMEN';
+      items: Array<{ itemId: string; receivedQuantity: number; receiverNotes?: string }>;
+      photoFileId: string;
+      photoFileName: string;
+      photoFileSize: number;
+      notes?: string;
+    }
+  ): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(item => item.id === receiptId);
+    if (index < 0) throw new Error('Tanda Terima tidak ditemukan.');
+
+    const receipt = records[index];
+    if (receipt.status !== 'MENUNGGU PENERIMAAN') {
+      throw new Error('Tanda Terima ini sudah memiliki keputusan penerimaan.');
+    }
+    if (receipt.receiverUserId !== currentUser.id) {
+      throw new Error('Hanya penerima yang ditunjuk yang dapat mengonfirmasi penerimaan.');
+    }
+    if (!input.photoFileId || !input.photoFileName) {
+      throw new Error('Foto bukti penerimaan wajib diupload sebelum konfirmasi.');
+    }
+
+    const decisionMap = new Map(input.items.map(item => [item.itemId, item]));
+    const updatedItems = receipt.items.map(item => {
+      const decision = decisionMap.get(item.id);
+      return {
+        ...item,
+        receivedQuantity: Math.max(0, Number(decision?.receivedQuantity ?? 0)),
+        receiverNotes: decision?.receiverNotes?.trim() || undefined,
+      };
+    });
+
+    if (input.status === 'DITERIMA' && updatedItems.some(item => item.receivedQuantity !== item.quantity)) {
+      throw new Error('Status DITERIMA hanya dapat dipilih jika seluruh jumlah dokumen diterima lengkap.');
+    }
+
+    const now = new Date().toISOString();
+    const updated: DocumentHandover = {
+      ...receipt,
+      items: updatedItems,
+      status: input.status,
+      receiverDecisionAt: now,
+      receiverDecisionByUserId: currentUser.id,
+      receiverDecisionByName: currentUser.name,
+      receiverDecisionNotes: input.notes?.trim() || undefined,
+      receiptPhotoFileId: input.photoFileId,
+      receiptPhotoFileName: input.photoFileName,
+      receiptPhotoFileSize: input.photoFileSize,
+    };
+
+    records[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.DOCUMENT_HANDOVERS, JSON.stringify(records));
+
+    this.addAuditLog(
+      'TANDA_TERIMA',
+      input.status === 'DITERIMA' ? 'CONFIRM_RECEIVED' : 'REPORT_DISCREPANCY',
+      'DocumentHandover',
+      updated.id,
+      receipt.status,
+      updated.status,
+      input.notes,
+      input.photoFileName
+    );
+
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId: updated.senderUserId,
+      title: input.status === 'DITERIMA' ? 'Dokumen Telah Diterima' : 'Selisih Dokumen Dilaporkan',
+      message: `${currentUser.name} memproses ${updated.id} dengan status ${updated.status}.`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+
+    this.notify();
+    return updated;
+  }
+
+  public rejectDocumentHandover(receiptId: string, reason: string): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(item => item.id === receiptId);
+    if (index < 0) throw new Error('Tanda Terima tidak ditemukan.');
+
+    const receipt = records[index];
+    if (receipt.status !== 'MENUNGGU PENERIMAAN' || receipt.receiverUserId !== currentUser.id) {
+      throw new Error('Tanda Terima tidak dapat ditolak oleh akun ini.');
+    }
+    if (!reason.trim()) throw new Error('Alasan penolakan wajib diisi.');
+
+    const now = new Date().toISOString();
+    const updated: DocumentHandover = {
+      ...receipt,
+      status: 'DITOLAK',
+      receiverDecisionAt: now,
+      receiverDecisionByUserId: currentUser.id,
+      receiverDecisionByName: currentUser.name,
+      receiverDecisionNotes: reason.trim(),
+    };
+
+    records[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.DOCUMENT_HANDOVERS, JSON.stringify(records));
+    this.addAuditLog('TANDA_TERIMA', 'REJECT_HANDOVER', 'DocumentHandover', updated.id, receipt.status, updated.status, reason.trim());
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId: updated.senderUserId,
+      title: 'Penerimaan Dokumen Ditolak',
+      message: `${currentUser.name} menolak ${updated.id}. Alasan: ${reason.trim()}`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+    this.notify();
+    return updated;
+  }
+
+  public cancelDocumentHandover(receiptId: string, reason: string): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(item => item.id === receiptId);
+    if (index < 0) throw new Error('Tanda Terima tidak ditemukan.');
+
+    const receipt = records[index];
+    if (receipt.status !== 'MENUNGGU PENERIMAAN' || receipt.senderUserId !== currentUser.id) {
+      throw new Error('Hanya pengirim yang dapat membatalkan Tanda Terima sebelum ada keputusan penerima.');
+    }
+    if (!reason.trim()) throw new Error('Alasan pembatalan wajib diisi.');
+
+    const now = new Date().toISOString();
+    const updated: DocumentHandover = {
+      ...receipt,
+      status: 'DIBATALKAN',
+      cancelledAt: now,
+      cancelledByUserId: currentUser.id,
+      cancelledByName: currentUser.name,
+      cancellationReason: reason.trim(),
+    };
+
+    records[index] = updated;
+    localStorage.setItem(STORAGE_KEYS.DOCUMENT_HANDOVERS, JSON.stringify(records));
+    this.addAuditLog('TANDA_TERIMA', 'CANCEL_HANDOVER', 'DocumentHandover', updated.id, receipt.status, updated.status, reason.trim());
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId: updated.receiverUserId,
+      title: 'Tanda Terima Dibatalkan',
+      message: `${currentUser.name} membatalkan ${updated.id}.`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+    this.notify();
+    return updated;
+  }
+
+
+  // ============================================================
   // AUDIT & NOTIFICATIONS
   // ============================================================
   public getAuditLogs(): AuditLog[] {
@@ -9575,6 +9921,7 @@ class StoreService {
     const databaseNames = [
       'pertalife_marketing_os_files',
       'pertalife_pipeline_files',
+      'pertalife_document_handover_files',
     ];
 
     for (
