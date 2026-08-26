@@ -17,6 +17,7 @@ import BookingPipelinePage from "./pages/BookingPipelinePage";
 import ProduksiPage from "./pages/ProduksiPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
 import AdministrasiPage from "./pages/AdministrasiPage";
+import TandaTerimaPage from "./pages/TandaTerimaPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,29 @@ const SysAdminOnly: React.FC<{
     return <Navigate to="/" replace />;
   }
 
+  return children;
+};
+
+const TandaTerimaOnly: React.FC<{
+  children: React.ReactElement;
+}> = ({ children }) => {
+  const role = useCurrentRole();
+  const allowedRoles = [
+    "DIRECTOR_MARKETING",
+    "ADVISOR_MARKETING_DIRECTOR",
+    "VP_CAPTIVE_MARKETING",
+    "VP_CORPORATE_RETAIL_MARKETING",
+    "DEPARTMENT_HEAD_MARKETING",
+    "SUPERVISOR_MARKETING",
+    "STAFF_MARKETING",
+    "TEAM_LEADER_MARKETING_SUPPORT",
+    "DEPARTMENT_HEAD_MARKETING_ADMINISTRATION",
+    "SUPERVISOR_MARKETING_ADMINISTRATION",
+    "STAFF_MARKETING_ADMINISTRATION",
+  ];
+
+  if (role === "SYSTEM_ADMIN") return <Navigate to="/administrasi" replace />;
+  if (!allowedRoles.includes(role)) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -119,6 +143,15 @@ const App = () => (
               <BusinessOnly>
                 <DokumenPendukungPage />
               </BusinessOnly>
+            }
+          />
+
+          <Route
+            path="/tanda-terima"
+            element={
+              <TandaTerimaOnly>
+                <TandaTerimaPage />
+              </TandaTerimaOnly>
             }
           />
 
