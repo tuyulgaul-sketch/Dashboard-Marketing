@@ -12,6 +12,7 @@ import { User } from '@/types';
 import {
   Briefcase,
   CalendarCheck,
+  ClipboardCheck,
   ChevronRight,
   FileText,
   LayoutDashboard,
@@ -71,6 +72,22 @@ export const AppSidebar:
       'DEPARTMENT_HEAD_MARKETING',
       'SUPERVISOR_MARKETING',
       'STAFF_MARKETING',
+    ].includes(
+      currentUser.role
+    );
+
+    const canAccessDocumentHandover = [
+      'DIRECTOR_MARKETING',
+      'ADVISOR_MARKETING_DIRECTOR',
+      'VP_CAPTIVE_MARKETING',
+      'VP_CORPORATE_RETAIL_MARKETING',
+      'DEPARTMENT_HEAD_MARKETING',
+      'SUPERVISOR_MARKETING',
+      'STAFF_MARKETING',
+      'TEAM_LEADER_MARKETING_SUPPORT',
+      'DEPARTMENT_HEAD_MARKETING_ADMINISTRATION',
+      'SUPERVISOR_MARKETING_ADMINISTRATION',
+      'STAFF_MARKETING_ADMINISTRATION',
     ].includes(
       currentUser.role
     );
@@ -155,6 +172,18 @@ export const AppSidebar:
           icon:
             FileText,
         },
+        ...(canAccessDocumentHandover
+          ? [
+              {
+                label:
+                  'Tanda Terima Dokumen',
+                path:
+                  '/tanda-terima',
+                icon:
+                  ClipboardCheck,
+              },
+            ]
+          : []),
       ];
 
     const communicationItems:
