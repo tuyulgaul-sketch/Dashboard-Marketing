@@ -3,6 +3,7 @@ import { Download, CalendarRange, FileSpreadsheet, X, AlertTriangle } from 'luci
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { store } from '@/services/store';
+import { formatSlaDueDate, getSlaState } from '@/utils/slaGovernance';
 
 /**
  * DashboardTransactionExport
@@ -184,6 +185,7 @@ const getAllEntityRecords = () => {
     safeArrayGetter('getAgents'),
     safeArrayGetter('getTargets'),
     safeArrayGetter('getTargetUploadBatches'),
+    safeArrayGetter('getDocumentHandovers'),
   ];
 
   const map = new Map<string, AnyRow>();
@@ -247,6 +249,7 @@ const auditBelongsToAdminScope = (audit: AnyRow) =>
     'SPAK',
     'BROKER',
     'AGENT',
+    'TANDA_TERIMA',
   ]);
 
 const auditBelongsToMarcommScope = (audit: AnyRow) =>
@@ -272,6 +275,7 @@ const auditBelongsToMarketingScope = (audit: AnyRow) =>
     'ACTIVITY',
     'REIMBURSEMENT',
     'MARCOMM',
+    'TANDA_TERIMA',
   ]);
 
 const canSeeAudit = (
@@ -383,6 +387,90 @@ const enrichAuditRow = (
       ]) || '',
     Status: getAny(record, ['status', 'reconciliationStatus']) || '',
   };
+};
+
+
+const getVisibleHandoverRows = (range: DateRange): AnyRow[] => {
+  const service: any = store as any;
+  const records = typeof service.getVisibleDocumentHandovers === 'function'
+    ? service.getVisibleDocumentHandovers()
+    : [];
+
+  return records
+    .filter((receipt: AnyRow) => isWithinRange(receipt.submittedAt, range))
+    .map((receipt: AnyRow) => ({
+      'Receipt ID': receipt.id,
+      'Tanggal Penyerahan': receipt.handoverDate,
+      'Jenis Penyerahan': receipt.handoverType,
+      'Pengirim User ID': receipt.senderUserId,
+      Pengirim: receipt.senderName,
+      'Role Pengirim': roleLabel(String(receipt.senderRole || '')),
+      'Penerima User ID': receipt.receiverUserId,
+      Penerima: receipt.receiverName,
+      'Role Penerima': roleLabel(String(receipt.receiverRole || '')),
+      'Related Module': receipt.relatedModule || '',
+      'Related Transaction ID': receipt.relatedTransactionId || '',
+      'Related Receipt ID': receipt.relatedReceiptId || '',
+      'Jumlah Item Dokumen': Array.isArray(receipt.items) ? receipt.items.length : 0,
+      Status: receipt.status || '',
+      'Submitted Timestamp': formatTimestamp(receipt.submittedAt),
+      'Received/Decision Timestamp': formatTimestamp(receipt.receiverDecisionAt),
+      'Foto Evidence': receipt.receiptPhotoFileName || '',
+      'SLA Status': receipt.status === 'MENUNGGU PENERIMAAN' ? getSlaState(receipt.submittedAt) : 'CLOSED',
+      'SLA Due Date': receipt.submittedAt ? formatSlaDueDate(receipt.submittedAt) : '',
+      'Receiver Notes': receipt.receiverDecisionNotes || '',
+    }));
+};
+
+const getVisibleHandoverItemRows = (range: DateRange): AnyRow[] => {
+  const service: any = store as any;
+  const records = typeof service.getVisibleDocumentHandovers === 'function'
+    ? service.getVisibleDocumentHandovers()
+    : [];
+
+  return records
+    .filter((receipt: AnyRow) => isWithinRange(receipt.submittedAt, range))
+    .flatMap((receipt: AnyRow) =>
+      (Array.isArray(receipt.items) ? receipt.items : []).map((item: AnyRow, index: number) => ({
+        'Receipt ID': receipt.id,
+        'Item No': index + 1,
+        'Jenis Dokumen': item.documentType || '',
+        'Deskripsi Dokumen': item.description || '',
+        'Asli/Copy': item.physicalForm || '',
+        'Qty Diserahkan': item.quantity ?? '',
+        'Qty Diterima': item.receivedQuantity ?? '',
+        'Status Item': item.receivedQuantity === undefined
+          ? 'MENUNGGU'
+          : Number(item.receivedQuantity) === Number(item.quantity)
+          ? 'LENGKAP'
+          : 'SELISIH',
+        'Receiver Notes': item.receiverNotes || '',
+        'Submitted Timestamp': formatTimestamp(receipt.submittedAt),
+        'Receipt Status': receipt.status || '',
+      }))
+    );
+};
+
+const getHandoverSheetDefinitions = (
+  role: string
+): Array<[string, 'HANDOVER' | 'HANDOVER_ITEMS']> => {
+  if (isMarketingCommunicationRole(role)) return [];
+
+  if (isMarketingAdministrationRole(role) || isTeamLeaderMarketingSupport(role)) {
+    return [
+      ['09_Tanda_Terima', 'HANDOVER'],
+      ['10_Tanda_Terima_Items', 'HANDOVER_ITEMS'],
+    ];
+  }
+
+  if (isMarketingRole(role)) {
+    return [
+      ['07_Tanda_Terima', 'HANDOVER'],
+      ['08_Tanda_Terima_Items', 'HANDOVER_ITEMS'],
+    ];
+  }
+
+  return [];
 };
 
 const getRoleSheetDefinitions = (role: string) => {
@@ -805,6 +893,11 @@ export const DashboardTransactionExport: React.FC<
     [role]
   );
 
+  const handoverSheetDefinitions = useMemo(
+    () => getHandoverSheetDefinitions(role),
+    [role]
+  );
+
   if (role === 'SYSTEM_ADMIN') {
     return null;
   }
@@ -844,6 +937,13 @@ export const DashboardTransactionExport: React.FC<
         .map((audit) => enrichAuditRow(audit, entityMap)),
     }));
 
+    const handoverSheets: ExportSheet[] = handoverSheetDefinitions.map(([name, type]) => ({
+      name,
+      rows: type === 'HANDOVER' ? getVisibleHandoverRows(range) : getVisibleHandoverItemRows(range),
+    }));
+
+    const allBusinessSheets = [...functionalSheets, ...handoverSheets];
+
     const summaryRows: AnyRow[] = [
       { Parameter: 'Exported By', Value: currentUser.name || '' },
       { Parameter: 'User ID', Value: currentUser.id || '' },
@@ -874,9 +974,9 @@ export const DashboardTransactionExport: React.FC<
       { Parameter: 'Total Action Records', Value: actionRows.length },
       {
         Parameter: 'Total Worksheets',
-        Value: functionalSheets.length + 2,
+        Value: allBusinessSheets.length + 2,
       },
-      ...functionalSheets.map((sheet) => ({
+      ...allBusinessSheets.map((sheet) => ({
         Parameter: `Rows - ${sheet.name}`,
         Value: sheet.rows.length,
       })),
@@ -884,9 +984,9 @@ export const DashboardTransactionExport: React.FC<
 
     return [
       { name: '00_Summary', rows: summaryRows },
-      ...functionalSheets,
+      ...allBusinessSheets,
       {
-        name: `${String(functionalSheets.length + 1).padStart(
+        name: `${String(allBusinessSheets.length + 1).padStart(
           2,
           '0'
         )}_Audit_Trail_All`,
@@ -1080,7 +1180,7 @@ export const DashboardTransactionExport: React.FC<
                     Worksheets
                   </div>
                   <div className="mt-1 text-lg font-black text-gray-900">
-                    {sheetDefinitions.length + 2}
+                    {sheetDefinitions.length + handoverSheetDefinitions.length + 2}
                   </div>
                 </div>
               </div>
@@ -1094,6 +1194,14 @@ export const DashboardTransactionExport: React.FC<
                     00_Summary
                   </span>
                   {sheetDefinitions.map(([name]) => (
+                    <span
+                      key={name}
+                      className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                  {handoverSheetDefinitions.map(([name]) => (
                     <span
                       key={name}
                       className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700"
