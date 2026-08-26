@@ -610,6 +610,99 @@ export interface Reimbursement {
   updatedAt?: string;
 }
 
+
+// ============================================================
+// DIGITAL DOCUMENT HANDOVER / TANDA TERIMA DOKUMEN
+// ============================================================
+
+export type DocumentHandoverStatus =
+  | 'MENUNGGU PENERIMAAN'
+  | 'DITERIMA'
+  | 'SELISIH DOKUMEN'
+  | 'DITOLAK'
+  | 'DIBATALKAN';
+
+export type DocumentHandoverType =
+  | 'PENYERAHAN DOKUMEN'
+  | 'PENGEMBALIAN DOKUMEN';
+
+export type DocumentHandoverRelatedModule =
+  | 'NONE'
+  | 'PIPELINE'
+  | 'BOOKING'
+  | 'REIMBURSEMENT'
+  | 'LAINNYA';
+
+export type DocumentPhysicalForm =
+  | 'Asli'
+  | 'Copy'
+  | 'Legalized Copy';
+
+export interface DocumentHandoverItem {
+  id: string;
+  documentType:
+    | 'Tagihan / Invoice'
+    | 'Kwitansi'
+    | 'Polis'
+    | 'SPAJ'
+    | 'SPAK'
+    | 'Surat'
+    | 'Proposal'
+    | 'Dokumen Closing'
+    | 'Lampiran'
+    | 'Lainnya';
+  description: string;
+  physicalForm: DocumentPhysicalForm;
+  quantity: number;
+  notes?: string;
+  receivedQuantity?: number;
+  receiverNotes?: string;
+}
+
+export interface DocumentHandover {
+  id: string; // TRM-YYYY-MM-00001
+  handoverType: DocumentHandoverType;
+  handoverDate: string;
+
+  senderUserId: string;
+  senderName: string;
+  senderRole: UserRole;
+  senderUnit: UnitType;
+  senderDepartment: DepartmentType;
+
+  receiverUserId: string;
+  receiverName: string;
+  receiverRole: UserRole;
+  receiverUnit: UnitType;
+  receiverDepartment: DepartmentType;
+
+  relatedModule: DocumentHandoverRelatedModule;
+  relatedTransactionId?: string;
+  relatedDescription?: string;
+  relatedReceiptId?: string;
+
+  items: DocumentHandoverItem[];
+  status: DocumentHandoverStatus;
+
+  submittedAt: string;
+  submittedByUserId: string;
+  submittedByName: string;
+
+  receiverDecisionAt?: string;
+  receiverDecisionByUserId?: string;
+  receiverDecisionByName?: string;
+  receiverDecisionNotes?: string;
+
+  receiptPhotoFileId?: string;
+  receiptPhotoFileName?: string;
+  receiptPhotoFileSize?: number;
+
+  cancelledAt?: string;
+  cancelledByUserId?: string;
+  cancelledByName?: string;
+  cancellationReason?: string;
+}
+
 export interface SupportingDocument {
   id: string;
   tabCategory: 'Proposal Penawaran' | 'SPAJ / SPAK' | 'Dokumen Lainnya';
