@@ -20,6 +20,15 @@ export type AdminAccount = {
     | "ACTIVE";
 };
 
+export type BulkActivationResult = {
+  profile_id: string;
+  full_name: string;
+  email: string;
+  status: "CREATED" | "REPAIRED" | "SKIPPED" | "FAILED";
+  temporary_password: string | null;
+  error: string | null;
+};
+
 export const getAdminAccounts =
   async (): Promise<AdminAccount[]> => {
     const { data, error } =
@@ -63,6 +72,41 @@ const invokeAdminControl =
 
     return data;
   };
+
+export const activateAccount =
+  async (
+    profileId: string,
+    temporaryPassword: string
+  ) =>
+    invokeAdminControl({
+      action: "activate_account",
+      profile_id: profileId,
+      temporary_password:
+        temporaryPassword,
+    });
+
+export const activateAllAccounts =
+  async (): Promise<{
+    success: boolean;
+    action: string;
+    results: BulkActivationResult[];
+  }> =>
+    invokeAdminControl({
+      action: "activate_all_accounts",
+    });
+
+export const sendAdminTestNotification =
+  async (
+    profileId: string
+  ): Promise<{
+    success: boolean;
+    notification_id: string;
+    recipient_email: string;
+  }> =>
+    invokeAdminControl({
+      action: "send_test_notification",
+      profile_id: profileId,
+    });
 
 export const resetAccountPassword =
   async (
