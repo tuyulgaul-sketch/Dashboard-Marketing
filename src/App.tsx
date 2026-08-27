@@ -93,6 +93,7 @@ const App = () => (
 
       <BrowserRouter>
         <Routes>
+          <Route path="/set-password" element={<SetPasswordPage />} />
           <Route
             path="/"
             element={
