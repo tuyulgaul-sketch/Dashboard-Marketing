@@ -95,6 +95,57 @@ export type CreateActivityInput = {
   collaborator_ids?: string[];
 };
 
+export type ActivityDetailPerson = {
+  id: string;
+  full_name: string;
+  role_level: string;
+  unit: string;
+  department: string | null;
+};
+
+export type ActivityCollaboratorDetail = {
+  profile_id: string;
+  full_name: string;
+  role_level: string;
+  unit: string;
+  department: string | null;
+  can_edit: boolean;
+  created_at: string;
+};
+
+export type ActivityCommentDetail = {
+  id: string;
+  body: string;
+  created_by_profile_id: string;
+  author_name: string;
+  author_role: string;
+  author_unit: string;
+  author_department: string | null;
+  created_at: string;
+};
+
+export type ActivityHistoryDetail = {
+  id: string;
+  actor_profile_id: string | null;
+  actor_name: string;
+  actor_role: string | null;
+  action: string;
+  old_status: string | null;
+  new_status: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ActivityDetailPayload = {
+  activity: UniversalActivity;
+  owner: ActivityDetailPerson;
+  created_by: ActivityDetailPerson;
+  validation_approver: ActivityDetailPerson | null;
+  collaborators: ActivityCollaboratorDetail[];
+  comments: ActivityCommentDetail[];
+  history: ActivityHistoryDetail[];
+};
+
 export async function getActivityDirectory() {
   const { data, error } =
     await supabase.rpc("get_profile_directory");
@@ -186,4 +237,36 @@ export async function reviewUniversalActivityValidation(
   if (error) throw error;
 
   return data as UniversalActivity;
+}
+
+export async function getUniversalActivityDetail(
+  activityId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "get_activity_detail",
+    {
+      p_activity_id: activityId,
+    }
+  );
+
+  if (error) throw error;
+
+  return data as ActivityDetailPayload;
+}
+
+export async function addUniversalActivityComment(
+  activityId: string,
+  body: string
+) {
+  const { data, error } = await supabase.rpc(
+    "add_activity_comment",
+    {
+      p_activity_id: activityId,
+      p_body: body,
+    }
+  );
+
+  if (error) throw error;
+
+  return data as ActivityCommentDetail;
 }
