@@ -100,12 +100,13 @@ const TandaTerimaOnly: React.FC<{
 const HomeRoute: React.FC = () => {
   const { profile } = useAuth();
 
-  const normalizedUnit =
-    (profile?.unit || "").toLowerCase();
+  const department =
+    (profile?.department || "")
+      .trim()
+      .toLowerCase();
 
   const isDigitalAffinity =
-    normalizedUnit.includes("digital") &&
-    normalizedUnit.includes("affinity");
+    department === "digital & affinity";
 
   if (isDigitalAffinity) {
     return <DigitalAffinityPage />;
