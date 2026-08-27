@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  ActivityAttachmentDetail,
   ActivityCategory,
   ActivityDetailPayload,
   ActivityMode,
@@ -11,12 +12,16 @@ import {
   UniversalActivityStatus,
   addUniversalActivityComment,
   createUniversalActivity,
+  deleteUniversalActivityAttachment,
   getActivityDirectory,
   getUniversalActivities,
+  getUniversalActivityAttachmentUrl,
   getUniversalActivityDetail,
   reviewUniversalActivityValidation,
   submitUniversalActivityForValidation,
+  updateUniversalActivityProgress,
   updateUniversalActivityStatus,
+  uploadUniversalActivityAttachment,
 } from "@/services/activityService";
 import {
   Card,
@@ -50,18 +55,38 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from "date-fns";
+import { id as idLocale } from "date-fns/locale";
+import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
+  Download,
   Eye,
   History,
   ListTodo,
   MessageSquare,
+  Paperclip,
   Plus,
   RefreshCw,
+  Rows3,
   Search,
   Send,
   ShieldCheck,
+  Trash2,
+  UploadCloud,
   UserRound,
   UserRoundPlus,
   UsersRound,
@@ -115,6 +140,9 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   VALIDATION_APPROVED: "Validasi disetujui",
   VALIDATION_RETURNED: "Dikembalikan untuk perbaikan",
   COMMENT_ADDED: "Komentar ditambahkan",
+  PROGRESS_UPDATED: "Progress diperbarui",
+  ATTACHMENT_ADDED: "Lampiran ditambahkan",
+  ATTACHMENT_DELETED: "Lampiran dihapus",
 };
 
 const MOVABLE_STATUSES: Array<
@@ -230,6 +258,19 @@ const AktivitasUniversalPage: React.FC = () => {
     useState<ActivityDetailPayload | null>(null);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+
+  const [viewMode, setViewMode] =
+    useState<"LIST" | "CALENDAR">("LIST");
+  const [calendarMonth, setCalendarMonth] =
+    useState(new Date());
+
+  const [progressValue, setProgressValue] = useState(0);
+  const [progressBusy, setProgressBusy] = useState(false);
+
+  const [attachmentFile, setAttachmentFile] =
+    useState<File | null>(null);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentInputKey, setAttachmentInputKey] = useState(0);
 
   const profileMap = useMemo(
     () =>
@@ -408,6 +449,30 @@ const AktivitasUniversalPage: React.FC = () => {
     scope,
     statusFilter,
   ]);
+
+
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(calendarMonth);
+    const monthEnd = endOfMonth(calendarMonth);
+
+    return eachDayOfInterval({
+      start: startOfWeek(monthStart, { weekStartsOn: 1 }),
+      end: endOfWeek(monthEnd, { weekStartsOn: 1 }),
+    });
+  }, [calendarMonth]);
+
+  const calendarActivityMap = useMemo(() => {
+    const result = new Map<string, UniversalActivity[]>();
+
+    filteredActivities.forEach((activity) => {
+      const key = activity.activity_date;
+      const list = result.get(key) || [];
+      list.push(activity);
+      result.set(key, list);
+    });
+
+    return result;
+  }, [filteredActivities]);
 
   const myCount = activities.filter(
     (activity) => activity.owner_profile_id === profile?.id
@@ -640,6 +705,7 @@ const AktivitasUniversalPage: React.FC = () => {
         await getUniversalActivityDetail(activityId);
 
       setDetail(nextDetail);
+      setProgressValue(nextDetail.activity.progress);
     } catch (err: any) {
       console.error(err);
       window.alert(
@@ -679,6 +745,126 @@ const AktivitasUniversalPage: React.FC = () => {
       setCommentBusy(false);
     }
   };
+
+
+  const handleUpdateProgress = async () => {
+    if (!detail) return;
+
+    try {
+      setProgressBusy(true);
+
+      await updateUniversalActivityProgress(
+        detail.activity.id,
+        progressValue
+      );
+
+      await refresh();
+
+      const refreshed =
+        await getUniversalActivityDetail(
+          detail.activity.id
+        );
+
+      setDetail(refreshed);
+      setProgressValue(refreshed.activity.progress);
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal mengubah progress."
+      );
+    } finally {
+      setProgressBusy(false);
+    }
+  };
+
+  const handleUploadAttachment = async () => {
+    if (!detail || !attachmentFile) return;
+
+    try {
+      setAttachmentBusy(true);
+
+      await uploadUniversalActivityAttachment(
+        detail.activity.id,
+        attachmentFile
+      );
+
+      setAttachmentFile(null);
+      setAttachmentInputKey((value) => value + 1);
+
+      const refreshed =
+        await getUniversalActivityDetail(
+          detail.activity.id
+        );
+
+      setDetail(refreshed);
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal mengunggah lampiran."
+      );
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
+  const handleDownloadAttachment = async (
+    attachment: ActivityAttachmentDetail
+  ) => {
+    try {
+      const signedUrl =
+        await getUniversalActivityAttachmentUrl(
+          attachment.storage_path
+        );
+
+      window.open(
+        signedUrl,
+        "_blank",
+        "noopener,noreferrer"
+      );
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal membuka lampiran."
+      );
+    }
+  };
+
+  const handleDeleteAttachment = async (
+    attachment: ActivityAttachmentDetail
+  ) => {
+    if (
+      !window.confirm(
+        `Hapus lampiran "${attachment.file_name}"?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setAttachmentBusy(true);
+
+      await deleteUniversalActivityAttachment(
+        attachment.id
+      );
+
+      if (!detail) return;
+
+      const refreshed =
+        await getUniversalActivityDetail(
+          detail.activity.id
+        );
+
+      setDetail(refreshed);
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal menghapus lampiran."
+      );
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
 
   return (
     <AppLayout>
@@ -801,9 +987,43 @@ const AktivitasUniversalPage: React.FC = () => {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">
-              Daftar Aktivitas
-            </CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-sm">
+                Aktivitas
+              </CardTitle>
+
+              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    viewMode === "LIST"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() => setViewMode("LIST")}
+                >
+                  <Rows3 className="mr-1.5 h-4 w-4" />
+                  List
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    viewMode === "CALENDAR"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() => setViewMode("CALENDAR")}
+                >
+                  <CalendarDays className="mr-1.5 h-4 w-4" />
+                  Calendar
+                </Button>
+              </div>
+            </div>
           </CardHeader>
 
           <CardContent>
@@ -881,234 +1101,377 @@ const AktivitasUniversalPage: React.FC = () => {
               </Select>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1280px] text-left text-xs">
-                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
-                  <tr>
-                    <th className="p-3">Aktivitas</th>
-                    <th className="p-3">Mode</th>
-                    <th className="p-3">Owner</th>
-                    <th className="p-3">Department</th>
-                    <th className="p-3">Due</th>
-                    <th className="p-3">Priority</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Progress</th>
-                    <th className="p-3">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {loading ? (
+            {viewMode === "LIST" ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[1280px] text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
                     <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-500">
-                        Memuat aktivitas...
-                      </td>
+                      <th className="p-3">Aktivitas</th>
+                      <th className="p-3">Mode</th>
+                      <th className="p-3">Owner</th>
+                      <th className="p-3">Department</th>
+                      <th className="p-3">Due</th>
+                      <th className="p-3">Priority</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">Progress</th>
+                      <th className="p-3">Action</th>
                     </tr>
-                  ) : filteredActivities.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-500">
-                        Belum ada aktivitas pada filter ini.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredActivities.map((activity) => {
-                      const owner =
-                        profileMap.get(activity.owner_profile_id);
+                  </thead>
 
-                      const awaitingMyApproval =
-                        activity.status === "PENDING_VALIDATION" &&
-                        activity.validation_approver_profile_id === profile?.id;
+                  <tbody className="divide-y divide-slate-100">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-500">
+                          Memuat aktivitas...
+                        </td>
+                      </tr>
+                    ) : filteredActivities.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-500">
+                          Belum ada aktivitas pada filter ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredActivities.map((activity) => {
+                        const owner =
+                          profileMap.get(activity.owner_profile_id);
 
-                      return (
-                        <tr key={activity.id} className="align-top hover:bg-slate-50/60">
-                          <td className="p-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openActivityDetail(activity.id)
-                              }
-                              className="text-left"
-                            >
-                              <div className="font-bold text-slate-900 hover:text-blue-700">
-                                {activity.title}
-                              </div>
-                            </button>
+                        const awaitingMyApproval =
+                          activity.status === "PENDING_VALIDATION" &&
+                          activity.validation_approver_profile_id === profile?.id;
 
-                            <div className="mt-1 text-[11px] text-slate-500">
-                              {CATEGORY_LABELS[activity.category]}
-                            </div>
-
-                            {activity.description && (
-                              <div className="mt-1 max-w-sm text-[11px] text-slate-500">
-                                {activity.description}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="p-3">
-                            <Badge variant="outline">
-                              {MODE_LABELS[activity.activity_mode || "PERSONAL"]}
-                            </Badge>
-                          </td>
-
-                          <td className="p-3">
-                            <div className="font-semibold text-slate-800">
-                              {owner?.full_name || "-"}
-                            </div>
-
-                            <div className="mt-0.5 text-[10px] text-slate-500">
-                              {owner?.role_level || ""}
-                            </div>
-                          </td>
-
-                          <td className="p-3 text-slate-600">
-                            {getOrgLabel(owner)}
-                          </td>
-
-                          <td className="p-3">
-                            <div
-                              className={
-                                isOverdue(activity)
-                                  ? "font-bold text-red-700"
-                                  : "text-slate-700"
-                              }
-                            >
-                              {formatDateOnly(activity.due_date)}
-                            </div>
-                          </td>
-
-                          <td className="p-3">
-                            <Badge variant="outline">
-                              {PRIORITY_LABELS[activity.priority]}
-                            </Badge>
-                          </td>
-
-                          <td className="p-3">
-                            {activity.status === "PENDING_VALIDATION" ||
-                            activity.status === "DONE" ? (
-                              <Badge
-                                variant={
-                                  activity.status === "DONE"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                              >
-                                {STATUS_LABELS[activity.status]}
-                              </Badge>
-                            ) : (
-                              <Select
-                                value={activity.status}
-                                onValueChange={(value) =>
-                                  handleMoveStatus(
-                                    activity.id,
-                                    value as Exclude<
-                                      UniversalActivityStatus,
-                                      "PENDING_VALIDATION" | "DONE"
-                                    >
-                                  )
-                                }
-                                disabled={busyId === activity.id}
-                              >
-                                <SelectTrigger className="h-8 w-44 text-[11px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-
-                                <SelectContent>
-                                  {MOVABLE_STATUSES.map((status) => (
-                                    <SelectItem key={status} value={status}>
-                                      {STATUS_LABELS[status]}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </td>
-
-                          <td className="p-3">
-                            <div className="w-28">
-                              <div className="mb-1 text-[10px] text-slate-500">
-                                {activity.progress}%
-                              </div>
-
-                              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full bg-blue-600"
-                                  style={{
-                                    width: `${Math.max(
-                                      0,
-                                      Math.min(100, activity.progress)
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="p-3">
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-[11px]"
+                        return (
+                          <tr key={activity.id} className="align-top hover:bg-slate-50/60">
+                            <td className="p-3">
+                              <button
+                                type="button"
                                 onClick={() =>
                                   openActivityDetail(activity.id)
                                 }
+                                className="text-left"
                               >
-                                <Eye className="mr-1 h-3.5 w-3.5" />
-                                Detail
-                              </Button>
+                                <div className="font-bold text-slate-900 hover:text-blue-700">
+                                  {activity.title}
+                                </div>
+                              </button>
 
-                              {awaitingMyApproval ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="h-8 text-[11px]"
-                                    disabled={busyId === activity.id}
-                                    onClick={() =>
-                                      handleReview(activity.id, true)
-                                    }
-                                  >
-                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                    Approve
-                                  </Button>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                {CATEGORY_LABELS[activity.category]}
+                              </div>
 
+                              {activity.description && (
+                                <div className="mt-1 max-w-sm text-[11px] text-slate-500">
+                                  {activity.description}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              <Badge variant="outline">
+                                {MODE_LABELS[activity.activity_mode || "PERSONAL"]}
+                              </Badge>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-800">
+                                {owner?.full_name || "-"}
+                              </div>
+
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                {owner?.role_level || ""}
+                              </div>
+                            </td>
+
+                            <td className="p-3 text-slate-600">
+                              {getOrgLabel(owner)}
+                            </td>
+
+                            <td className="p-3">
+                              <div
+                                className={
+                                  isOverdue(activity)
+                                    ? "font-bold text-red-700"
+                                    : "text-slate-700"
+                                }
+                              >
+                                {formatDateOnly(activity.due_date)}
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <Badge variant="outline">
+                                {PRIORITY_LABELS[activity.priority]}
+                              </Badge>
+                            </td>
+
+                            <td className="p-3">
+                              {activity.status === "PENDING_VALIDATION" ||
+                              activity.status === "DONE" ? (
+                                <Badge
+                                  variant={
+                                    activity.status === "DONE"
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                >
+                                  {STATUS_LABELS[activity.status]}
+                                </Badge>
+                              ) : (
+                                <Select
+                                  value={activity.status}
+                                  onValueChange={(value) =>
+                                    handleMoveStatus(
+                                      activity.id,
+                                      value as Exclude<
+                                        UniversalActivityStatus,
+                                        "PENDING_VALIDATION" | "DONE"
+                                      >
+                                    )
+                                  }
+                                  disabled={busyId === activity.id}
+                                >
+                                  <SelectTrigger className="h-8 w-44 text-[11px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+
+                                  <SelectContent>
+                                    {MOVABLE_STATUSES.map((status) => (
+                                      <SelectItem key={status} value={status}>
+                                        {STATUS_LABELS[status]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              <div className="w-28">
+                                <div className="mb-1 text-[10px] text-slate-500">
+                                  {activity.progress}%
+                                </div>
+
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className="h-full rounded-full bg-blue-600"
+                                    style={{
+                                      width: `${Math.max(
+                                        0,
+                                        Math.min(100, activity.progress)
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 text-[11px]"
+                                  onClick={() =>
+                                    openActivityDetail(activity.id)
+                                  }
+                                >
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  Detail
+                                </Button>
+
+                                {awaitingMyApproval ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-[11px]"
+                                      disabled={busyId === activity.id}
+                                      onClick={() =>
+                                        handleReview(activity.id, true)
+                                      }
+                                    >
+                                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                      Approve
+                                    </Button>
+
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-[11px]"
+                                      disabled={busyId === activity.id}
+                                      onClick={() =>
+                                        handleReview(activity.id, false)
+                                      }
+                                    >
+                                      Return
+                                    </Button>
+                                  </>
+                                ) : !["DONE", "CANCELLED", "PENDING_VALIDATION"].includes(
+                                    activity.status
+                                  ) ? (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-[11px]"
                                     disabled={busyId === activity.id}
                                     onClick={() =>
-                                      handleReview(activity.id, false)
+                                      handleSubmitValidation(activity.id)
                                     }
                                   >
-                                    Return
+                                    <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                                    Submit Validation
                                   </Button>
-                                </>
-                              ) : !["DONE", "CANCELLED", "PENDING_VALIDATION"].includes(
-                                  activity.status
-                                ) ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-[11px]"
-                                  disabled={busyId === activity.id}
-                                  onClick={() =>
-                                    handleSubmitValidation(activity.id)
-                                  }
-                                >
-                                  <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-                                  Submit Validation
-                                </Button>
-                              ) : null}
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setCalendarMonth((month) =>
+                        subMonths(month, 1)
+                      )
+                    }
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="text-sm font-bold text-slate-900">
+                    {format(
+                      calendarMonth,
+                      "MMMM yyyy",
+                      { locale: idLocale }
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setCalendarMonth(new Date())
+                      }
+                    >
+                      Hari ini
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setCalendarMonth((month) =>
+                          addMonths(month, 1)
+                        )
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className="min-w-[900px]">
+                    <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+                      {[
+                        "Sen",
+                        "Sel",
+                        "Rab",
+                        "Kam",
+                        "Jum",
+                        "Sab",
+                        "Min",
+                      ].map((dayName) => (
+                        <div
+                          key={dayName}
+                          className="px-3 py-2 text-center text-[10px] font-bold uppercase text-slate-500"
+                        >
+                          {dayName}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-7">
+                      {calendarDays.map((day) => {
+                        const key = format(day, "yyyy-MM-dd");
+                        const dayActivities =
+                          calendarActivityMap.get(key) || [];
+
+                        return (
+                          <div
+                            key={key}
+                            className={`min-h-[132px] border-b border-r border-slate-100 p-2 ${
+                              isSameMonth(day, calendarMonth)
+                                ? "bg-white"
+                                : "bg-slate-50/70"
+                            }`}
+                          >
+                            <div
+                              className={`mb-2 text-xs font-bold ${
+                                key === todayKey()
+                                  ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
+                                  : isSameMonth(day, calendarMonth)
+                                  ? "text-slate-800"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {format(day, "d")}
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+                            <div className="space-y-1">
+                              {dayActivities.slice(0, 3).map((activity) => {
+                                const owner =
+                                  profileMap.get(
+                                    activity.owner_profile_id
+                                  );
+
+                                return (
+                                  <button
+                                    key={activity.id}
+                                    type="button"
+                                    onClick={() =>
+                                      openActivityDetail(
+                                        activity.id
+                                      )
+                                    }
+                                    className="block w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-left hover:border-blue-300 hover:bg-blue-50"
+                                  >
+                                    <div className="truncate text-[10px] font-bold text-slate-900">
+                                      {activity.title}
+                                    </div>
+
+                                    <div className="mt-0.5 truncate text-[9px] text-slate-500">
+                                      {owner?.full_name || "-"} • {STATUS_LABELS[activity.status]}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+
+                              {dayActivities.length > 3 && (
+                                <div className="px-1 text-[9px] font-semibold text-blue-700">
+                                  +{dayActivities.length - 3} aktivitas lainnya
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1530,6 +1893,8 @@ const AktivitasUniversalPage: React.FC = () => {
           if (!open) {
             setDetail(null);
             setCommentText("");
+            setAttachmentFile(null);
+            setAttachmentInputKey((value) => value + 1);
           }
         }}
       >
@@ -1565,7 +1930,7 @@ const AktivitasUniversalPage: React.FC = () => {
               </DialogHeader>
 
               <Tabs defaultValue="overview" className="mt-2">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview">
                     <Eye className="mr-2 h-4 w-4" />
                     Overview
@@ -1574,6 +1939,11 @@ const AktivitasUniversalPage: React.FC = () => {
                   <TabsTrigger value="discussion">
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Discussion ({detail.comments.length})
+                  </TabsTrigger>
+
+                  <TabsTrigger value="attachments">
+                    <Paperclip className="mr-2 h-4 w-4" />
+                    Lampiran ({detail.attachments.length})
                   </TabsTrigger>
 
                   <TabsTrigger value="history">
@@ -1640,6 +2010,69 @@ const AktivitasUniversalPage: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  {detail.can_edit &&
+                    !["PENDING_VALIDATION", "DONE", "CANCELLED"].includes(
+                      detail.activity.status
+                    ) && (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                        <div className="flex-1">
+                          <div className="text-xs font-bold text-slate-800">
+                            Update Progress
+                          </div>
+
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            Progress manual 0–99%. Untuk menyelesaikan aktivitas, gunakan Submit Validation.
+                          </div>
+
+                          <input
+                            type="range"
+                            min={0}
+                            max={99}
+                            value={progressValue}
+                            onChange={(event) =>
+                              setProgressValue(
+                                Number(event.target.value)
+                              )
+                            }
+                            className="mt-3 w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={99}
+                            value={progressValue}
+                            onChange={(event) =>
+                              setProgressValue(
+                                Math.max(
+                                  0,
+                                  Math.min(
+                                    99,
+                                    Number(event.target.value) || 0
+                                  )
+                                )
+                              )
+                            }
+                            className="w-20"
+                          />
+
+                          <Button
+                            size="sm"
+                            onClick={handleUpdateProgress}
+                            disabled={progressBusy}
+                          >
+                            {progressBusy
+                              ? "Menyimpan..."
+                              : "Update"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <div>
@@ -1854,6 +2287,119 @@ const AktivitasUniversalPage: React.FC = () => {
                         </Button>
                       </div>
                     </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="attachments" className="mt-5">
+                  <div className="space-y-4">
+                    {detail.can_edit &&
+                      !["DONE", "CANCELLED"].includes(
+                        detail.activity.status
+                      ) && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="mb-2 text-xs font-bold text-slate-700">
+                          Upload Lampiran
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <Input
+                            key={attachmentInputKey}
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                            onChange={(event) =>
+                              setAttachmentFile(
+                                event.target.files?.[0] || null
+                              )
+                            }
+                            className="flex-1"
+                          />
+
+                          <Button
+                            size="sm"
+                            onClick={handleUploadAttachment}
+                            disabled={
+                              attachmentBusy ||
+                              !attachmentFile
+                            }
+                          >
+                            <UploadCloud className="mr-2 h-4 w-4" />
+                            {attachmentBusy
+                              ? "Mengunggah..."
+                              : "Upload"}
+                          </Button>
+                        </div>
+
+                        <div className="mt-2 text-[10px] text-slate-500">
+                          Maksimal 10 MB. Pilot: jangan unggah dokumen nasabah / data sensitif sebelum approval internal.
+                        </div>
+                      </div>
+                    )}
+
+                    {detail.attachments.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                        Belum ada lampiran.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {detail.attachments.map((attachment) => (
+                          <div
+                            key={attachment.id}
+                            className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Paperclip className="h-4 w-4 shrink-0 text-slate-400" />
+
+                                <div className="truncate text-sm font-bold text-slate-900">
+                                  {attachment.file_name}
+                                </div>
+                              </div>
+
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                {(attachment.file_size / 1024 / 1024).toFixed(2)} MB
+                                {" • "}
+                                {attachment.uploaded_by_name}
+                                {" • "}
+                                {formatDateTime(attachment.created_at)}
+                              </div>
+                            </div>
+
+                            <div className="flex shrink-0 gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleDownloadAttachment(
+                                    attachment
+                                  )
+                                }
+                              >
+                                <Download className="mr-1.5 h-4 w-4" />
+                                Buka
+                              </Button>
+
+                              {detail.can_edit && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={attachmentBusy}
+                                  onClick={() =>
+                                    handleDeleteAttachment(
+                                      attachment
+                                    )
+                                  }
+                                >
+                                  <Trash2 className="mr-1.5 h-4 w-4" />
+                                  Hapus
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 
