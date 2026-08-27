@@ -3,14 +3,17 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityCategory,
+  ActivityDetailPayload,
   ActivityMode,
   ActivityPriority,
   DirectoryProfile,
   UniversalActivity,
   UniversalActivityStatus,
+  addUniversalActivityComment,
   createUniversalActivity,
   getActivityDirectory,
   getUniversalActivities,
+  getUniversalActivityDetail,
   reviewUniversalActivityValidation,
   submitUniversalActivityForValidation,
   updateUniversalActivityStatus,
@@ -41,13 +44,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Eye,
+  History,
   ListTodo,
+  MessageSquare,
   Plus,
   RefreshCw,
   Search,
+  Send,
   ShieldCheck,
   UserRound,
   UserRoundPlus,
@@ -93,6 +106,17 @@ const MODE_LABELS: Record<ActivityMode, string> = {
   COLLABORATION: "Kolaborasi",
 };
 
+const HISTORY_ACTION_LABELS: Record<string, string> = {
+  CREATED_PERSONAL: "Task pribadi dibuat",
+  CREATED_ASSIGNMENT: "Assignment dibuat",
+  CREATED_COLLABORATION: "Aktivitas kolaborasi dibuat",
+  STATUS_CHANGED: "Status berubah",
+  SUBMIT_VALIDATION: "Diajukan untuk validasi",
+  VALIDATION_APPROVED: "Validasi disetujui",
+  VALIDATION_RETURNED: "Dikembalikan untuk perbaikan",
+  COMMENT_ADDED: "Komentar ditambahkan",
+};
+
 const MOVABLE_STATUSES: Array<
   Exclude<UniversalActivityStatus, "PENDING_VALIDATION" | "DONE">
 > = [
@@ -120,8 +144,45 @@ const isSalesConditionalCategory = (
   category === "CUSTOMER_EXTERNAL" ||
   category === "TENDER_PROPOSAL";
 
-const getOrgLabel = (profile?: DirectoryProfile) =>
+const getOrgLabel = (profile?: DirectoryProfile | null) =>
   profile?.department || profile?.unit || "-";
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  return date.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatDateOnly = (value?: string | null) => {
+  if (!value) return "-";
+
+  return new Date(`${value}T00:00:00`).toLocaleDateString(
+    "id-ID",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  );
+};
+
+const formatRupiah = (value?: number | null) => {
+  if (value === null || value === undefined) return "-";
+
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
+};
 
 const AktivitasUniversalPage: React.FC = () => {
   const { profile } = useAuth();
@@ -162,6 +223,13 @@ const AktivitasUniversalPage: React.FC = () => {
   const [productName, setProductName] = useState("");
   const [interactionMethod, setInteractionMethod] = useState("");
   const [potentialPremium, setPotentialPremium] = useState("");
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detail, setDetail] =
+    useState<ActivityDetailPayload | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
 
   const profileMap = useMemo(
     () =>
@@ -241,7 +309,7 @@ const AktivitasUniversalPage: React.FC = () => {
     } catch (err) {
       console.error(err);
       setError(
-        "Gagal membaca data aktivitas. Pastikan SQL Activity v2.1 sudah dijalankan di Supabase."
+        "Gagal membaca data aktivitas. Pastikan SQL Activity v2.2 sudah dijalankan di Supabase."
       );
     } finally {
       setLoading(false);
@@ -487,6 +555,10 @@ const AktivitasUniversalPage: React.FC = () => {
       setBusyId(activityId);
       await updateUniversalActivityStatus(activityId, status);
       await refresh();
+
+      if (detail?.activity.id === activityId) {
+        await openActivityDetail(activityId);
+      }
     } catch (err: any) {
       console.error(err);
       window.alert(
@@ -502,6 +574,10 @@ const AktivitasUniversalPage: React.FC = () => {
       setBusyId(activityId);
       await submitUniversalActivityForValidation(activityId);
       await refresh();
+
+      if (detail?.activity.id === activityId) {
+        await openActivityDetail(activityId);
+      }
     } catch (err: any) {
       console.error(err);
       window.alert(
@@ -540,6 +616,10 @@ const AktivitasUniversalPage: React.FC = () => {
       );
 
       await refresh();
+
+      if (detail?.activity.id === activityId) {
+        await openActivityDetail(activityId);
+      }
     } catch (err: any) {
       console.error(err);
       window.alert(
@@ -547,6 +627,56 @@ const AktivitasUniversalPage: React.FC = () => {
       );
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const openActivityDetail = async (activityId: string) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setCommentText("");
+
+    try {
+      const nextDetail =
+        await getUniversalActivityDetail(activityId);
+
+      setDetail(nextDetail);
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal membuka detail aktivitas."
+      );
+      setDetailOpen(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!detail || !commentText.trim()) return;
+
+    try {
+      setCommentBusy(true);
+
+      await addUniversalActivityComment(
+        detail.activity.id,
+        commentText
+      );
+
+      setCommentText("");
+
+      const refreshed =
+        await getUniversalActivityDetail(
+          detail.activity.id
+        );
+
+      setDetail(refreshed);
+    } catch (err: any) {
+      console.error(err);
+      window.alert(
+        err?.message || "Gagal mengirim komentar."
+      );
+    } finally {
+      setCommentBusy(false);
     }
   };
 
@@ -558,6 +688,7 @@ const AktivitasUniversalPage: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-900">
               Aktivitas
             </h1>
+
             <p className="mt-1 text-sm text-slate-500">
               Task pribadi, assignment ke bawahan, dan kolaborasi
               lintas department dalam satu modul.
@@ -600,10 +731,12 @@ const AktivitasUniversalPage: React.FC = () => {
               <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
                 <ListTodo className="h-5 w-5" />
               </div>
+
               <div>
                 <div className="text-2xl font-black text-slate-900">
                   {myCount}
                 </div>
+
                 <div className="text-xs text-slate-500">
                   Aktivitas Saya
                 </div>
@@ -616,10 +749,12 @@ const AktivitasUniversalPage: React.FC = () => {
               <div className="rounded-lg bg-amber-50 p-2 text-amber-700">
                 <Clock3 className="h-5 w-5" />
               </div>
+
               <div>
                 <div className="text-2xl font-black text-slate-900">
                   {onProgressCount}
                 </div>
+
                 <div className="text-xs text-slate-500">
                   On Progress
                 </div>
@@ -632,10 +767,12 @@ const AktivitasUniversalPage: React.FC = () => {
               <div className="rounded-lg bg-red-50 p-2 text-red-700">
                 <AlertTriangle className="h-5 w-5" />
               </div>
+
               <div>
                 <div className="text-2xl font-black text-slate-900">
                   {overdueCount}
                 </div>
+
                 <div className="text-xs text-slate-500">
                   Due / Overdue
                 </div>
@@ -648,10 +785,12 @@ const AktivitasUniversalPage: React.FC = () => {
               <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
                 <ShieldCheck className="h-5 w-5" />
               </div>
+
               <div>
                 <div className="text-2xl font-black text-slate-900">
                   {actionCount}
                 </div>
+
                 <div className="text-xs text-slate-500">
                   Menunggu Approval Saya
                 </div>
@@ -671,6 +810,7 @@ const AktivitasUniversalPage: React.FC = () => {
             <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+
                 <Input
                   className="pl-9"
                   value={query}
@@ -688,6 +828,7 @@ const AktivitasUniversalPage: React.FC = () => {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
+
                 <SelectContent>
                   <SelectItem value="ALL">All Visible</SelectItem>
                   <SelectItem value="MY">My Activities</SelectItem>
@@ -704,8 +845,10 @@ const AktivitasUniversalPage: React.FC = () => {
                 <SelectTrigger>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
+
                 <SelectContent>
                   <SelectItem value="ALL">Semua Status</SelectItem>
+
                   {Object.entries(STATUS_LABELS).map(
                     ([value, label]) => (
                       <SelectItem key={value} value={value}>
@@ -723,8 +866,10 @@ const AktivitasUniversalPage: React.FC = () => {
                 <SelectTrigger>
                   <SelectValue placeholder="Kategori" />
                 </SelectTrigger>
+
                 <SelectContent>
                   <SelectItem value="ALL">Semua Kategori</SelectItem>
+
                   {Object.entries(CATEGORY_LABELS).map(
                     ([value, label]) => (
                       <SelectItem key={value} value={value}>
@@ -737,7 +882,7 @@ const AktivitasUniversalPage: React.FC = () => {
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1240px] text-left text-xs">
+              <table className="w-full min-w-[1280px] text-left text-xs">
                 <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
                   <tr>
                     <th className="p-3">Aktivitas</th>
@@ -775,11 +920,19 @@ const AktivitasUniversalPage: React.FC = () => {
                         activity.validation_approver_profile_id === profile?.id;
 
                       return (
-                        <tr key={activity.id} className="align-top">
+                        <tr key={activity.id} className="align-top hover:bg-slate-50/60">
                           <td className="p-3">
-                            <div className="font-bold text-slate-900">
-                              {activity.title}
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openActivityDetail(activity.id)
+                              }
+                              className="text-left"
+                            >
+                              <div className="font-bold text-slate-900 hover:text-blue-700">
+                                {activity.title}
+                              </div>
+                            </button>
 
                             <div className="mt-1 text-[11px] text-slate-500">
                               {CATEGORY_LABELS[activity.category]}
@@ -802,6 +955,7 @@ const AktivitasUniversalPage: React.FC = () => {
                             <div className="font-semibold text-slate-800">
                               {owner?.full_name || "-"}
                             </div>
+
                             <div className="mt-0.5 text-[10px] text-slate-500">
                               {owner?.role_level || ""}
                             </div>
@@ -819,7 +973,7 @@ const AktivitasUniversalPage: React.FC = () => {
                                   : "text-slate-700"
                               }
                             >
-                              {activity.due_date || "-"}
+                              {formatDateOnly(activity.due_date)}
                             </div>
                           </td>
 
@@ -858,6 +1012,7 @@ const AktivitasUniversalPage: React.FC = () => {
                                 <SelectTrigger className="h-8 w-44 text-[11px]">
                                   <SelectValue />
                                 </SelectTrigger>
+
                                 <SelectContent>
                                   {MOVABLE_STATUSES.map((status) => (
                                     <SelectItem key={status} value={status}>
@@ -891,6 +1046,18 @@ const AktivitasUniversalPage: React.FC = () => {
 
                           <td className="p-3">
                             <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-[11px]"
+                                onClick={() =>
+                                  openActivityDetail(activity.id)
+                                }
+                              >
+                                <Eye className="mr-1 h-3.5 w-3.5" />
+                                Detail
+                              </Button>
+
                               {awaitingMyApproval ? (
                                 <>
                                   <Button
@@ -932,11 +1099,7 @@ const AktivitasUniversalPage: React.FC = () => {
                                   <ShieldCheck className="mr-1 h-3.5 w-3.5" />
                                   Submit Validation
                                 </Button>
-                              ) : (
-                                <span className="text-[10px] text-slate-400">
-                                  -
-                                </span>
-                              )}
+                              ) : null}
                             </div>
                           </td>
                         </tr>
@@ -950,10 +1113,12 @@ const AktivitasUniversalPage: React.FC = () => {
         </Card>
       </div>
 
+      {/* CREATE ACTIVITY */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Aktivitas Baru</DialogTitle>
+
             <DialogDescription>
               Tentukan dulu apakah aktivitas ini milik sendiri,
               assignment ke bawahan, atau pekerjaan kolaboratif.
@@ -977,10 +1142,12 @@ const AktivitasUniversalPage: React.FC = () => {
                 onClick={() => changeMode("PERSONAL")}
               >
                 <UserRound className="mr-2 h-4 w-4" />
+
                 <span>
                   <span className="block text-xs font-bold">
                     Task Pribadi
                   </span>
+
                   <span className="block text-[10px] font-normal opacity-75">
                     PIC otomatis diri sendiri
                   </span>
@@ -998,10 +1165,12 @@ const AktivitasUniversalPage: React.FC = () => {
                 onClick={() => changeMode("ASSIGNMENT")}
               >
                 <UserRoundPlus className="mr-2 h-4 w-4" />
+
                 <span>
                   <span className="block text-xs font-bold">
                     Assignment
                   </span>
+
                   <span className="block text-[10px] font-normal opacity-75">
                     Assign ke bawahan
                   </span>
@@ -1019,10 +1188,12 @@ const AktivitasUniversalPage: React.FC = () => {
                 onClick={() => changeMode("COLLABORATION")}
               >
                 <UsersRound className="mr-2 h-4 w-4" />
+
                 <span>
                   <span className="block text-xs font-bold">
                     Kolaborasi
                   </span>
+
                   <span className="block text-[10px] font-normal opacity-75">
                     Bisa lintas department
                   </span>
@@ -1036,6 +1207,7 @@ const AktivitasUniversalPage: React.FC = () => {
               <label className="mb-1.5 block text-xs font-bold">
                 Judul Aktivitas *
               </label>
+
               <Input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -1187,6 +1359,7 @@ const AktivitasUniversalPage: React.FC = () => {
                           className="gap-1 py-1"
                         >
                           {collaborator?.full_name || id}
+
                           <button
                             type="button"
                             onClick={() => removeCollaborator(id)}
@@ -1260,6 +1433,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Company / Customer
                   </label>
+
                   <Input
                     value={companyName}
                     onChange={(event) => setCompanyName(event.target.value)}
@@ -1270,6 +1444,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Person Met
                   </label>
+
                   <Input
                     value={personMet}
                     onChange={(event) => setPersonMet(event.target.value)}
@@ -1280,6 +1455,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Position
                   </label>
+
                   <Input
                     value={positionMet}
                     onChange={(event) => setPositionMet(event.target.value)}
@@ -1290,6 +1466,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Product
                   </label>
+
                   <Input
                     value={productName}
                     onChange={(event) => setProductName(event.target.value)}
@@ -1300,6 +1477,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Interaction Method
                   </label>
+
                   <Input
                     value={interactionMethod}
                     onChange={(event) => setInteractionMethod(event.target.value)}
@@ -1311,6 +1489,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   <label className="mb-1.5 block text-xs font-bold">
                     Potential Premium
                   </label>
+
                   <Input
                     type="number"
                     value={potentialPremium}
@@ -1339,6 +1518,417 @@ const AktivitasUniversalPage: React.FC = () => {
                 : "Simpan Aktivitas"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ACTIVITY DETAIL */}
+      <Dialog
+        open={detailOpen}
+        onOpenChange={(open) => {
+          setDetailOpen(open);
+
+          if (!open) {
+            setDetail(null);
+            setCommentText("");
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+          {detailLoading || !detail ? (
+            <div className="py-16 text-center text-sm text-slate-500">
+              Memuat detail aktivitas...
+            </div>
+          ) : (
+            <>
+              <DialogHeader>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">
+                    {MODE_LABELS[detail.activity.activity_mode || "PERSONAL"]}
+                  </Badge>
+
+                  <Badge>
+                    {STATUS_LABELS[detail.activity.status]}
+                  </Badge>
+
+                  <Badge variant="secondary">
+                    {PRIORITY_LABELS[detail.activity.priority]}
+                  </Badge>
+                </div>
+
+                <DialogTitle className="pt-2 text-xl">
+                  {detail.activity.title}
+                </DialogTitle>
+
+                <DialogDescription>
+                  {CATEGORY_LABELS[detail.activity.category]}
+                </DialogDescription>
+              </DialogHeader>
+
+              <Tabs defaultValue="overview" className="mt-2">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="overview">
+                    <Eye className="mr-2 h-4 w-4" />
+                    Overview
+                  </TabsTrigger>
+
+                  <TabsTrigger value="discussion">
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    Discussion ({detail.comments.length})
+                  </TabsTrigger>
+
+                  <TabsTrigger value="history">
+                    <History className="mr-2 h-4 w-4" />
+                    History ({detail.history.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview" className="mt-5 space-y-5">
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Owner
+                      </div>
+
+                      <div className="mt-1 text-sm font-bold text-slate-900">
+                        {detail.owner.full_name}
+                      </div>
+
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {detail.owner.role_level} • {detail.owner.department || detail.owner.unit}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Activity Date
+                      </div>
+
+                      <div className="mt-1 text-sm font-bold text-slate-900">
+                        {formatDateOnly(detail.activity.activity_date)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Due Date
+                      </div>
+
+                      <div className="mt-1 text-sm font-bold text-slate-900">
+                        {formatDateOnly(detail.activity.due_date)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Progress
+                      </div>
+
+                      <div className="mt-1 text-sm font-bold text-slate-900">
+                        {detail.activity.progress}%
+                      </div>
+
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-blue-600"
+                          style={{
+                            width: `${Math.max(
+                              0,
+                              Math.min(100, detail.activity.progress)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                      <div className="text-xs font-bold text-slate-700">
+                        Description / Agenda
+                      </div>
+
+                      <div className="mt-2 min-h-24 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                        {detail.activity.description || "-"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold text-slate-700">
+                        Next Action
+                      </div>
+
+                      <div className="mt-2 min-h-24 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                        {detail.activity.next_action || "-"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {detail.collaborators.length > 0 && (
+                    <div>
+                      <div className="mb-2 text-xs font-bold text-slate-700">
+                        Kolaborator
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {detail.collaborators.map((item) => (
+                          <Badge
+                            key={item.profile_id}
+                            variant="secondary"
+                            className="py-1.5"
+                          >
+                            {item.full_name} • {item.department || item.unit}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Dibuat oleh
+                      </div>
+
+                      <div className="mt-1 text-sm font-semibold">
+                        {detail.created_by.full_name}
+                      </div>
+
+                      <div className="text-[11px] text-slate-500">
+                        {formatDateTime(detail.activity.created_at)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        Approver Validasi
+                      </div>
+
+                      <div className="mt-1 text-sm font-semibold">
+                        {detail.validation_approver?.full_name || "-"}
+                      </div>
+
+                      {detail.activity.validated_at && (
+                        <div className="text-[11px] text-slate-500">
+                          Diproses {formatDateTime(detail.activity.validated_at)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {(detail.activity.company_name ||
+                    detail.activity.person_met ||
+                    detail.activity.product_name ||
+                    detail.activity.potential_premium) && (
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <div className="mb-3 text-xs font-bold text-slate-700">
+                        Informasi Customer / External
+                      </div>
+
+                      <div className="grid gap-4 text-sm md:grid-cols-3">
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Company
+                          </div>
+                          <div className="font-semibold">
+                            {detail.activity.company_name || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Person Met
+                          </div>
+                          <div className="font-semibold">
+                            {detail.activity.person_met || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Position
+                          </div>
+                          <div className="font-semibold">
+                            {detail.activity.position_met || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Product
+                          </div>
+                          <div className="font-semibold">
+                            {detail.activity.product_name || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Interaction
+                          </div>
+                          <div className="font-semibold">
+                            {detail.activity.interaction_method || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] uppercase text-slate-500">
+                            Potential Premium
+                          </div>
+                          <div className="font-semibold">
+                            {formatRupiah(detail.activity.potential_premium)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="discussion" className="mt-5">
+                  <div className="space-y-4">
+                    <div className="max-h-[380px] space-y-3 overflow-y-auto pr-1">
+                      {detail.comments.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                          Belum ada komentar.
+                        </div>
+                      ) : (
+                        detail.comments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className="rounded-xl border border-slate-200 bg-white p-4"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <div className="text-sm font-bold text-slate-900">
+                                  {comment.author_name}
+                                </div>
+
+                                <div className="text-[10px] text-slate-500">
+                                  {comment.author_role} • {comment.author_department || comment.author_unit}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-[10px] text-slate-400">
+                                {formatDateTime(comment.created_at)}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
+                              {comment.body}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-2 text-xs font-bold text-slate-700">
+                        Tambah Komentar
+                      </div>
+
+                      <Textarea
+                        value={commentText}
+                        onChange={(event) =>
+                          setCommentText(event.target.value)
+                        }
+                        placeholder="Tulis update, pertanyaan, atau catatan untuk aktivitas ini..."
+                        maxLength={4000}
+                      />
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="text-[10px] text-slate-400">
+                          {commentText.length}/4000
+                        </div>
+
+                        <Button
+                          size="sm"
+                          onClick={handleAddComment}
+                          disabled={
+                            commentBusy ||
+                            !commentText.trim()
+                          }
+                        >
+                          <Send className="mr-2 h-4 w-4" />
+                          {commentBusy
+                            ? "Mengirim..."
+                            : "Kirim Komentar"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="history" className="mt-5">
+                  <div className="space-y-3">
+                    {detail.history.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                        Belum ada history.
+                      </div>
+                    ) : (
+                      detail.history.map((item) => (
+                        <div
+                          key={item.id}
+                          className="relative rounded-xl border border-slate-200 bg-white p-4 pl-11"
+                        >
+                          <div className="absolute left-4 top-5 flex h-5 w-5 items-center justify-center rounded-full bg-blue-50 text-blue-700">
+                            <History className="h-3 w-3" />
+                          </div>
+
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-bold text-slate-900">
+                                {HISTORY_ACTION_LABELS[item.action] || item.action}
+                              </div>
+
+                              <div className="mt-0.5 text-[11px] text-slate-500">
+                                {item.actor_name}
+                                {item.actor_role
+                                  ? ` • ${item.actor_role}`
+                                  : ""}
+                              </div>
+                            </div>
+
+                            <div className="text-[10px] text-slate-400">
+                              {formatDateTime(item.created_at)}
+                            </div>
+                          </div>
+
+                          {(item.old_status || item.new_status) && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {item.old_status && (
+                                <Badge variant="outline">
+                                  {STATUS_LABELS[
+                                    item.old_status as UniversalActivityStatus
+                                  ] || item.old_status}
+                                </Badge>
+                              )}
+
+                              {item.old_status && item.new_status && (
+                                <span className="text-slate-400">→</span>
+                              )}
+
+                              {item.new_status && (
+                                <Badge variant="secondary">
+                                  {STATUS_LABELS[
+                                    item.new_status as UniversalActivityStatus
+                                  ] || item.new_status}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+
+                          {item.notes && (
+                            <div className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                              {item.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </AppLayout>
