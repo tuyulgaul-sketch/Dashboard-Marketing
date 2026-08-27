@@ -1,295 +1,1101 @@
-import React, { useState, useEffect } from 'react';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { store, BASELINE_USERS } from '@/services/store';
-import { User, ProductMaster, AuditLog } from '@/types';
-import { ExcelExportButton } from '@/components/common/ExcelExportButton';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Settings, Users, Package, ShieldAlert, RotateCcw, Database } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { useAuth } from "@/contexts/AuthContext";
+import { store } from "@/services/store";
+import {
+  AdminAccount,
+  getAdminAccounts,
+  globalResetAllBusinessData,
+  resetAccountPassword,
+} from "@/services/adminService";
+import { syncGlobalResetState } from "@/lib/globalResetSync";
+import {
+  ProductMaster,
+  AuditLog,
+} from "@/types";
+import { ExcelExportButton } from "@/components/common/ExcelExportButton";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Badge,
+} from "@/components/ui/badge";
+import {
+  Copy,
+  Database,
+  KeyRound,
+  Package,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 
-export const AdministrasiPage: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User>(store.getCurrentUser());
-  const [users, setUsers] = useState<User[]>([]);
-  const [products, setProducts] = useState<ProductMaster[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+const ACCOUNT_STATUS_LABELS:
+  Record<
+    AdminAccount["account_status"],
+    string
+  > = {
+    NOT_INVITED:
+      "Belum Diinvite",
+    AUTH_LINK_CHECK:
+      "Auth Link Check",
+    INVITED_NOT_CONFIRMED:
+      "Invite Belum Selesai",
+    ACTIVE:
+      "Aktif",
+  };
 
-  useEffect(() => {
-    const refresh = () => {
-      setCurrentUser(store.getCurrentUser());
-      setUsers(store.getUsers());
-      setProducts(store.getProducts());
-      setAuditLogs(store.getAuditLogs());
-    };
-    refresh();
-    return store.subscribe(refresh);
-  }, []);
+const makePassword = () => {
+  const upper =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower =
+    "abcdefghijkmnopqrstuvwxyz";
+  const number =
+    "23456789";
+  const symbol =
+    "!@#$%*-_";
+  const all =
+    upper +
+    lower +
+    number +
+    symbol;
 
-  const isSysAdmin = currentUser.role === 'SYSTEM_ADMIN';
+  const randomChar = (
+    chars: string
+  ) => {
+    const bytes =
+      new Uint32Array(1);
 
-  if (!isSysAdmin) {
-    return (
-      <AppLayout>
-        <div className="p-12 text-center text-rose-700 font-bold text-sm bg-rose-50 rounded-xl border border-rose-200">
-          Akses Ditolak. Menu Administrasi Sistem hanya diperuntukkan bagi SYSTEM_ADMIN.
-        </div>
-      </AppLayout>
+    crypto.getRandomValues(
+      bytes
+    );
+
+    return chars[
+      bytes[0] %
+        chars.length
+    ];
+  };
+
+  const required = [
+    randomChar(upper),
+    randomChar(lower),
+    randomChar(number),
+    randomChar(symbol),
+  ];
+
+  while (
+    required.length < 16
+  ) {
+    required.push(
+      randomChar(all)
     );
   }
 
-  const handleGenerateDummy = () => {
-    if (
-      !confirm(
-        'Apakah Anda yakin ingin memunculkan sampel data dummy untuk UAT testing?'
-      )
-    ) {
-      return;
-    }
+  for (
+    let i =
+      required.length - 1;
+    i > 0;
+    i -= 1
+  ) {
+    const bytes =
+      new Uint32Array(1);
 
-    try {
-      store.generateDummyData();
+    crypto.getRandomValues(
+      bytes
+    );
 
-      const bookingCount =
-        store.getBookings().length;
-      const pipelineCount =
-        store.getPipelines().length;
-      const productionCount =
-        store.getProductions().length;
-      const activityCount =
-        store.getActivities().length;
+    const j =
+      bytes[0] % (i + 1);
 
-      alert(
-        `Data dummy UAT berhasil di-generate!\n\nBooking: ${bookingCount}\nPipeline: ${pipelineCount}\nProduksi: ${productionCount}\nAktivitas: ${activityCount}`
+    [
+      required[i],
+      required[j],
+    ] = [
+      required[j],
+      required[i],
+    ];
+  }
+
+  return required.join("");
+};
+
+export const AdministrasiPage:
+  React.FC = () => {
+    const { profile } =
+      useAuth();
+
+    const [
+      accounts,
+      setAccounts,
+    ] = useState<
+      AdminAccount[]
+    >([]);
+
+    const [
+      products,
+      setProducts,
+    ] = useState<
+      ProductMaster[]
+    >([]);
+
+    const [
+      auditLogs,
+      setAuditLogs,
+    ] = useState<
+      AuditLog[]
+    >([]);
+
+    const [
+      loading,
+      setLoading,
+    ] = useState(true);
+
+    const [
+      resetBusy,
+      setResetBusy,
+    ] = useState(false);
+
+    const [
+      passwordTarget,
+      setPasswordTarget,
+    ] = useState<
+      AdminAccount | null
+    >(null);
+
+    const [
+      passwordValue,
+      setPasswordValue,
+    ] = useState("");
+
+    const [
+      passwordConfirm,
+      setPasswordConfirm,
+    ] = useState("");
+
+    const [
+      passwordBusy,
+      setPasswordBusy,
+    ] = useState(false);
+
+    const isSysAdmin =
+      Boolean(
+        profile &&
+          (
+            profile.role_level
+              .trim()
+              .toUpperCase() ===
+              "SYSTEM_ADMIN" ||
+            profile.unit
+              .trim()
+              .toLowerCase() ===
+              "administrasi sistem"
+          )
       );
-    } catch (error) {
-      console.error(
-        'Generate UAT Dummy Data gagal:',
-        error
-      );
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Terjadi error yang tidak diketahui.';
+    const refresh =
+      async () => {
+        setLoading(true);
 
-      alert(
-        `Generate Data Dummy gagal.\n\n${message}`
-      );
-    }
-  };
+        try {
+          const accountRows =
+            await getAdminAccounts();
 
-  const handleResetDummy =
-    async () => {
+          setAccounts(
+            accountRows
+          );
+
+          setProducts(
+            store.getProducts()
+          );
+
+          setAuditLogs(
+            store.getAuditLogs()
+          );
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Gagal membaca data admin."
+          );
+        } finally {
+          setLoading(false);
+        }
+      };
+
+    useEffect(() => {
       if (
-        !confirm(
-          'FACTORY RESET PROTOTYPE: Seluruh data UAT dan seluruh data yang pernah diinput/upload oleh user akan dihapus, termasuk Target RKAP, Booking, Pipeline, Produksi, Realisasi Official, Aktivitas, komentar, Reimbursement, Historical, Dokumen Pendukung beserta file binary, Notification, publish history, dan Audit Trail. User Master, Product Master, dan baseline Broker Master OJK dipertahankan. Lanjutkan?'
-        )
+        !profile ||
+        !isSysAdmin
       ) {
         return;
       }
 
-      try {
-        await store.resetDataDummy();
+      refresh();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+      profile?.id,
+      isSysAdmin,
+    ]);
 
-        alert(
-          'Prototype berhasil di-reset ke kondisi 0. Seluruh data user, upload, aktivitas, dan Audit Trail telah dihapus. User Master, Product Master, dan baseline Broker Master OJK tetap tersedia.'
-        );
-      } catch (
-        error
+    const activeCount =
+      useMemo(
+        () =>
+          accounts.filter(
+            (account) =>
+              account.account_status ===
+              "ACTIVE"
+          ).length,
+        [accounts]
+      );
+
+    const inviteCount =
+      useMemo(
+        () =>
+          accounts.filter(
+            (account) =>
+              account.account_status ===
+              "NOT_INVITED"
+          ).length,
+        [accounts]
+      );
+
+    if (!isSysAdmin) {
+      return (
+        <AppLayout>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-12 text-center text-sm font-bold text-rose-700">
+            Akses Ditolak.
+            Menu Administrasi
+            Sistem hanya untuk
+            SYSTEM_ADMIN.
+          </div>
+        </AppLayout>
+      );
+    }
+
+    const handleGlobalReset =
+      async () => {
+        const confirmation =
+          window.prompt(
+            "GLOBAL RESET akan menghapus seluruh data bisnis/UAT untuk semua akun. Akun Supabase Auth dan struktur profiles tetap tersedia.\n\nKetik RESET GLOBAL untuk melanjutkan:"
+          );
+
+        if (
+          confirmation !==
+          "RESET GLOBAL"
+        ) {
+          return;
+        }
+
+        setResetBusy(true);
+
+        try {
+          const result =
+            await globalResetAllBusinessData();
+
+          await syncGlobalResetState();
+
+          alert(
+            `Global reset berhasil.\n\nFile attachment terhapus: ${
+              result?.deleted_storage_files ??
+              0
+            }\n\nSeluruh akun tetap tersedia. Browser user lain akan ikut mengosongkan data UAT maksimal 60 detik / saat refresh berikutnya.`
+          );
+
+          window.location.reload();
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Global reset gagal."
+          );
+        } finally {
+          setResetBusy(false);
+        }
+      };
+
+    const openPasswordReset = (
+      account: AdminAccount
+    ) => {
+      if (
+        !account.auth_user_id
       ) {
-        console.error(
-          'Prototype reset gagal:',
-          error
-        );
-
         alert(
-          error instanceof
-            Error
-            ? error.message
-            : 'Prototype reset gagal. Silakan coba kembali.'
+          "Akun belum diinvite / belum memiliki Auth user."
         );
+        return;
       }
+
+      const generated =
+        makePassword();
+
+      setPasswordTarget(
+        account
+      );
+
+      setPasswordValue(
+        generated
+      );
+
+      setPasswordConfirm(
+        generated
+      );
     };
 
-  return (
-    <AppLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Administrasi Sistem & Modul Pengawasan</h1>
-            <p className="text-xs text-gray-500 mt-1">Manajemen User Master, Master Produk, Audit Trail, dan Tools UAT Data Dummy</p>
-          </div>
-          <ExcelExportButton
-            data={auditLogs.map(l => ({ Timestamp: l.timestamp, User: l.userName, Role: l.userRole, Module: l.module, Action: l.action, Record: l.recordId }))}
-            filename="System_Audit_Log"
-            label="Export Audit Log"
-          />
-        </div>
+    const closePasswordReset =
+      () => {
+        if (
+          passwordBusy
+        ) {
+          return;
+        }
 
-        {/* UAT DATA DUMMY CONTROL CARDS */}
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-amber-600" />
-              <CardTitle className="text-sm font-bold text-amber-900">UAT Data Testing & Reset Control</CardTitle>
+        setPasswordTarget(
+          null
+        );
+
+        setPasswordValue("");
+        setPasswordConfirm("");
+      };
+
+    const handlePasswordReset =
+      async () => {
+        if (
+          !passwordTarget
+        ) {
+          return;
+        }
+
+        if (
+          passwordValue.length <
+          12
+        ) {
+          alert(
+            "Password minimal 12 karakter."
+          );
+          return;
+        }
+
+        if (
+          passwordValue !==
+          passwordConfirm
+        ) {
+          alert(
+            "Konfirmasi password tidak sama."
+          );
+          return;
+        }
+
+        if (
+          !window.confirm(
+            `Reset password untuk ${passwordTarget.full_name} (${passwordTarget.email})?`
+          )
+        ) {
+          return;
+        }
+
+        setPasswordBusy(true);
+
+        try {
+          await resetAccountPassword(
+            passwordTarget.profile_id,
+            passwordValue
+          );
+
+          await navigator.clipboard
+            ?.writeText(
+              passwordValue
+            )
+            .catch(() => undefined);
+
+          alert(
+            `Password ${passwordTarget.full_name} berhasil direset.\n\nPassword baru sudah dicopy ke clipboard jika browser mengizinkan. Sampaikan langsung ke user melalui kanal internal yang aman.`
+          );
+
+          closePasswordReset();
+          await refresh();
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Reset password gagal."
+          );
+        } finally {
+          setPasswordBusy(false);
+        }
+      };
+
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">
+                Administrasi
+                Sistem
+              </h1>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Account
+                administration,
+                global reset, dan
+                password recovery.
+              </p>
             </div>
-            <CardDescription className="text-xs text-amber-800">
-              Gunakan tombol di bawah untuk mengisi sampel transaksi UAT atau mengosongkan kembali seluruh transaksi ke keadaan 0 awal.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex gap-3 pt-2">
-            <Button onClick={handleGenerateDummy} className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold gap-2">
-              <Database className="w-4 h-4" />
-              <span>Generate Sample UAT Dummy Data</span>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={
+                refresh
+              }
+              disabled={
+                loading
+              }
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
             </Button>
+          </div>
 
-            <Button onClick={handleResetDummy} variant="outline" className="border-rose-300 text-rose-800 hover:bg-rose-50 text-xs font-bold gap-2">
-              <RotateCcw className="w-4 h-4 text-rose-600" />
-              <span>Reset Data Dummy (Kembali ke 0 Transaksi)</span>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Tabs defaultValue="users" className="w-full">
-          <TabsList className="bg-white border border-gray-200 p-1 rounded-xl shadow-sm grid grid-cols-3 w-full max-w-md">
-            <TabsTrigger value="users" className="text-xs font-bold">Master Users</TabsTrigger>
-            <TabsTrigger value="products" className="text-xs font-bold">Master Produk</TabsTrigger>
-            <TabsTrigger value="audit" className="text-xs font-bold">Audit Log</TabsTrigger>
-          </TabsList>
-
-          {/* TAB 1: USERS */}
-          <TabsContent value="users" className="space-y-4 mt-4">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold">Baseline User Master (27 Pegawai + System Admin)</CardTitle>
-                <CardDescription className="text-xs">Struktur hierarki PertaLife Insurance terdaftar di database</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200 uppercase text-[10px] text-gray-600">
-                      <tr>
-                        <th className="p-3">User ID</th>
-                        <th className="p-3">Nama Pegawai</th>
-                        <th className="p-3">Email Demo</th>
-                        <th className="p-3">Jabatan</th>
-                        <th className="p-3">Unit / Dept</th>
-                        <th className="p-3">Role</th>
-                        <th className="p-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {users.map(u => (
-                        <tr key={u.id} className="hover:bg-gray-50">
-                          <td className="p-3 font-mono font-bold text-blue-700">{u.id}</td>
-                          <td className="p-3 font-semibold text-gray-900">{u.name}</td>
-                          <td className="p-3 text-gray-600">{u.email}</td>
-                          <td className="p-3 text-gray-700">{u.position}</td>
-                          <td className="p-3 text-gray-600">{u.department !== 'None' ? u.department : u.unit}</td>
-                          <td className="p-3"><Badge variant="outline" className="text-[10px]">{u.role}</Badge></td>
-                          <td className="p-3">
-                            <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px]">
-                              {u.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-2xl font-black">
+                      {
+                        accounts.length
+                      }
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Profile Aktif
+                    </div>
+                  </div>
+                  <Users className="h-6 w-6 text-blue-600" />
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* TAB 2: PRODUCTS */}
-          <TabsContent value="products" className="space-y-4 mt-4">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold">Master Produk Asuransi Jiwa & Kesehatan</CardTitle>
-                <CardDescription className="text-xs">Kategori Individu dan Kumpulan terdaftar di database</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200 uppercase text-[10px] text-gray-600">
-                      <tr>
-                        <th className="p-3">Kode Produk</th>
-                        <th className="p-3">Nama Produk</th>
-                        <th className="p-3">Jenis Asuransi</th>
-                        <th className="p-3">Kategori Nasabah</th>
-                        <th className="p-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {products.map(p => (
-                        <tr key={p.id} className="hover:bg-gray-50">
-                          <td className="p-3 font-mono font-bold text-blue-700">{p.productCode}</td>
-                          <td className="p-3 font-semibold text-gray-900">{p.productName}</td>
-                          <td className="p-3 text-gray-700">{p.insuranceType}</td>
-                          <td className="p-3 text-gray-600">{p.customerCategory}</td>
-                          <td className="p-3">
-                            <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px]">
-                              {p.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-2xl font-black">
+                      {
+                        activeCount
+                      }
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Auth Aktif
+                    </div>
+                  </div>
+                  <ShieldCheck className="h-6 w-6 text-emerald-600" />
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* TAB 3: AUDIT LOG */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-2xl font-black">
+                      {
+                        inviteCount
+                      }
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Belum Diinvite
+                    </div>
+                  </div>
+                  <KeyRound className="h-6 w-6 text-amber-600" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-          <TabsContent value="audit" className="space-y-4 mt-4">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold">System Audit Trail</CardTitle>
-                <CardDescription className="text-xs">Rekam jejak seluruh aktivitas perubahan data bisnis di dalam sistem</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {auditLogs.length === 0 ? (
-                  <div className="p-12 text-center text-xs text-gray-400">Belum ada aktivitas audit tercatat.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-gray-50 border-b border-gray-200 uppercase text-[10px] text-gray-600">
+          <Card className="border-rose-200 bg-rose-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold text-rose-900">
+                <Database className="h-5 w-5" />
+                Global Data Reset
+              </CardTitle>
+
+              <CardDescription className="text-xs text-rose-800">
+                Menghapus
+                seluruh data
+                bisnis/UAT
+                Supabase-native,
+                attachment Activity,
+                dan memicu reset
+                data UAT browser
+                untuk semua akun.
+                Auth users dan
+                struktur profile
+                tetap tersedia.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-rose-300 text-rose-800 hover:bg-rose-100"
+                onClick={
+                  handleGlobalReset
+                }
+                disabled={
+                  resetBusy
+                }
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                {resetBusy
+                  ? "Resetting..."
+                  : "Reset Seluruh Data Global"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Tabs
+            defaultValue="accounts"
+            className="w-full"
+          >
+            <TabsList className="grid w-full max-w-xl grid-cols-3 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+              <TabsTrigger
+                value="accounts"
+                className="text-xs font-bold"
+              >
+                Account & Password
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="products"
+                className="text-xs font-bold"
+              >
+                Master Produk
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="audit"
+                className="text-xs font-bold"
+              >
+                Audit Log
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent
+              value="accounts"
+              className="mt-4"
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">
+                    Supabase Account
+                    Directory
+                  </CardTitle>
+
+                  <CardDescription className="text-xs">
+                    Password hanya
+                    dapat direset
+                    oleh SYSTEM_ADMIN.
+                    User tidak
+                    memiliki
+                    self-service
+                    reset page.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full min-w-[1100px] text-left text-xs">
+                      <thead className="bg-gray-50 text-[10px] uppercase text-gray-600">
                         <tr>
-                          <th className="p-3">Waktu</th>
-                          <th className="p-3">Pegawai</th>
-                          <th className="p-3">Modul</th>
-                          <th className="p-3">Aksi</th>
-                          <th className="p-3">Record ID</th>
-                          <th className="p-3">Catatan</th>
+                          <th className="p-3">
+                            Nama
+                          </th>
+                          <th className="p-3">
+                            Email
+                          </th>
+                          <th className="p-3">
+                            Role
+                          </th>
+                          <th className="p-3">
+                            Unit / Dept
+                          </th>
+                          <th className="p-3">
+                            Manager
+                          </th>
+                          <th className="p-3">
+                            Auth
+                          </th>
+                          <th className="p-3">
+                            Last Sign In
+                          </th>
+                          <th className="p-3">
+                            Action
+                          </th>
                         </tr>
                       </thead>
+
                       <tbody className="divide-y divide-gray-100">
-                        {auditLogs.map(l => (
-                          <tr key={l.id} className="hover:bg-gray-50">
-                            <td className="p-3 font-mono text-[11px] text-gray-500">{new Date(l.timestamp).toLocaleString('id-ID')}</td>
-                            <td className="p-3 font-semibold text-gray-900">{l.userName}</td>
-                            <td className="p-3 font-bold text-blue-700">{l.module}</td>
-                            <td className="p-3 text-gray-800">{l.action}</td>
-                            <td className="p-3 font-mono text-gray-600">{l.recordId}</td>
-                            <td className="p-3 text-gray-600">{l.fileReference || '-'}</td>
-                          </tr>
-                        ))}
+                        {accounts.map(
+                          (
+                            account
+                          ) => (
+                            <tr
+                              key={
+                                account.profile_id
+                              }
+                            >
+                              <td className="p-3 font-semibold">
+                                {
+                                  account.full_name
+                                }
+                              </td>
+
+                              <td className="p-3">
+                                {
+                                  account.email
+                                }
+                              </td>
+
+                              <td className="p-3">
+                                <Badge variant="outline">
+                                  {
+                                    account.role_level
+                                  }
+                                </Badge>
+                              </td>
+
+                              <td className="p-3">
+                                {
+                                  account.department ||
+                                  account.unit
+                                }
+                              </td>
+
+                              <td className="p-3">
+                                {
+                                  account.manager_name ||
+                                  "-"
+                                }
+                              </td>
+
+                              <td className="p-3">
+                                {
+                                  ACCOUNT_STATUS_LABELS[
+                                    account.account_status
+                                  ]
+                                }
+                              </td>
+
+                              <td className="p-3">
+                                {account.last_sign_in_at
+                                  ? new Date(
+                                      account.last_sign_in_at
+                                    ).toLocaleString(
+                                      "id-ID"
+                                    )
+                                  : "-"}
+                              </td>
+
+                              <td className="p-3">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    !account.auth_user_id
+                                  }
+                                  onClick={() =>
+                                    openPasswordReset(
+                                      account
+                                    )
+                                  }
+                                >
+                                  <KeyRound className="mr-1.5 h-4 w-4" />
+                                  Reset Password
+                                </Button>
+                              </td>
+                            </tr>
+                          )
+                        )}
                       </tbody>
                     </table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
+            <TabsContent
+              value="products"
+              className="mt-4"
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">
+                    Master Produk
+                  </CardTitle>
+                </CardHeader>
 
-      </div>
-    </AppLayout>
-  );
-};
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 text-[10px] uppercase text-gray-600">
+                        <tr>
+                          <th className="p-3">
+                            Kode
+                          </th>
+                          <th className="p-3">
+                            Nama Produk
+                          </th>
+                          <th className="p-3">
+                            Jenis
+                          </th>
+                          <th className="p-3">
+                            Kategori
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-gray-100">
+                        {products.map(
+                          (
+                            product
+                          ) => (
+                            <tr
+                              key={
+                                product.id
+                              }
+                            >
+                              <td className="p-3 font-mono font-bold text-blue-700">
+                                {
+                                  product.productCode
+                                }
+                              </td>
+                              <td className="p-3 font-semibold">
+                                {
+                                  product.productName
+                                }
+                              </td>
+                              <td className="p-3">
+                                {
+                                  product.insuranceType
+                                }
+                              </td>
+                              <td className="p-3">
+                                {
+                                  product.customerCategory
+                                }
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent
+              value="audit"
+              className="mt-4"
+            >
+              <Card>
+                <CardHeader className="flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm">
+                      Legacy Audit
+                      Trail
+                    </CardTitle>
+
+                    <CardDescription className="text-xs">
+                      Audit UAT
+                      browser legacy.
+                    </CardDescription>
+                  </div>
+
+                  <ExcelExportButton
+                    data={auditLogs.map(
+                      (
+                        log
+                      ) => ({
+                        Timestamp:
+                          log.timestamp,
+                        User:
+                          log.userName,
+                        Role:
+                          log.userRole,
+                        Module:
+                          log.module,
+                        Action:
+                          log.action,
+                        Record:
+                          log.recordId,
+                      })
+                    )}
+                    filename="System_Audit_Log"
+                    label="Export Audit Log"
+                  />
+                </CardHeader>
+
+                <CardContent>
+                  {auditLogs.length ===
+                  0 ? (
+                    <div className="p-12 text-center text-xs text-gray-400">
+                      Belum ada
+                      audit log.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-gray-50 text-[10px] uppercase text-gray-600">
+                          <tr>
+                            <th className="p-3">
+                              Waktu
+                            </th>
+                            <th className="p-3">
+                              User
+                            </th>
+                            <th className="p-3">
+                              Modul
+                            </th>
+                            <th className="p-3">
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-gray-100">
+                          {auditLogs.map(
+                            (
+                              log
+                            ) => (
+                              <tr
+                                key={
+                                  log.id
+                                }
+                              >
+                                <td className="p-3">
+                                  {new Date(
+                                    log.timestamp
+                                  ).toLocaleString(
+                                    "id-ID"
+                                  )}
+                                </td>
+                                <td className="p-3 font-semibold">
+                                  {
+                                    log.userName
+                                  }
+                                </td>
+                                <td className="p-3">
+                                  {
+                                    log.module
+                                  }
+                                </td>
+                                <td className="p-3">
+                                  {
+                                    log.action
+                                  }
+                                </td>
+                              </tr>
+                            )
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <Dialog
+          open={
+            Boolean(
+              passwordTarget
+            )
+          }
+          onOpenChange={(
+            open
+          ) => {
+            if (!open) {
+              closePasswordReset();
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Reset Password
+              </DialogTitle>
+
+              <DialogDescription>
+                {passwordTarget
+                  ? `${passwordTarget.full_name} — ${passwordTarget.email}`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div>
+                <div className="mb-1.5 text-xs font-bold text-gray-700">
+                  Password Baru
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={
+                      passwordValue
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setPasswordValue(
+                        event.target
+                          .value
+                      )
+                    }
+                  />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setPasswordValue(
+                        makePassword()
+                      )
+                    }
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1.5 text-xs font-bold text-gray-700">
+                  Konfirmasi
+                  Password
+                </div>
+
+                <Input
+                  type="text"
+                  value={
+                    passwordConfirm
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setPasswordConfirm(
+                      event.target
+                        .value
+                    )
+                  }
+                />
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                Password tidak
+                dikirim otomatis.
+                Admin harus
+                menyampaikan
+                langsung kepada
+                user melalui kanal
+                internal yang aman.
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      passwordValue
+                    );
+
+                    alert(
+                      "Password dicopy."
+                    );
+                  } catch {
+                    alert(
+                      "Browser tidak mengizinkan clipboard."
+                    );
+                  }
+                }}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Password
+              </Button>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={
+                  closePasswordReset
+                }
+                disabled={
+                  passwordBusy
+                }
+              >
+                Batal
+              </Button>
+
+              <Button
+                type="button"
+                onClick={
+                  handlePasswordReset
+                }
+                disabled={
+                  passwordBusy
+                }
+              >
+                {passwordBusy
+                  ? "Resetting..."
+                  : "Reset Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </AppLayout>
+    );
+  };
 
 export default AdministrasiPage;
