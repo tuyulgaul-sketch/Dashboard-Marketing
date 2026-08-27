@@ -33,29 +33,28 @@ export const AppSidebar: React.FC = () => {
   const location = useLocation();
 
   const unit = normalize(profile?.unit);
+  const department = normalize(profile?.department);
   const role = normalize(profile?.role_level);
   const email = normalize(profile?.email);
 
+  const isMarketingSupport =
+    unit === "marketing support";
+
   const isDigitalAffinity =
-    unit.includes("digital") &&
-    unit.includes("affinity");
+    isMarketingSupport &&
+    department === "digital & affinity";
 
   const isMarketingAdministration =
-    unit.includes("marketing administration") ||
-    unit.includes("marketing admin");
+    isMarketingSupport &&
+    department === "marketing administration";
 
   const isMarketingCommunication =
-    unit.includes("marketing communication") ||
-    unit.includes("marcomm");
+    isMarketingSupport &&
+    department === "marketing communication";
 
   const isMarketingSupportRoot =
-    unit === "marketing support" ||
-    (
-      unit.includes("marketing support") &&
-      !isMarketingAdministration &&
-      !isMarketingCommunication &&
-      !isDigitalAffinity
-    );
+    isMarketingSupport &&
+    !department;
 
   const isArianie =
     email === "arianie.fajarwati@pertalife.com";
@@ -65,10 +64,7 @@ export const AppSidebar: React.FC = () => {
     role.includes("admin");
 
   const isSalesMarketing =
-    !isDigitalAffinity &&
-    !isMarketingAdministration &&
-    !isMarketingCommunication &&
-    !isMarketingSupportRoot &&
+    !isMarketingSupport &&
     !isSystemAdmin;
 
   const canSeeTarget =
@@ -303,7 +299,12 @@ export const AppSidebar: React.FC = () => {
         <div className="font-semibold text-slate-400">
           Perta Life Marketing OS
         </div>
-        <div>Activity v2 Pilot</div>
+
+        <div>
+          {isDigitalAffinity
+            ? "Digital & Affinity"
+            : profile?.department || profile?.unit || "Activity v2 Pilot"}
+        </div>
       </div>
     </aside>
   );
