@@ -8,9 +8,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { store } from "@/services/store";
 import {
   AdminAccount,
+  BulkActivationResult,
+  activateAccount,
+  activateAllAccounts,
   getAdminAccounts,
   globalResetAllBusinessData,
   resetAccountPassword,
+  sendAdminTestNotification,
 } from "@/services/adminService";
 import { syncGlobalResetState } from "@/lib/globalResetSync";
 import {
@@ -45,13 +49,14 @@ import {
   Badge,
 } from "@/components/ui/badge";
 import {
+  BellRing,
   Copy,
   Database,
   KeyRound,
-  Package,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -61,11 +66,11 @@ const ACCOUNT_STATUS_LABELS:
     string
   > = {
     NOT_INVITED:
-      "Belum Diinvite",
+      "Belum Diaktifkan",
     AUTH_LINK_CHECK:
-      "Auth Link Check",
+      "Cek Link Auth",
     INVITED_NOT_CONFIRMED:
-      "Invite Belum Selesai",
+      "Auth Belum Selesai",
     ACTIVE:
       "Aktif",
   };
@@ -144,6 +149,23 @@ const makePassword = () => {
   return required.join("");
 };
 
+const copyText =
+  async (
+    value: string
+  ) => {
+    if (
+      !navigator.clipboard
+    ) {
+      throw new Error(
+        "Clipboard tidak tersedia."
+      );
+    }
+
+    await navigator.clipboard.writeText(
+      value
+    );
+  };
+
 export const AdministrasiPage:
   React.FC = () => {
     const { profile } =
@@ -201,6 +223,42 @@ export const AdministrasiPage:
       passwordBusy,
       setPasswordBusy,
     ] = useState(false);
+
+    const [
+      activationTarget,
+      setActivationTarget,
+    ] = useState<
+      AdminAccount | null
+    >(null);
+
+    const [
+      activationPassword,
+      setActivationPassword,
+    ] = useState("");
+
+    const [
+      activationBusy,
+      setActivationBusy,
+    ] = useState(false);
+
+    const [
+      bulkActivationBusy,
+      setBulkActivationBusy,
+    ] = useState(false);
+
+    const [
+      bulkResults,
+      setBulkResults,
+    ] = useState<
+      BulkActivationResult[]
+    >([]);
+
+    const [
+      testBusyProfileId,
+      setTestBusyProfileId,
+    ] = useState<
+      string | null
+    >(null);
 
     const isSysAdmin =
       Boolean(
@@ -275,15 +333,31 @@ export const AdministrasiPage:
         [accounts]
       );
 
-    const inviteCount =
+    const pendingActivationCount =
       useMemo(
         () =>
           accounts.filter(
             (account) =>
-              account.account_status ===
-              "NOT_INVITED"
+              !account.auth_user_id &&
+              account.role_level
+                .trim()
+                .toUpperCase() !==
+                "SYSTEM_ADMIN"
           ).length,
         [accounts]
+      );
+
+    const bulkSuccessful =
+      useMemo(
+        () =>
+          bulkResults.filter(
+            (item) =>
+              item.status ===
+                "CREATED" ||
+              item.status ===
+                "REPAIRED"
+          ),
+        [bulkResults]
       );
 
     if (!isSysAdmin) {
@@ -342,6 +416,157 @@ export const AdministrasiPage:
         }
       };
 
+    const openActivation = (
+      account: AdminAccount
+    ) => {
+      if (
+        account.auth_user_id
+      ) {
+        alert(
+          "Akun ini sudah memiliki Supabase Auth user."
+        );
+        return;
+      }
+
+      setActivationTarget(
+        account
+      );
+
+      setActivationPassword(
+        makePassword()
+      );
+    };
+
+    const closeActivation =
+      () => {
+        if (
+          activationBusy
+        ) {
+          return;
+        }
+
+        setActivationTarget(
+          null
+        );
+
+        setActivationPassword(
+          ""
+        );
+      };
+
+    const handleActivation =
+      async () => {
+        if (
+          !activationTarget
+        ) {
+          return;
+        }
+
+        if (
+          activationPassword.length <
+          12
+        ) {
+          alert(
+            "Password minimal 12 karakter."
+          );
+          return;
+        }
+
+        if (
+          !window.confirm(
+            `Aktifkan akun ${activationTarget.full_name} (${activationTarget.email}) tanpa email invite?`
+          )
+        ) {
+          return;
+        }
+
+        setActivationBusy(true);
+
+        try {
+          await activateAccount(
+            activationTarget.profile_id,
+            activationPassword
+          );
+
+          try {
+            await copyText(
+              activationPassword
+            );
+          } catch {
+            // Password still remains visible in the dialog until it closes.
+          }
+
+          alert(
+            `Akun ${activationTarget.full_name} berhasil diaktifkan.\n\nTemporary password sudah dicopy jika browser mengizinkan. Tidak ada email invite yang dikirim.`
+          );
+
+          closeActivation();
+          await refresh();
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Aktivasi akun gagal."
+          );
+        } finally {
+          setActivationBusy(false);
+        }
+      };
+
+    const handleBulkActivation =
+      async () => {
+        if (
+          pendingActivationCount ===
+          0
+        ) {
+          alert(
+            "Tidak ada akun yang perlu diaktifkan."
+          );
+          return;
+        }
+
+        const confirmation =
+          window.prompt(
+            `Akan membuat Supabase Auth untuk ${pendingActivationCount} profile aktif tanpa email invite.\n\nSetiap user mendapatkan temporary password unik. Password hanya ditampilkan sekali setelah proses selesai.\n\nKetik AKTIFKAN SEMUA untuk melanjutkan:`
+          );
+
+        if (
+          confirmation !==
+          "AKTIFKAN SEMUA"
+        ) {
+          return;
+        }
+
+        setBulkActivationBusy(
+          true
+        );
+
+        try {
+          const result =
+            await activateAllAccounts();
+
+          setBulkResults(
+            result.results || []
+          );
+
+          await refresh();
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Bulk activation gagal."
+          );
+        } finally {
+          setBulkActivationBusy(
+            false
+          );
+        }
+      };
+
     const openPasswordReset = (
       account: AdminAccount
     ) => {
@@ -349,7 +574,7 @@ export const AdministrasiPage:
         !account.auth_user_id
       ) {
         alert(
-          "Akun belum diinvite / belum memiliki Auth user."
+          "Akun belum memiliki Auth user."
         );
         return;
       }
@@ -434,10 +659,12 @@ export const AdministrasiPage:
             ?.writeText(
               passwordValue
             )
-            .catch(() => undefined);
+            .catch(
+              () => undefined
+            );
 
           alert(
-            `Password ${passwordTarget.full_name} berhasil direset.\n\nPassword baru sudah dicopy ke clipboard jika browser mengizinkan. Sampaikan langsung ke user melalui kanal internal yang aman.`
+            `Password ${passwordTarget.full_name} berhasil direset.\n\nPassword baru sudah dicopy ke clipboard jika browser mengizinkan.`
           );
 
           closePasswordReset();
@@ -455,6 +682,81 @@ export const AdministrasiPage:
         }
       };
 
+    const handleTestNotification =
+      async (
+        account: AdminAccount
+      ) => {
+        if (
+          !account.auth_user_id
+        ) {
+          alert(
+            "Aktifkan akun terlebih dahulu."
+          );
+          return;
+        }
+
+        setTestBusyProfileId(
+          account.profile_id
+        );
+
+        try {
+          await sendAdminTestNotification(
+            account.profile_id
+          );
+
+          alert(
+            `Test notification berhasil dibuat untuk ${account.full_name}.\n\nIn-app notification sudah masuk ke inbox user. Email outbox juga otomatis dibuat dengan status PENDING sampai Microsoft Graph diaktifkan.`
+          );
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Test notification gagal."
+          );
+        } finally {
+          setTestBusyProfileId(
+            null
+          );
+        }
+      };
+
+    const copyBulkCredentials =
+      async () => {
+        const lines =
+          bulkSuccessful.map(
+            (item) =>
+              `${item.full_name}\t${item.email}\t${item.temporary_password || ""}`
+          );
+
+        if (
+          lines.length === 0
+        ) {
+          alert(
+            "Tidak ada credential baru untuk dicopy."
+          );
+          return;
+        }
+
+        try {
+          await copyText(
+            [
+              "Nama\tEmail\tTemporary Password",
+              ...lines,
+            ].join("\n")
+          );
+
+          alert(
+            "Credential berhasil dicopy."
+          );
+        } catch {
+          alert(
+            "Browser tidak mengizinkan clipboard."
+          );
+        }
+      };
+
     return (
       <AppLayout>
         <div className="space-y-6">
@@ -466,27 +768,47 @@ export const AdministrasiPage:
               </h1>
 
               <p className="mt-1 text-xs text-gray-500">
-                Account
-                administration,
-                global reset, dan
-                password recovery.
+                Account activation,
+                password recovery,
+                notification test,
+                dan global reset.
               </p>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={
-                refresh
-              }
-              disabled={
-                loading
-              }
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={
+                  handleBulkActivation
+                }
+                disabled={
+                  bulkActivationBusy ||
+                  pendingActivationCount ===
+                    0
+                }
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                {bulkActivationBusy
+                  ? "Activating..."
+                  : `Aktifkan Semua (${pendingActivationCount})`}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={
+                  refresh
+                }
+                disabled={
+                  loading
+                }
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -532,11 +854,11 @@ export const AdministrasiPage:
                   <div>
                     <div className="text-2xl font-black">
                       {
-                        inviteCount
+                        pendingActivationCount
                       }
                     </div>
                     <div className="text-xs text-gray-500">
-                      Belum Diinvite
+                      Belum Diaktifkan
                     </div>
                   </div>
                   <KeyRound className="h-6 w-6 text-amber-600" />
@@ -544,6 +866,19 @@ export const AdministrasiPage:
               </CardContent>
             </Card>
           </div>
+
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold text-blue-900">
+                <UserPlus className="h-5 w-5" />
+                Aktivasi Akun Tanpa Email Invite
+              </CardTitle>
+
+              <CardDescription className="text-xs text-blue-800">
+                SYSTEM_ADMIN dapat membuat Supabase Auth langsung dari profile yang sudah ada. Setiap akun mendapat temporary password unik. Tidak menggunakan Supabase email invite dan tidak terkena email rate limit.
+              </CardDescription>
+            </CardHeader>
+          </Card>
 
           <Card className="border-rose-200 bg-rose-50/50">
             <CardHeader className="pb-2">
@@ -553,9 +888,8 @@ export const AdministrasiPage:
               </CardTitle>
 
               <CardDescription className="text-xs text-rose-800">
-                Menghapus
-                seluruh data
-                bisnis/UAT
+                Menghapus seluruh
+                data bisnis/UAT
                 Supabase-native,
                 attachment Activity,
                 dan memicu reset
@@ -626,19 +960,17 @@ export const AdministrasiPage:
                   </CardTitle>
 
                   <CardDescription className="text-xs">
-                    Password hanya
-                    dapat direset
-                    oleh SYSTEM_ADMIN.
-                    User tidak
-                    memiliki
-                    self-service
-                    reset page.
+                    Aktifkan akun,
+                    reset password,
+                    atau kirim test
+                    notification langsung
+                    dari SYSTEM_ADMIN.
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent>
                   <div className="overflow-x-auto rounded-xl border border-gray-200">
-                    <table className="w-full min-w-[1100px] text-left text-xs">
+                    <table className="w-full min-w-[1250px] text-left text-xs">
                       <thead className="bg-gray-50 text-[10px] uppercase text-gray-600">
                         <tr>
                           <th className="p-3">
@@ -731,22 +1063,64 @@ export const AdministrasiPage:
                               </td>
 
                               <td className="p-3">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={
-                                    !account.auth_user_id
-                                  }
-                                  onClick={() =>
-                                    openPasswordReset(
-                                      account
-                                    )
-                                  }
-                                >
-                                  <KeyRound className="mr-1.5 h-4 w-4" />
-                                  Reset Password
-                                </Button>
+                                <div className="flex flex-wrap gap-2">
+                                  {!account.auth_user_id ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() =>
+                                        openActivation(
+                                          account
+                                        )
+                                      }
+                                    >
+                                      <UserPlus className="mr-1.5 h-4 w-4" />
+                                      Aktifkan
+                                    </Button>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          openPasswordReset(
+                                            account
+                                          )
+                                        }
+                                      >
+                                        <KeyRound className="mr-1.5 h-4 w-4" />
+                                        Reset Password
+                                      </Button>
+
+                                      {account.role_level
+                                        .trim()
+                                        .toUpperCase() !==
+                                        "SYSTEM_ADMIN" && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={
+                                            testBusyProfileId ===
+                                            account.profile_id
+                                          }
+                                          onClick={() =>
+                                            handleTestNotification(
+                                              account
+                                            )
+                                          }
+                                        >
+                                          <BellRing className="mr-1.5 h-4 w-4" />
+                                          {testBusyProfileId ===
+                                          account.profile_id
+                                            ? "Sending..."
+                                            : "Test Notif"}
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           )
@@ -946,6 +1320,250 @@ export const AdministrasiPage:
         <Dialog
           open={
             Boolean(
+              activationTarget
+            )
+          }
+          onOpenChange={(
+            open
+          ) => {
+            if (!open) {
+              closeActivation();
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Aktifkan Akun
+              </DialogTitle>
+
+              <DialogDescription>
+                {activationTarget
+                  ? `${activationTarget.full_name} — ${activationTarget.email}`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div>
+                <div className="mb-1.5 text-xs font-bold text-gray-700">
+                  Temporary Password
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={
+                      activationPassword
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setActivationPassword(
+                        event.target
+                          .value
+                      )
+                    }
+                  />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setActivationPassword(
+                        makePassword()
+                      )
+                    }
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-[11px] leading-5 text-blue-800">
+                Auth user dibuat langsung oleh backend SYSTEM_ADMIN dengan email sudah confirmed. Tidak ada email invite yang dikirim.
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await copyText(
+                      activationPassword
+                    );
+
+                    alert(
+                      "Password dicopy."
+                    );
+                  } catch {
+                    alert(
+                      "Browser tidak mengizinkan clipboard."
+                    );
+                  }
+                }}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Password
+              </Button>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={
+                  closeActivation
+                }
+                disabled={
+                  activationBusy
+                }
+              >
+                Batal
+              </Button>
+
+              <Button
+                type="button"
+                onClick={
+                  handleActivation
+                }
+                disabled={
+                  activationBusy
+                }
+              >
+                {activationBusy
+                  ? "Activating..."
+                  : "Aktifkan Akun"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={
+            bulkResults.length >
+            0
+          }
+          onOpenChange={(
+            open
+          ) => {
+            if (!open) {
+              setBulkResults(
+                []
+              );
+            }
+          }}
+        >
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>
+                Hasil Bulk Activation
+              </DialogTitle>
+
+              <DialogDescription>
+                Temporary password tidak disimpan di database. Copy sekarang sebelum menutup dialog.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="max-h-[460px] overflow-auto rounded-xl border border-gray-200">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="sticky top-0 bg-gray-50 text-[10px] uppercase text-gray-600">
+                  <tr>
+                    <th className="p-3">
+                      Nama
+                    </th>
+                    <th className="p-3">
+                      Email
+                    </th>
+                    <th className="p-3">
+                      Status
+                    </th>
+                    <th className="p-3">
+                      Temporary Password
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-gray-100">
+                  {bulkResults.map(
+                    (
+                      item
+                    ) => (
+                      <tr
+                        key={
+                          item.profile_id
+                        }
+                      >
+                        <td className="p-3 font-semibold">
+                          {
+                            item.full_name
+                          }
+                        </td>
+                        <td className="p-3">
+                          {
+                            item.email
+                          }
+                        </td>
+                        <td className="p-3">
+                          <Badge
+                            variant="outline"
+                          >
+                            {
+                              item.status
+                            }
+                          </Badge>
+
+                          {item.error && (
+                            <div className="mt-1 max-w-[260px] text-[10px] text-rose-600">
+                              {
+                                item.error
+                              }
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono">
+                          {
+                            item.temporary_password ||
+                            "-"
+                          }
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={
+                  copyBulkCredentials
+                }
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Semua Credential
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  setBulkResults(
+                    []
+                  )
+                }
+              >
+                Selesai
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={
+            Boolean(
               passwordTarget
             )
           }
@@ -1045,7 +1663,7 @@ export const AdministrasiPage:
                 size="sm"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(
+                    await copyText(
                       passwordValue
                     );
 
