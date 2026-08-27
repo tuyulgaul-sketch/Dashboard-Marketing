@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { UatUserSwitcher } from '../common/UatUserSwitcher';
 import { store } from '@/services/store';
 import { AppNotification, User } from '@/types';
 import { Bell, ShieldCheck, CheckCheck } from 'lucide-react';
@@ -92,7 +91,6 @@ export const AppHeader: React.FC = () => {
         </Popover>
 
         {/* UAT Switcher */}
-        <UatUserSwitcher />
       </div>
     </header>
   );
