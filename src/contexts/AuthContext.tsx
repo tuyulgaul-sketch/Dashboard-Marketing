@@ -7,6 +7,7 @@ import React, {
 
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { syncLegacyIdentityFromSupabase } from "@/lib/legacyIdentityBridge";
 
 export type AuthProfile = {
   id: string;
@@ -17,6 +18,7 @@ export type AuthProfile = {
   unit: string;
   department: string | null;
   manager_id: string | null;
+  legacy_user_id: string | null;
   active: boolean;
 };
 
@@ -54,7 +56,7 @@ export const AuthProvider: React.FC<{
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, active"
+        "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
       )
       .eq(
         "auth_user_id",
@@ -73,7 +75,16 @@ export const AuthProvider: React.FC<{
       return;
     }
 
-    setProfile(data as AuthProfile);
+    const authProfile =
+      data as AuthProfile;
+
+    // Keep old UAT modules aligned to the authenticated Supabase account.
+    // If legacy_user_id is NULL the old modules are blocked by accessControl.
+    syncLegacyIdentityFromSupabase(
+      authProfile
+    );
+
+    setProfile(authProfile);
   };
 
   useEffect(() => {
