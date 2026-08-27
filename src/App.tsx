@@ -1,17 +1,30 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useLocation,
 } from "react-router-dom";
-import { store } from "@/services/store";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import {
+  AuthProvider,
+  useAuth,
+} from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import {
+  AppFeature,
+  canAccessFeature,
+  getDocumentFeatureFromSearch,
+  isDigitalAffinityProfile,
+  isSystemAdminProfile,
+} from "@/lib/accessControl";
 
 import Index from "./pages/Index";
 import TargetRkapPage from "./pages/TargetRkapPage";
@@ -28,70 +41,52 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const useCurrentRole = () => {
-  const [role, setRole] = useState(store.getCurrentUser().role);
-
-  useEffect(() => {
-    const refresh = () => {
-      setRole(store.getCurrentUser().role);
-    };
-
-    refresh();
-    return store.subscribe(refresh);
-  }, []);
-
-  return role;
-};
-
-const BusinessOnly: React.FC<{
+const FeatureOnly: React.FC<{
+  feature: AppFeature;
   children: React.ReactElement;
-}> = ({ children }) => {
-  const role = useCurrentRole();
+}> = ({
+  feature,
+  children,
+}) => {
+  const { profile } = useAuth();
 
-  if (role === "SYSTEM_ADMIN") {
-    return <Navigate to="/administrasi" replace />;
+  if (!canAccessFeature(profile, feature)) {
+    return (
+      <Navigate
+        to={
+          canAccessFeature(
+            profile,
+            "ACTIVITY"
+          )
+            ? "/aktivitas"
+            : "/"
+        }
+        replace
+      />
+    );
   }
 
   return children;
 };
 
-const SysAdminOnly: React.FC<{
+const DocumentOnly: React.FC<{
   children: React.ReactElement;
 }> = ({ children }) => {
-  const role = useCurrentRole();
+  const { profile } = useAuth();
+  const location = useLocation();
 
-  if (role !== "SYSTEM_ADMIN") {
-    return <Navigate to="/" replace />;
-  }
+  const feature =
+    getDocumentFeatureFromSearch(
+      location.search
+    );
 
-  return children;
-};
-
-const TandaTerimaOnly: React.FC<{
-  children: React.ReactElement;
-}> = ({ children }) => {
-  const role = useCurrentRole();
-
-  const allowedRoles = [
-    "DIRECTOR_MARKETING",
-    "ADVISOR_MARKETING_DIRECTOR",
-    "VP_CAPTIVE_MARKETING",
-    "VP_CORPORATE_RETAIL_MARKETING",
-    "DEPARTMENT_HEAD_MARKETING",
-    "SUPERVISOR_MARKETING",
-    "STAFF_MARKETING",
-    "TEAM_LEADER_MARKETING_SUPPORT",
-    "DEPARTMENT_HEAD_MARKETING_ADMINISTRATION",
-    "SUPERVISOR_MARKETING_ADMINISTRATION",
-    "STAFF_MARKETING_ADMINISTRATION",
-  ];
-
-  if (role === "SYSTEM_ADMIN") {
-    return <Navigate to="/administrasi" replace />;
-  }
-
-  if (!allowedRoles.includes(role)) {
-    return <Navigate to="/" replace />;
+  if (
+    !canAccessFeature(
+      profile,
+      feature
+    )
+  ) {
+    return <Navigate to="/aktivitas" replace />;
   }
 
   return children;
@@ -100,23 +95,42 @@ const TandaTerimaOnly: React.FC<{
 const HomeRoute: React.FC = () => {
   const { profile } = useAuth();
 
-  const department =
-    (profile?.department || "")
-      .trim()
-      .toLowerCase();
+  if (!profile) {
+    return null;
+  }
 
-  const isDigitalAffinity =
-    department === "digital & affinity";
+  if (isSystemAdminProfile(profile)) {
+    return (
+      <Navigate
+        to="/administrasi"
+        replace
+      />
+    );
+  }
 
-  if (isDigitalAffinity) {
+  if (
+    isDigitalAffinityProfile(
+      profile
+    )
+  ) {
     return <DigitalAffinityPage />;
   }
 
-  return (
-    <BusinessOnly>
-      <Index />
-    </BusinessOnly>
-  );
+  // Safety fallback:
+  // a newly imported profile without a legacy mapping never gets the
+  // legacy dashboard fallback identity. Activity is Supabase-native.
+  if (
+    !profile.legacy_user_id
+  ) {
+    return (
+      <Navigate
+        to="/aktivitas"
+        replace
+      />
+    );
+  }
+
+  return <Index />;
 };
 
 const Protected = ({
@@ -131,8 +145,15 @@ const Protected = ({
 
 const AppRoutes = () => (
   <Routes>
-    <Route path="/login" element={<LoginPage />} />
-    <Route path="/set-password" element={<SetPasswordPage />} />
+    <Route
+      path="/login"
+      element={<LoginPage />}
+    />
+
+    <Route
+      path="/set-password"
+      element={<SetPasswordPage />}
+    />
 
     <Route
       path="/"
@@ -147,7 +168,9 @@ const AppRoutes = () => (
       path="/aktivitas"
       element={
         <Protected>
-          <AktivitasUniversalPage />
+          <FeatureOnly feature="ACTIVITY">
+            <AktivitasUniversalPage />
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -156,9 +179,9 @@ const AppRoutes = () => (
       path="/target-rkap"
       element={
         <Protected>
-          <BusinessOnly>
+          <FeatureOnly feature="TARGET_RKAP">
             <TargetRkapPage />
-          </BusinessOnly>
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -167,9 +190,9 @@ const AppRoutes = () => (
       path="/booking-pipeline"
       element={
         <Protected>
-          <BusinessOnly>
+          <FeatureOnly feature="BOOKING_PIPELINE">
             <BookingPipelinePage />
-          </BusinessOnly>
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -178,9 +201,9 @@ const AppRoutes = () => (
       path="/produksi"
       element={
         <Protected>
-          <BusinessOnly>
+          <FeatureOnly feature="PRODUCTION">
             <ProduksiPage />
-          </BusinessOnly>
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -189,9 +212,9 @@ const AppRoutes = () => (
       path="/dokumen-pendukung"
       element={
         <Protected>
-          <BusinessOnly>
+          <DocumentOnly>
             <DokumenPendukungPage />
-          </BusinessOnly>
+          </DocumentOnly>
         </Protected>
       }
     />
@@ -200,9 +223,9 @@ const AppRoutes = () => (
       path="/tanda-terima"
       element={
         <Protected>
-          <TandaTerimaOnly>
+          <FeatureOnly feature="TANDA_TERIMA">
             <TandaTerimaPage />
-          </TandaTerimaOnly>
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -211,9 +234,9 @@ const AppRoutes = () => (
       path="/administrasi"
       element={
         <Protected>
-          <SysAdminOnly>
+          <FeatureOnly feature="SYSTEM_ADMIN">
             <AdministrasiPage />
-          </SysAdminOnly>
+          </FeatureOnly>
         </Protected>
       }
     />
@@ -230,7 +253,9 @@ const AppRoutes = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
+  <QueryClientProvider
+    client={queryClient}
+  >
     <TooltipProvider>
       <Toaster />
       <Sonner />
