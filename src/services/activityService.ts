@@ -136,12 +136,26 @@ export type ActivityHistoryDetail = {
   created_at: string;
 };
 
+export type ActivityAttachmentDetail = {
+  id: string;
+  activity_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number;
+  uploaded_by_profile_id: string;
+  uploaded_by_name: string;
+  created_at: string;
+};
+
 export type ActivityDetailPayload = {
   activity: UniversalActivity;
+  can_edit: boolean;
   owner: ActivityDetailPerson;
   created_by: ActivityDetailPerson;
   validation_approver: ActivityDetailPerson | null;
   collaborators: ActivityCollaboratorDetail[];
+  attachments: ActivityAttachmentDetail[];
   comments: ActivityCommentDetail[];
   history: ActivityHistoryDetail[];
 };
@@ -269,4 +283,155 @@ export async function addUniversalActivityComment(
   if (error) throw error;
 
   return data as ActivityCommentDetail;
+}
+
+
+const ACTIVITY_ATTACHMENT_BUCKET = "activity-attachments";
+const MAX_ACTIVITY_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+
+const ALLOWED_ACTIVITY_ATTACHMENT_EXTENSIONS = new Set([
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "txt",
+  "csv",
+  "zip",
+]);
+
+function sanitizeAttachmentFileName(fileName: string) {
+  const cleaned = fileName
+    .replace(/[^\w.\-() ]+/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 140);
+
+  return cleaned || "attachment";
+}
+
+export async function updateUniversalActivityProgress(
+  activityId: string,
+  progress: number
+) {
+  const { data, error } = await supabase.rpc(
+    "update_activity_progress",
+    {
+      p_activity_id: activityId,
+      p_progress: progress,
+    }
+  );
+
+  if (error) throw error;
+
+  return data as UniversalActivity;
+}
+
+export async function uploadUniversalActivityAttachment(
+  activityId: string,
+  file: File
+) {
+  if (file.size <= 0) {
+    throw new Error("File kosong tidak dapat diunggah.");
+  }
+
+  if (file.size > MAX_ACTIVITY_ATTACHMENT_SIZE) {
+    throw new Error("Ukuran file maksimal 10 MB.");
+  }
+
+  const extension =
+    file.name.split(".").pop()?.toLowerCase() || "";
+
+  if (
+    extension &&
+    !ALLOWED_ACTIVITY_ATTACHMENT_EXTENSIONS.has(extension)
+  ) {
+    throw new Error(
+      "Tipe file belum diizinkan. Gunakan PDF, image, Office document, TXT/CSV, atau ZIP."
+    );
+  }
+
+  const safeName = sanitizeAttachmentFileName(file.name);
+
+  const storagePath =
+    `${activityId}/${crypto.randomUUID()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(ACTIVITY_ATTACHMENT_BUCKET)
+    .upload(storagePath, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data, error: registerError } = await supabase.rpc(
+    "register_activity_attachment",
+    {
+      p_activity_id: activityId,
+      p_storage_path: storagePath,
+      p_file_name: file.name,
+      p_mime_type: file.type || null,
+      p_file_size: file.size,
+    }
+  );
+
+  if (registerError) {
+    await supabase.storage
+      .from(ACTIVITY_ATTACHMENT_BUCKET)
+      .remove([storagePath]);
+
+    throw registerError;
+  }
+
+  return data as ActivityAttachmentDetail;
+}
+
+export async function getUniversalActivityAttachmentUrl(
+  storagePath: string
+) {
+  const { data, error } = await supabase.storage
+    .from(ACTIVITY_ATTACHMENT_BUCKET)
+    .createSignedUrl(storagePath, 60);
+
+  if (error) throw error;
+
+  return data.signedUrl;
+}
+
+export async function deleteUniversalActivityAttachment(
+  attachmentId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "delete_activity_attachment_metadata",
+    {
+      p_attachment_id: attachmentId,
+    }
+  );
+
+  if (error) throw error;
+
+  const storagePath = data?.storage_path as string | undefined;
+
+  if (storagePath) {
+    const { error: removeError } = await supabase.storage
+      .from(ACTIVITY_ATTACHMENT_BUCKET)
+      .remove([storagePath]);
+
+    if (removeError) {
+      console.warn(
+        "Metadata lampiran terhapus, tetapi cleanup storage gagal:",
+        removeError
+      );
+    }
+  }
+
+  return data as {
+    storage_path: string;
+    file_name: string;
+  };
 }
