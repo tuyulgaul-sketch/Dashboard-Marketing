@@ -15,6 +15,7 @@ export type AuthProfile = {
   email: string;
   role_level: string;
   unit: string;
+  department: string | null;
   manager_id: string | null;
   active: boolean;
 };
@@ -53,7 +54,7 @@ export const AuthProvider: React.FC<{
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, auth_user_id, full_name, email, role_level, unit, manager_id, active"
+        "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, active"
       )
       .eq(
         "auth_user_id",
