@@ -10,15 +10,20 @@ import {
   Routes,
 } from "react-router-dom";
 import { store } from "@/services/store";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
+
 import Index from "./pages/Index";
 import TargetRkapPage from "./pages/TargetRkapPage";
-import AktivitasPage from "./pages/AktivitasPage";
+import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import BookingPipelinePage from "./pages/BookingPipelinePage";
 import ProduksiPage from "./pages/ProduksiPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
 import AdministrasiPage from "./pages/AdministrasiPage";
 import TandaTerimaPage from "./pages/TandaTerimaPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
+import LoginPage from "./pages/LoginPage";
+import DigitalAffinityPage from "./pages/DigitalAffinityPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +71,7 @@ const TandaTerimaOnly: React.FC<{
   children: React.ReactElement;
 }> = ({ children }) => {
   const role = useCurrentRole();
+
   const allowedRoles = [
     "DIRECTOR_MARKETING",
     "ADVISOR_MARKETING_DIRECTOR",
@@ -80,10 +86,147 @@ const TandaTerimaOnly: React.FC<{
     "STAFF_MARKETING_ADMINISTRATION",
   ];
 
-  if (role === "SYSTEM_ADMIN") return <Navigate to="/administrasi" replace />;
-  if (!allowedRoles.includes(role)) return <Navigate to="/" replace />;
+  if (role === "SYSTEM_ADMIN") {
+    return <Navigate to="/administrasi" replace />;
+  }
+
+  if (!allowedRoles.includes(role)) {
+    return <Navigate to="/" replace />;
+  }
+
   return children;
 };
+
+const HomeRoute: React.FC = () => {
+  const { profile } = useAuth();
+
+  const normalizedUnit =
+    (profile?.unit || "").toLowerCase();
+
+  const isDigitalAffinity =
+    normalizedUnit.includes("digital") &&
+    normalizedUnit.includes("affinity");
+
+  if (isDigitalAffinity) {
+    return <DigitalAffinityPage />;
+  }
+
+  return (
+    <BusinessOnly>
+      <Index />
+    </BusinessOnly>
+  );
+};
+
+const Protected = ({
+  children,
+}: {
+  children: React.ReactElement;
+}) => (
+  <ProtectedRoute>
+    {children}
+  </ProtectedRoute>
+);
+
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/set-password" element={<SetPasswordPage />} />
+
+    <Route
+      path="/"
+      element={
+        <Protected>
+          <HomeRoute />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/aktivitas"
+      element={
+        <Protected>
+          <AktivitasUniversalPage />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/target-rkap"
+      element={
+        <Protected>
+          <BusinessOnly>
+            <TargetRkapPage />
+          </BusinessOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/booking-pipeline"
+      element={
+        <Protected>
+          <BusinessOnly>
+            <BookingPipelinePage />
+          </BusinessOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/produksi"
+      element={
+        <Protected>
+          <BusinessOnly>
+            <ProduksiPage />
+          </BusinessOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/dokumen-pendukung"
+      element={
+        <Protected>
+          <BusinessOnly>
+            <DokumenPendukungPage />
+          </BusinessOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/tanda-terima"
+      element={
+        <Protected>
+          <TandaTerimaOnly>
+            <TandaTerimaPage />
+          </TandaTerimaOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/administrasi"
+      element={
+        <Protected>
+          <SysAdminOnly>
+            <AdministrasiPage />
+          </SysAdminOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="*"
+      element={
+        <Protected>
+          <NotFound />
+        </Protected>
+      }
+    />
+  </Routes>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -91,84 +234,11 @@ const App = () => (
       <Toaster />
       <Sonner />
 
-      <BrowserRouter>
-        <Routes>
-          <Route path="/set-password" element={<SetPasswordPage />} />
-          <Route
-            path="/"
-            element={
-              <BusinessOnly>
-                <Index />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/target-rkap"
-            element={
-              <BusinessOnly>
-                <TargetRkapPage />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/aktivitas"
-            element={
-              <BusinessOnly>
-                <AktivitasPage />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/booking-pipeline"
-            element={
-              <BusinessOnly>
-                <BookingPipelinePage />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/produksi"
-            element={
-              <BusinessOnly>
-                <ProduksiPage />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/dokumen-pendukung"
-            element={
-              <BusinessOnly>
-                <DokumenPendukungPage />
-              </BusinessOnly>
-            }
-          />
-
-          <Route
-            path="/tanda-terima"
-            element={
-              <TandaTerimaOnly>
-                <TandaTerimaPage />
-              </TandaTerimaOnly>
-            }
-          />
-
-          <Route
-            path="/administrasi"
-            element={
-              <SysAdminOnly>
-                <AdministrasiPage />
-              </SysAdminOnly>
-            }
-          />
-
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
