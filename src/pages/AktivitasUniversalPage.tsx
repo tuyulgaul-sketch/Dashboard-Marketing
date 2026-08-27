@@ -3,6 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityCategory,
+  ActivityMode,
   ActivityPriority,
   DirectoryProfile,
   UniversalActivity,
@@ -48,7 +49,10 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Users,
+  UserRound,
+  UserRoundPlus,
+  UsersRound,
+  X,
 } from "lucide-react";
 
 const CATEGORY_LABELS: Record<ActivityCategory, string> = {
@@ -83,6 +87,12 @@ const PRIORITY_LABELS: Record<ActivityPriority, string> = {
   URGENT: "Urgent",
 };
 
+const MODE_LABELS: Record<ActivityMode, string> = {
+  PERSONAL: "Task Pribadi",
+  ASSIGNMENT: "Assignment ke Bawahan",
+  COLLABORATION: "Kolaborasi",
+};
+
 const MOVABLE_STATUSES: Array<
   Exclude<UniversalActivityStatus, "PENDING_VALIDATION" | "DONE">
 > = [
@@ -110,6 +120,9 @@ const isSalesConditionalCategory = (
   category === "CUSTOMER_EXTERNAL" ||
   category === "TENDER_PROPOSAL";
 
+const getOrgLabel = (profile?: DirectoryProfile) =>
+  profile?.department || profile?.unit || "-";
+
 const AktivitasUniversalPage: React.FC = () => {
   const { profile } = useAuth();
 
@@ -125,6 +138,8 @@ const AktivitasUniversalPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
 
+  const [activityMode, setActivityMode] =
+    useState<ActivityMode>("PERSONAL");
   const [title, setTitle] = useState("");
   const [category, setCategory] =
     useState<ActivityCategory>("INTERNAL_COORDINATION");
@@ -132,11 +147,14 @@ const AktivitasUniversalPage: React.FC = () => {
     useState<ActivityPriority>("MEDIUM");
   const [ownerProfileId, setOwnerProfileId] = useState("");
   const [activityDate, setActivityDate] = useState(todayKey());
-  const [startTime, setStartTime] = useState("");
   const [dueDate, setDueDate] = useState(todayKey());
-  const [dueTime, setDueTime] = useState("");
   const [description, setDescription] = useState("");
   const [nextAction, setNextAction] = useState("");
+
+  const [collaboratorIds, setCollaboratorIds] =
+    useState<string[]>([]);
+  const [collaboratorCandidateId, setCollaboratorCandidateId] =
+    useState("");
 
   const [companyName, setCompanyName] = useState("");
   const [personMet, setPersonMet] = useState("");
@@ -153,6 +171,60 @@ const AktivitasUniversalPage: React.FC = () => {
     [directory]
   );
 
+  const subordinateIds = useMemo(() => {
+    if (!profile) return new Set<string>();
+
+    const children = new Map<string, string[]>();
+
+    directory.forEach((item) => {
+      if (!item.manager_id) return;
+
+      const list = children.get(item.manager_id) || [];
+      list.push(item.id);
+      children.set(item.manager_id, list);
+    });
+
+    const result = new Set<string>();
+    const stack = [...(children.get(profile.id) || [])];
+
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+
+      if (result.has(id)) continue;
+
+      result.add(id);
+
+      const nextChildren = children.get(id) || [];
+      nextChildren.forEach((childId) => stack.push(childId));
+    }
+
+    return result;
+  }, [directory, profile]);
+
+  const subordinateProfiles = useMemo(
+    () =>
+      directory.filter((item) =>
+        subordinateIds.has(item.id)
+      ),
+    [directory, subordinateIds]
+  );
+
+  const collaboratorCandidates = useMemo(
+    () =>
+      directory.filter(
+        (item) =>
+          item.id !== profile?.id &&
+          item.id !== ownerProfileId &&
+          !collaboratorIds.includes(item.id)
+      ),
+    [
+      collaboratorIds,
+      directory,
+      ownerProfileId,
+      profile?.id,
+    ]
+  );
+
   const refresh = async () => {
     setLoading(true);
     setError("");
@@ -166,14 +238,10 @@ const AktivitasUniversalPage: React.FC = () => {
 
       setActivities(activityRows);
       setDirectory(directoryRows);
-
-      if (profile && !ownerProfileId) {
-        setOwnerProfileId(profile.id);
-      }
     } catch (err) {
       console.error(err);
       setError(
-        "Gagal membaca data aktivitas. Pastikan SQL Activity v2 sudah dijalankan di Supabase."
+        "Gagal membaca data aktivitas. Pastikan SQL Activity v2.1 sudah dijalankan di Supabase."
       );
     } finally {
       setLoading(false);
@@ -249,6 +317,8 @@ const AktivitasUniversalPage: React.FC = () => {
           activity.company_name,
           owner?.full_name,
           owner?.unit,
+          owner?.department,
+          MODE_LABELS[activity.activity_mode || "PERSONAL"],
         ]
           .filter(Boolean)
           .join(" ")
@@ -288,22 +358,56 @@ const AktivitasUniversalPage: React.FC = () => {
   ).length;
 
   const resetForm = () => {
+    setActivityMode("PERSONAL");
     setTitle("");
     setCategory("INTERNAL_COORDINATION");
     setPriority("MEDIUM");
     setOwnerProfileId(profile?.id || "");
     setActivityDate(todayKey());
-    setStartTime("");
     setDueDate(todayKey());
-    setDueTime("");
     setDescription("");
     setNextAction("");
+    setCollaboratorIds([]);
+    setCollaboratorCandidateId("");
     setCompanyName("");
     setPersonMet("");
     setPositionMet("");
     setProductName("");
     setInteractionMethod("");
     setPotentialPremium("");
+  };
+
+  const changeMode = (mode: ActivityMode) => {
+    setActivityMode(mode);
+    setCollaboratorIds([]);
+    setCollaboratorCandidateId("");
+
+    if (mode === "ASSIGNMENT") {
+      setOwnerProfileId("");
+    } else {
+      setOwnerProfileId(profile?.id || "");
+    }
+  };
+
+  const addCollaborator = () => {
+    if (!collaboratorCandidateId) return;
+
+    setCollaboratorIds((current) =>
+      Array.from(
+        new Set([
+          ...current,
+          collaboratorCandidateId,
+        ])
+      )
+    );
+
+    setCollaboratorCandidateId("");
+  };
+
+  const removeCollaborator = (id: string) => {
+    setCollaboratorIds((current) =>
+      current.filter((item) => item !== id)
+    );
   };
 
   const handleCreate = async () => {
@@ -314,37 +418,50 @@ const AktivitasUniversalPage: React.FC = () => {
       return;
     }
 
-    if (!ownerProfileId) {
-      window.alert("PIC / Owner wajib dipilih.");
+    if (
+      activityMode === "ASSIGNMENT" &&
+      !ownerProfileId
+    ) {
+      window.alert("Pilih bawahan yang menjadi PIC.");
+      return;
+    }
+
+    if (
+      activityMode === "COLLABORATION" &&
+      collaboratorIds.length === 0
+    ) {
+      window.alert(
+        "Mode Kolaborasi membutuhkan minimal 1 kolaborator."
+      );
       return;
     }
 
     try {
       setBusyId("CREATE");
 
-      await createUniversalActivity(
-        {
-          title,
-          category,
-          priority,
-          owner_profile_id: ownerProfileId,
-          activity_date: activityDate,
-          start_time: startTime || undefined,
-          due_date: dueDate || undefined,
-          due_time: dueTime || undefined,
-          description,
-          next_action: nextAction,
-          company_name: companyName,
-          person_met: personMet,
-          position_met: positionMet,
-          product_name: productName,
-          interaction_method: interactionMethod,
-          potential_premium: potentialPremium
-            ? Number(potentialPremium)
-            : null,
-        },
-        profile.id
-      );
+      await createUniversalActivity({
+        activity_mode: activityMode,
+        title,
+        category,
+        priority,
+        owner_profile_id:
+          activityMode === "ASSIGNMENT"
+            ? ownerProfileId
+            : profile.id,
+        activity_date: activityDate,
+        due_date: dueDate || undefined,
+        description,
+        next_action: nextAction,
+        collaborator_ids: collaboratorIds,
+        company_name: companyName,
+        person_met: personMet,
+        position_met: positionMet,
+        product_name: productName,
+        interaction_method: interactionMethod,
+        potential_premium: potentialPremium
+          ? Number(potentialPremium)
+          : null,
+      });
 
       setFormOpen(false);
       resetForm();
@@ -442,8 +559,8 @@ const AktivitasUniversalPage: React.FC = () => {
               Aktivitas
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Activity Management untuk seluruh Direktorat Marketing,
-              termasuk Marketing Support.
+              Task pribadi, assignment ke bawahan, dan kolaborasi
+              lintas department dalam satu modul.
             </p>
           </div>
 
@@ -620,12 +737,13 @@ const AktivitasUniversalPage: React.FC = () => {
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1180px] text-left text-xs">
+              <table className="w-full min-w-[1240px] text-left text-xs">
                 <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
                   <tr>
                     <th className="p-3">Aktivitas</th>
+                    <th className="p-3">Mode</th>
                     <th className="p-3">Owner</th>
-                    <th className="p-3">Unit</th>
+                    <th className="p-3">Department</th>
                     <th className="p-3">Due</th>
                     <th className="p-3">Priority</th>
                     <th className="p-3">Status</th>
@@ -637,13 +755,13 @@ const AktivitasUniversalPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                      <td colSpan={9} className="p-8 text-center text-slate-500">
                         Memuat aktivitas...
                       </td>
                     </tr>
                   ) : filteredActivities.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                      <td colSpan={9} className="p-8 text-center text-slate-500">
                         Belum ada aktivitas pada filter ini.
                       </td>
                     </tr>
@@ -662,14 +780,22 @@ const AktivitasUniversalPage: React.FC = () => {
                             <div className="font-bold text-slate-900">
                               {activity.title}
                             </div>
+
                             <div className="mt-1 text-[11px] text-slate-500">
                               {CATEGORY_LABELS[activity.category]}
                             </div>
+
                             {activity.description && (
                               <div className="mt-1 max-w-sm text-[11px] text-slate-500">
                                 {activity.description}
                               </div>
                             )}
+                          </td>
+
+                          <td className="p-3">
+                            <Badge variant="outline">
+                              {MODE_LABELS[activity.activity_mode || "PERSONAL"]}
+                            </Badge>
                           </td>
 
                           <td className="p-3">
@@ -682,7 +808,7 @@ const AktivitasUniversalPage: React.FC = () => {
                           </td>
 
                           <td className="p-3 text-slate-600">
-                            {owner?.unit || "-"}
+                            {getOrgLabel(owner)}
                           </td>
 
                           <td className="p-3">
@@ -695,11 +821,6 @@ const AktivitasUniversalPage: React.FC = () => {
                             >
                               {activity.due_date || "-"}
                             </div>
-                            {activity.due_time && (
-                              <div className="mt-0.5 text-[10px] text-slate-500">
-                                {activity.due_time.slice(0, 5)}
-                              </div>
-                            )}
                           </td>
 
                           <td className="p-3">
@@ -750,9 +871,10 @@ const AktivitasUniversalPage: React.FC = () => {
 
                           <td className="p-3">
                             <div className="w-28">
-                              <div className="mb-1 flex justify-between text-[10px] text-slate-500">
-                                <span>{activity.progress}%</span>
+                              <div className="mb-1 text-[10px] text-slate-500">
+                                {activity.progress}%
                               </div>
+
                               <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                                 <div
                                   className="h-full rounded-full bg-blue-600"
@@ -833,9 +955,81 @@ const AktivitasUniversalPage: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Aktivitas Baru</DialogTitle>
             <DialogDescription>
-              Form universal untuk Marketing dan seluruh Marketing Support.
+              Tentukan dulu apakah aktivitas ini milik sendiri,
+              assignment ke bawahan, atau pekerjaan kolaboratif.
             </DialogDescription>
           </DialogHeader>
+
+          <div>
+            <label className="mb-2 block text-xs font-bold">
+              Tipe Aktivitas *
+            </label>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              <Button
+                type="button"
+                variant={
+                  activityMode === "PERSONAL"
+                    ? "default"
+                    : "outline"
+                }
+                className="h-auto justify-start py-3 text-left"
+                onClick={() => changeMode("PERSONAL")}
+              >
+                <UserRound className="mr-2 h-4 w-4" />
+                <span>
+                  <span className="block text-xs font-bold">
+                    Task Pribadi
+                  </span>
+                  <span className="block text-[10px] font-normal opacity-75">
+                    PIC otomatis diri sendiri
+                  </span>
+                </span>
+              </Button>
+
+              <Button
+                type="button"
+                variant={
+                  activityMode === "ASSIGNMENT"
+                    ? "default"
+                    : "outline"
+                }
+                className="h-auto justify-start py-3 text-left"
+                onClick={() => changeMode("ASSIGNMENT")}
+              >
+                <UserRoundPlus className="mr-2 h-4 w-4" />
+                <span>
+                  <span className="block text-xs font-bold">
+                    Assignment
+                  </span>
+                  <span className="block text-[10px] font-normal opacity-75">
+                    Assign ke bawahan
+                  </span>
+                </span>
+              </Button>
+
+              <Button
+                type="button"
+                variant={
+                  activityMode === "COLLABORATION"
+                    ? "default"
+                    : "outline"
+                }
+                className="h-auto justify-start py-3 text-left"
+                onClick={() => changeMode("COLLABORATION")}
+              >
+                <UsersRound className="mr-2 h-4 w-4" />
+                <span>
+                  <span className="block text-xs font-bold">
+                    Kolaborasi
+                  </span>
+                  <span className="block text-[10px] font-normal opacity-75">
+                    Bisa lintas department
+                  </span>
+                </span>
+              </Button>
+            </div>
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
@@ -853,6 +1047,7 @@ const AktivitasUniversalPage: React.FC = () => {
               <label className="mb-1.5 block text-xs font-bold">
                 Kategori *
               </label>
+
               <Select
                 value={category}
                 onValueChange={(value) =>
@@ -862,6 +1057,7 @@ const AktivitasUniversalPage: React.FC = () => {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
+
                 <SelectContent>
                   {Object.entries(CATEGORY_LABELS).map(
                     ([value, label]) => (
@@ -878,6 +1074,7 @@ const AktivitasUniversalPage: React.FC = () => {
               <label className="mb-1.5 block text-xs font-bold">
                 Priority *
               </label>
+
               <Select
                 value={priority}
                 onValueChange={(value) =>
@@ -887,6 +1084,7 @@ const AktivitasUniversalPage: React.FC = () => {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
+
                 <SelectContent>
                   {Object.entries(PRIORITY_LABELS).map(
                     ([value, label]) => (
@@ -899,34 +1097,120 @@ const AktivitasUniversalPage: React.FC = () => {
               </Select>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-bold">
-                PIC / Owner *
-              </label>
-              <Select
-                value={ownerProfileId}
-                onValueChange={setOwnerProfileId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih owner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {directory.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.full_name} — {item.unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="mt-1 text-[10px] text-slate-500">
-                RLS akan menolak assignment ke user di luar hierarchy scope Anda.
-              </p>
-            </div>
+            {activityMode === "ASSIGNMENT" ? (
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-bold">
+                  Assign ke *
+                </label>
+
+                <Select
+                  value={ownerProfileId}
+                  onValueChange={setOwnerProfileId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih bawahan" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {subordinateProfiles.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.full_name} — {getOrgLabel(item)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {subordinateProfiles.length === 0 && (
+                  <p className="mt-1 text-[10px] text-amber-700">
+                    Tidak ada subordinate aktif pada hierarchy akun ini.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-bold">
+                  PIC / Owner
+                </label>
+
+                <Input
+                  disabled
+                  value={profile?.full_name || ""}
+                />
+              </div>
+            )}
+
+            {(activityMode === "ASSIGNMENT" ||
+              activityMode === "COLLABORATION") && (
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-xs font-bold">
+                  Kolaborator
+                  {activityMode === "COLLABORATION" ? " *" : " (opsional)"}
+                </label>
+
+                <div className="flex gap-2">
+                  <Select
+                    value={collaboratorCandidateId}
+                    onValueChange={setCollaboratorCandidateId}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Pilih user dari department mana pun" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {collaboratorCandidates.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.full_name} — {getOrgLabel(item)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCollaborator}
+                    disabled={!collaboratorCandidateId}
+                  >
+                    Tambah
+                  </Button>
+                </div>
+
+                {collaboratorIds.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {collaboratorIds.map((id) => {
+                      const collaborator = profileMap.get(id);
+
+                      return (
+                        <Badge
+                          key={id}
+                          variant="secondary"
+                          className="gap-1 py-1"
+                        >
+                          {collaborator?.full_name || id}
+                          <button
+                            type="button"
+                            onClick={() => removeCollaborator(id)}
+                            className="ml-1 rounded hover:bg-slate-300/50"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Kolaborator dapat berasal dari department lain dan mendapat akses edit ke aktivitas ini.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="mb-1.5 block text-xs font-bold">
                 Tanggal Aktivitas *
               </label>
+
               <Input
                 type="date"
                 value={activityDate}
@@ -936,19 +1220,9 @@ const AktivitasUniversalPage: React.FC = () => {
 
             <div>
               <label className="mb-1.5 block text-xs font-bold">
-                Start Time
-              </label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-bold">
                 Due Date
               </label>
+
               <Input
                 type="date"
                 value={dueDate}
@@ -956,21 +1230,11 @@ const AktivitasUniversalPage: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-bold">
-                Due Time
-              </label>
-              <Input
-                type="time"
-                value={dueTime}
-                onChange={(event) => setDueTime(event.target.value)}
-              />
-            </div>
-
             <div className="md:col-span-2">
               <label className="mb-1.5 block text-xs font-bold">
                 Description / Agenda
               </label>
+
               <Textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -982,6 +1246,7 @@ const AktivitasUniversalPage: React.FC = () => {
               <label className="mb-1.5 block text-xs font-bold">
                 Next Action
               </label>
+
               <Textarea
                 value={nextAction}
                 onChange={(event) => setNextAction(event.target.value)}
@@ -1069,7 +1334,9 @@ const AktivitasUniversalPage: React.FC = () => {
               onClick={handleCreate}
               disabled={busyId === "CREATE"}
             >
-              {busyId === "CREATE" ? "Menyimpan..." : "Simpan Aktivitas"}
+              {busyId === "CREATE"
+                ? "Menyimpan..."
+                : "Simpan Aktivitas"}
             </Button>
           </DialogFooter>
         </DialogContent>
