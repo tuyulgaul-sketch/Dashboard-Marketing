@@ -19,6 +19,11 @@ export type ActivityPriority =
   | "HIGH"
   | "URGENT";
 
+export type ActivityMode =
+  | "PERSONAL"
+  | "ASSIGNMENT"
+  | "COLLABORATION";
+
 export type UniversalActivityStatus =
   | "DRAFT"
   | "TO_DO"
@@ -34,11 +39,13 @@ export type DirectoryProfile = {
   full_name: string;
   role_level: string;
   unit: string;
+  department: string | null;
   manager_id: string | null;
 };
 
 export type UniversalActivity = {
   id: string;
+  activity_mode: ActivityMode;
   title: string;
   category: ActivityCategory;
   description: string | null;
@@ -69,16 +76,15 @@ export type UniversalActivity = {
 };
 
 export type CreateActivityInput = {
+  activity_mode: ActivityMode;
   title: string;
   category: ActivityCategory;
   description?: string;
   next_action?: string;
   activity_date: string;
-  start_time?: string;
   due_date?: string;
-  due_time?: string;
   priority: ActivityPriority;
-  owner_profile_id: string;
+  owner_profile_id?: string;
   company_name?: string;
   person_met?: string;
   position_met?: string;
@@ -111,60 +117,23 @@ export async function getUniversalActivities() {
 }
 
 export async function createUniversalActivity(
-  input: CreateActivityInput,
-  currentProfileId: string
+  input: CreateActivityInput
 ) {
-  const collaboratorIds = Array.from(
-    new Set(input.collaborator_ids || [])
-  ).filter((id) => id && id !== input.owner_profile_id);
-
-  const { data, error } = await supabase
-    .from("activities")
-    .insert({
-      title: input.title.trim(),
-      category: input.category,
-      description: input.description?.trim() || null,
-      next_action: input.next_action?.trim() || null,
-      activity_date: input.activity_date,
-      start_time: input.start_time || null,
-      due_date: input.due_date || null,
-      due_time: input.due_time || null,
-      priority: input.priority,
-      status: "TO_DO",
-      progress: 0,
-      owner_profile_id: input.owner_profile_id,
-      created_by_profile_id: currentProfileId,
-      company_name: input.company_name?.trim() || null,
-      person_met: input.person_met?.trim() || null,
-      position_met: input.position_met?.trim() || null,
-      product_name: input.product_name?.trim() || null,
-      related_pipeline_id: input.related_pipeline_id?.trim() || null,
-      potential_premium: input.potential_premium ?? null,
-      interaction_method: input.interaction_method?.trim() || null,
-    })
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc(
+    "create_universal_activity",
+    {
+      p_payload: {
+        ...input,
+        collaborator_ids: Array.from(
+          new Set(input.collaborator_ids || [])
+        ),
+      },
+    }
+  );
 
   if (error) throw error;
 
-  const activity = data as UniversalActivity;
-
-  if (collaboratorIds.length > 0) {
-    const { error: collaboratorError } = await supabase
-      .from("activity_collaborators")
-      .insert(
-        collaboratorIds.map((profileId) => ({
-          activity_id: activity.id,
-          profile_id: profileId,
-          can_edit: true,
-          added_by_profile_id: currentProfileId,
-        }))
-      );
-
-    if (collaboratorError) throw collaboratorError;
-  }
-
-  return activity;
+  return data as UniversalActivity;
 }
 
 export async function updateUniversalActivityStatus(
@@ -174,25 +143,13 @@ export async function updateUniversalActivityStatus(
     "PENDING_VALIDATION" | "DONE"
   >
 ) {
-  const progress =
-    status === "ON_PROGRESS"
-      ? 25
-      : status === "CANCELLED"
-      ? 0
-      : undefined;
-
-  const payload: Record<string, unknown> = { status };
-
-  if (progress !== undefined) {
-    payload.progress = progress;
-  }
-
-  const { data, error } = await supabase
-    .from("activities")
-    .update(payload)
-    .eq("id", activityId)
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc(
+    "update_universal_activity_status",
+    {
+      p_activity_id: activityId,
+      p_status: status,
+    }
+  );
 
   if (error) throw error;
 
