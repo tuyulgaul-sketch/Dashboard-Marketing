@@ -8,6 +8,7 @@ import React, {
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { syncLegacyIdentityFromSupabase } from "@/lib/legacyIdentityBridge";
+import { syncGlobalResetState } from "@/lib/globalResetSync";
 
 export type AuthProfile = {
   id: string;
@@ -29,18 +30,23 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextValue | undefined>(
-  undefined
-);
+const AuthContext =
+  createContext<AuthContextValue | undefined>(
+    undefined
+  );
 
 export const AuthProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
   const [session, setSession] =
-    useState<Session | null>(null);
+    useState<Session | null>(
+      null
+    );
 
   const [profile, setProfile] =
-    useState<AuthProfile | null>(null);
+    useState<AuthProfile | null>(
+      null
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -53,19 +59,23 @@ export const AuthProvider: React.FC<{
       return;
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select(
-        "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
-      )
-      .eq(
-        "auth_user_id",
-        currentSession.user.id
-      )
-      .eq("active", true)
-      .single();
+    const { data, error } =
+      await supabase
+        .from("profiles")
+        .select(
+          "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
+        )
+        .eq(
+          "auth_user_id",
+          currentSession.user.id
+        )
+        .eq("active", true)
+        .single();
 
-    if (error || !data) {
+    if (
+      error ||
+      !data
+    ) {
       console.error(
         "Profile tidak ditemukan:",
         error
@@ -78,8 +88,15 @@ export const AuthProvider: React.FC<{
     const authProfile =
       data as AuthProfile;
 
-    // Keep old UAT modules aligned to the authenticated Supabase account.
-    // If legacy_user_id is NULL the old modules are blocked by accessControl.
+    try {
+      await syncGlobalResetState();
+    } catch (resetSyncError) {
+      console.error(
+        "Global reset state sync gagal:",
+        resetSyncError
+      );
+    }
+
     syncLegacyIdentityFromSupabase(
       authProfile
     );
@@ -90,46 +107,104 @@ export const AuthProvider: React.FC<{
   useEffect(() => {
     let mounted = true;
 
-    const initialize = async () => {
-      const {
-        data: { session: initialSession },
-      } = await supabase.auth.getSession();
+    const initialize =
+      async () => {
+        const {
+          data: {
+            session:
+              initialSession,
+          },
+        } =
+          await supabase.auth.getSession();
 
-      if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
-      setSession(initialSession);
+        setSession(
+          initialSession
+        );
 
-      await loadProfile(initialSession);
+        await loadProfile(
+          initialSession
+        );
 
-      if (mounted) {
-        setLoading(false);
-      }
-    };
+        if (mounted) {
+          setLoading(false);
+        }
+      };
 
     initialize();
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
-        if (!mounted) return;
-
-        setSession(newSession);
-        setLoading(true);
-
-        loadProfile(newSession).finally(() => {
-          if (mounted) {
-            setLoading(false);
+      data: {
+        subscription,
+      },
+    } =
+      supabase.auth.onAuthStateChange(
+        (
+          _event,
+          newSession
+        ) => {
+          if (!mounted) {
+            return;
           }
-        });
-      }
-    );
+
+          setSession(
+            newSession
+          );
+
+          setLoading(true);
+
+          loadProfile(
+            newSession
+          ).finally(() => {
+            if (mounted) {
+              setLoading(
+                false
+              );
+            }
+          });
+        }
+      );
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    const intervalId =
+      window.setInterval(
+        async () => {
+          try {
+            const changed =
+              await syncGlobalResetState();
+
+            if (changed) {
+              window.location.reload();
+            }
+          } catch (error) {
+            console.error(
+              "Periodic global reset sync gagal:",
+              error
+            );
+          }
+        },
+        60_000
+      );
+
+    return () => {
+      window.clearInterval(
+        intervalId
+      );
+    };
+  }, [profile?.id]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -152,7 +227,8 @@ export const AuthProvider: React.FC<{
 };
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const context =
+    useContext(AuthContext);
 
   if (!context) {
     throw new Error(
