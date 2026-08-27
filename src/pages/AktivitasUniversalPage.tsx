@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityAttachmentDetail,
@@ -271,6 +272,9 @@ const AktivitasUniversalPage: React.FC = () => {
     useState<File | null>(null);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentInputKey, setAttachmentInputKey] = useState(0);
+
+  const [workspaceSection, setWorkspaceSection] =
+    useState<"WORKSPACE" | "MONITORING">("WORKSPACE");
 
   const profileMap = useMemo(
     () =>
@@ -911,6 +915,42 @@ const AktivitasUniversalPage: React.FC = () => {
           </div>
         )}
 
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={
+              workspaceSection === "WORKSPACE"
+                ? "default"
+                : "ghost"
+            }
+            onClick={() =>
+              setWorkspaceSection("WORKSPACE")
+            }
+          >
+            <Rows3 className="mr-2 h-4 w-4" />
+            Activity Workspace
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={
+              workspaceSection === "MONITORING"
+                ? "default"
+                : "ghost"
+            }
+            onClick={() =>
+              setWorkspaceSection("MONITORING")
+            }
+          >
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            Monitoring & Alerts
+          </Button>
+        </div>
+
+        {workspaceSection === "WORKSPACE" ? (
+          <>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="flex items-center gap-3 p-5">
@@ -1474,6 +1514,17 @@ const AktivitasUniversalPage: React.FC = () => {
             )}
           </CardContent>
         </Card>
+          </>
+        ) : (
+          profile && (
+            <ActivityMonitoringPanel
+              currentProfile={profile}
+              activities={activities}
+              directory={directory}
+              onOpenActivity={openActivityDetail}
+            />
+          )
+        )}
       </div>
 
       {/* CREATE ACTIVITY */}
