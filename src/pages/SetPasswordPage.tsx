@@ -13,38 +13,64 @@ const SetPasswordPage: React.FC = () => {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
+  const checkSession = async () => {
+    try {
+      const sessionPromise = supabase.auth.getSession();
+
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), 3000);
+      });
+
+      const result = await Promise.race([
+        sessionPromise,
+        timeoutPromise,
+      ]);
 
       if (!mounted) return;
 
-      if (data.session) {
-        setReady(true);
-      } else {
-        setError(
-          "Sesi aktivasi tidak ditemukan. Silakan buka kembali link undangan dari email."
-        );
-      }
-    };
-
-    checkSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+      if (
+        result &&
+        "data" in result &&
+        result.data.session
+      ) {
         setReady(true);
         setError("");
+      } else {
+        setReady(false);
+        setError(
+          "Sesi aktivasi tidak ditemukan atau link sudah kedaluwarsa. Silakan buka kembali link undangan dari email."
+        );
       }
-    });
+    } catch {
+      if (!mounted) return;
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+      setReady(false);
+      setError(
+        "Gagal memeriksa sesi aktivasi. Silakan buka kembali link undangan dari email."
+      );
+    }
+  };
+
+  checkSession();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (!mounted) return;
+
+    if (session) {
+      setReady(true);
+      setError("");
+    }
+  });
+
+  return () => {
+    mounted = false;
+    subscription.unsubscribe();
+  };
+}, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,10 +124,18 @@ const SetPasswordPage: React.FC = () => {
         </div>
 
         {!ready ? (
-          <div className="text-sm text-center text-slate-600">
-            Memeriksa link aktivasi...
-          </div>
-        ) : (
+  <div className="space-y-3 text-center">
+    {!error ? (
+      <div className="text-sm text-slate-600">
+        Memeriksa link aktivasi...
+      </div>
+    ) : (
+      <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
+        {error}
+      </div>
+    )}
+  </div>
+) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
