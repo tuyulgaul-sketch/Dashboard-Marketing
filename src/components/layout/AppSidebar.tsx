@@ -6,6 +6,12 @@ import {
 } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  canAccessFeature,
+  isDigitalAffinityProfile,
+  isMarketingSupportRootProfile,
+  isSystemAdminProfile,
+} from "@/lib/accessControl";
+import {
   Briefcase,
   CalendarCheck,
   ChevronRight,
@@ -25,67 +31,75 @@ interface FlyoutItem {
   }>;
 }
 
-const normalize = (value?: string | null) =>
-  (value || "").trim().toLowerCase();
-
 export const AppSidebar: React.FC = () => {
   const { profile } = useAuth();
   const location = useLocation();
 
-  const unit = normalize(profile?.unit);
-  const department = normalize(profile?.department);
-  const role = normalize(profile?.role_level);
-  const email = normalize(profile?.email);
-
-  const isMarketingSupport =
-    unit === "marketing support";
-
   const isDigitalAffinity =
-    isMarketingSupport &&
-    department === "digital & affinity";
-
-  const isMarketingAdministration =
-    isMarketingSupport &&
-    department === "marketing administration";
-
-  const isMarketingCommunication =
-    isMarketingSupport &&
-    department === "marketing communication";
-
-  const isMarketingSupportRoot =
-    isMarketingSupport &&
-    !department;
-
-  const isArianie =
-    email === "arianie.fajarwati@pertalife.com";
+    isDigitalAffinityProfile(
+      profile
+    );
 
   const isSystemAdmin =
-    role.includes("system") &&
-    role.includes("admin");
+    isSystemAdminProfile(
+      profile
+    );
 
-  const isSalesMarketing =
-    !isMarketingSupport &&
-    !isSystemAdmin;
+  const isSupportRoot =
+    isMarketingSupportRootProfile(
+      profile
+    );
 
   const canSeeTarget =
-    isSalesMarketing || isArianie;
+    canAccessFeature(
+      profile,
+      "TARGET_RKAP"
+    );
+
+  const canSeeBooking =
+    canAccessFeature(
+      profile,
+      "BOOKING_PIPELINE"
+    );
+
+  const canSeeProduction =
+    canAccessFeature(
+      profile,
+      "PRODUCTION"
+    );
+
+  const canSeeAdminDocs =
+    canAccessFeature(
+      profile,
+      "DOCUMENT_ADMIN"
+    );
+
+  const canSeeMarcommDocs =
+    canAccessFeature(
+      profile,
+      "DOCUMENT_MARCOMM"
+    );
 
   const showAdministration =
-    isSalesMarketing ||
-    isArianie ||
-    isMarketingSupportRoot ||
-    isMarketingAdministration;
+    canSeeBooking ||
+    canSeeProduction ||
+    canSeeAdminDocs;
 
   const showCommunication =
-    isSalesMarketing ||
-    isArianie ||
-    isMarketingSupportRoot ||
-    isMarketingCommunication;
+    canSeeMarcommDocs;
 
-  const isExactActive = (path: string) => {
-    const [pathname, search = ""] = path.split("?");
+  const isExactActive = (
+    path: string
+  ) => {
+    const [
+      pathname,
+      search = "",
+    ] = path.split("?");
 
-    if (location.pathname !== pathname) {
+    if (
+      location.pathname !==
+      pathname
+    ) {
       return false;
     }
 
@@ -93,11 +107,26 @@ export const AppSidebar: React.FC = () => {
       return !location.search;
     }
 
-    const expected = new URLSearchParams(search);
-    const current = new URLSearchParams(location.search);
+    const expected =
+      new URLSearchParams(
+        search
+      );
 
-    for (const [key, value] of expected.entries()) {
-      if (current.get(key) !== value) {
+    const current =
+      new URLSearchParams(
+        location.search
+      );
+
+    for (
+      const [
+        key,
+        value,
+      ] of expected.entries()
+    ) {
+      if (
+        current.get(key) !==
+        value
+      ) {
         return false;
       }
     }
@@ -105,49 +134,93 @@ export const AppSidebar: React.FC = () => {
     return true;
   };
 
-  const administrationItems: FlyoutItem[] = [
-    {
-      label: "Booking & Pipeline",
-      path: "/booking-pipeline",
-      icon: Briefcase,
-    },
-    {
-      label: "Produksi",
-      path: "/produksi",
-      icon: TrendingUp,
-    },
-    {
-      label: "Dokumen Administrasi",
-      path: "/dokumen-pendukung?area=administration",
-      icon: FileText,
-    },
-  ];
+  const administrationItems:
+    FlyoutItem[] = [
+      ...(canSeeBooking
+        ? [
+            {
+              label:
+                "Booking & Pipeline",
+              path:
+                "/booking-pipeline",
+              icon: Briefcase,
+            },
+          ]
+        : []),
 
-  const communicationItems: FlyoutItem[] = [
-    {
-      label: "Marketing Tools",
-      path: "/dokumen-pendukung?area=marketing-tools",
-      icon: FileText,
-    },
-    {
-      label: "Permintaan Marcomm",
-      path: "/dokumen-pendukung?area=marcomm-requests",
-      icon: Megaphone,
-    },
-  ];
+      ...(canSeeProduction
+        ? [
+            {
+              label:
+                "Produksi",
+              path: "/produksi",
+              icon: TrendingUp,
+            },
+          ]
+        : []),
+
+      ...(canSeeAdminDocs
+        ? [
+            {
+              label:
+                "Dokumen Administrasi",
+              path:
+                "/dokumen-pendukung?area=administration",
+              icon: FileText,
+            },
+          ]
+        : []),
+    ];
+
+  const communicationItems:
+    FlyoutItem[] = [
+      ...(canSeeMarcommDocs
+        ? [
+            {
+              label:
+                "Marketing Tools",
+              path:
+                "/dokumen-pendukung?area=marketing-tools",
+              icon: FileText,
+            },
+            {
+              label:
+                "Permintaan Marcomm",
+              path:
+                "/dokumen-pendukung?area=marcomm-requests",
+              icon: Megaphone,
+            },
+          ]
+        : []),
+    ];
 
   const renderFlyoutGroup = (
     label: string,
-    icon: React.ComponentType<{ className?: string }>,
+    icon: React.ComponentType<{
+      className?: string;
+    }>,
     items: FlyoutItem[]
   ) => {
+    if (
+      items.length === 0
+    ) {
+      return null;
+    }
+
     const GroupIcon = icon;
-    const groupActive = items.some((item) =>
-      isExactActive(item.path)
-    );
+
+    const groupActive =
+      items.some((item) =>
+        isExactActive(
+          item.path
+        )
+      );
 
     return (
-      <div className="group relative" tabIndex={0}>
+      <div
+        className="group relative"
+        tabIndex={0}
+      >
         <button
           type="button"
           className={`flex w-full items-center gap-3 rounded-lg px-3.5 py-2.5 text-left text-xs font-semibold transition-all ${
@@ -171,25 +244,41 @@ export const AppSidebar: React.FC = () => {
           </div>
 
           <div className="space-y-1">
-            {items.map((item) => {
-              const ItemIcon = item.icon;
-              const active = isExactActive(item.path);
+            {items.map(
+              (item) => {
+                const ItemIcon =
+                  item.icon;
 
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition ${
-                    active
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                  }`}
-                >
-                  <ItemIcon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+                const active =
+                  isExactActive(
+                    item.path
+                  );
+
+                return (
+                  <Link
+                    key={
+                      item.path
+                    }
+                    to={
+                      item.path
+                    }
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition ${
+                      active
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    }`}
+                  >
+                    <ItemIcon className="h-4 w-4 shrink-0" />
+
+                    <span>
+                      {
+                        item.label
+                      }
+                    </span>
+                  </Link>
+                );
+              }
+            )}
           </div>
         </div>
       </div>
@@ -205,25 +294,33 @@ export const AppSidebar: React.FC = () => {
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
-              isActive
-                ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
-                : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-            }`
-          }
-        >
-          <LayoutDashboard className="h-4 w-4 shrink-0" />
-          <span>Dashboard</span>
-        </NavLink>
+        {!isSystemAdmin && (
+          <NavLink
+            to="/"
+            end
+            className={({
+              isActive,
+            }) =>
+              `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
+                isActive
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              }`
+            }
+          >
+            <LayoutDashboard className="h-4 w-4 shrink-0" />
+            <span>
+              Dashboard
+            </span>
+          </NavLink>
+        )}
 
         {canSeeTarget && (
           <NavLink
             to="/target-rkap"
-            className={({ isActive }) =>
+            className={({
+              isActive,
+            }) =>
               `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
                 isActive
                   ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
@@ -232,27 +329,41 @@ export const AppSidebar: React.FC = () => {
             }
           >
             <Target className="h-4 w-4 shrink-0" />
+
             <span>
-              {isArianie ? "Target & RKAP" : "Target Kinerja"}
+              {isSupportRoot
+                ? "Target & RKAP"
+                : "Target Kinerja"}
             </span>
           </NavLink>
         )}
 
-        <NavLink
-          to="/aktivitas"
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
-              isActive
-                ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
-                : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-            }`
-          }
-        >
-          <CalendarCheck className="h-4 w-4 shrink-0" />
-          <span>Aktivitas</span>
-        </NavLink>
+        {canAccessFeature(
+          profile,
+          "ACTIVITY"
+        ) && (
+          <NavLink
+            to="/aktivitas"
+            className={({
+              isActive,
+            }) =>
+              `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
+                isActive
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-900/40"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              }`
+            }
+          >
+            <CalendarCheck className="h-4 w-4 shrink-0" />
 
-        {(showAdministration || showCommunication) && (
+            <span>
+              Aktivitas
+            </span>
+          </NavLink>
+        )}
+
+        {(showAdministration ||
+          showCommunication) && (
           <div className="pt-3">
             <div className="px-3 pb-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-700">
               Service Marketing Support
@@ -280,7 +391,9 @@ export const AppSidebar: React.FC = () => {
           <div className="pt-3">
             <NavLink
               to="/administrasi"
-              className={({ isActive }) =>
+              className={({
+                isActive,
+              }) =>
                 `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${
                   isActive
                     ? "bg-blue-600 text-white"
@@ -289,7 +402,10 @@ export const AppSidebar: React.FC = () => {
               }
             >
               <Settings className="h-4 w-4 shrink-0" />
-              <span>Administrasi Sistem</span>
+
+              <span>
+                Administrasi Sistem
+              </span>
             </NavLink>
           </div>
         )}
@@ -303,7 +419,9 @@ export const AppSidebar: React.FC = () => {
         <div>
           {isDigitalAffinity
             ? "Digital & Affinity"
-            : profile?.department || profile?.unit || "Activity v2 Pilot"}
+            : profile?.department ||
+              profile?.unit ||
+              "Supabase RBAC"}
         </div>
       </div>
     </aside>
