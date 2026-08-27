@@ -18,6 +18,7 @@ import ProduksiPage from "./pages/ProduksiPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
 import AdministrasiPage from "./pages/AdministrasiPage";
 import TandaTerimaPage from "./pages/TandaTerimaPage";
+import SetPasswordPage from "./pages/SetPasswordPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
