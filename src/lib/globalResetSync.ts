@@ -4,6 +4,13 @@ import { store } from "@/services/store";
 const LOCAL_EPOCH_KEY =
   "pertalife_global_data_epoch";
 
+const LEGACY_MASTER_KEYS_TO_REMOVE = [
+  "pertalife_brokers",
+  "pertalife_broker_master_version",
+  "pertalife_agents",
+  "pertalife_agent_master_version",
+];
+
 type GlobalResetState = {
   data_epoch: number;
   last_global_reset_at:
@@ -25,6 +32,21 @@ const readState =
     return data as GlobalResetState;
   };
 
+const resetBrowserBusinessData =
+  async () => {
+    // Existing legacy reset clears UAT/business data and file caches.
+    await store.resetDataDummy();
+
+    // Final reset baseline:
+    // keep only User Master + Product Master.
+    LEGACY_MASTER_KEYS_TO_REMOVE.forEach(
+      (key) =>
+        localStorage.removeItem(
+          key
+        )
+    );
+  };
+
 export const syncGlobalResetState =
   async (): Promise<boolean> => {
     const state =
@@ -41,13 +63,11 @@ export const syncGlobalResetState =
       );
 
     if (!storedRaw) {
-      // On first deployment we do not erase current browser data
-      // unless an actual global reset has already occurred.
       if (
         state
           ?.last_global_reset_at
       ) {
-        await store.resetDataDummy();
+        await resetBrowserBusinessData();
 
         localStorage.setItem(
           LOCAL_EPOCH_KEY,
@@ -75,7 +95,7 @@ export const syncGlobalResetState =
       return false;
     }
 
-    await store.resetDataDummy();
+    await resetBrowserBusinessData();
 
     localStorage.setItem(
       LOCAL_EPOCH_KEY,
