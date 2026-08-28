@@ -5,14 +5,45 @@ import React, {
   useState,
 } from "react";
 
-import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
-import { syncLegacyIdentityFromSupabase } from "@/lib/legacyIdentityBridge";
-import { syncGlobalResetState } from "@/lib/globalResetSync";
+import type {
+  Session,
+} from "@supabase/supabase-js";
+
+import {
+  supabase,
+} from "@/lib/supabase";
+
+import {
+  syncLegacyIdentityFromSupabase,
+} from "@/lib/legacyIdentityBridge";
+
+import {
+  syncGlobalResetState,
+} from "@/lib/globalResetSync";
+
+import {
+  clearCentralUserRuntime,
+  syncCentralUserRuntime,
+} from "@/services/centralUserRuntime";
+
 import {
   clearCentralMasterRuntime,
   syncCentralMasterRuntime,
 } from "@/services/centralMasterRuntime";
+
+import {
+  clearCentralTargetRuntime,
+  syncCentralTargetRuntime,
+} from "@/services/centralTargetRuntime";
+
+import {
+  clearCentralBusinessRuntime,
+  syncCentralBusinessRuntime,
+} from "@/services/centralBusinessStorageRuntime";
+
+import {
+  migrateLegacyIndexedDbFilesOnce,
+} from "@/services/legacyFileMigration";
 
 export type AuthProfile = {
   id: string;
@@ -35,241 +66,367 @@ type AuthContextValue = {
 };
 
 const AuthContext =
-  createContext<AuthContextValue | undefined>(
+  createContext<
+    AuthContextValue |
+    undefined
+  >(
     undefined
   );
 
-export const AuthProvider: React.FC<{
-  children: React.ReactNode;
-}> = ({ children }) => {
-  const [session, setSession] =
-    useState<Session | null>(
-      null
-    );
-
-  const [profile, setProfile] =
-    useState<AuthProfile | null>(
-      null
-    );
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const loadProfile = async (
-    currentSession: Session | null
-  ) => {
-    if (!currentSession) {
-      clearCentralMasterRuntime();
-      setProfile(null);
-      return;
-    }
-
-    const { data, error } =
-      await supabase
-        .from("profiles")
-        .select(
-          "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
-        )
-        .eq(
-          "auth_user_id",
-          currentSession.user.id
-        )
-        .eq("active", true)
-        .single();
-
-    if (
-      error ||
-      !data
-    ) {
-      console.error(
-        "Profile tidak ditemukan:",
-        error
-      );
-
-      clearCentralMasterRuntime();
-      setProfile(null);
-      return;
-    }
-
-    const authProfile =
-      data as AuthProfile;
-
-    try {
-      await syncGlobalResetState();
-    } catch (resetSyncError) {
-      console.error(
-        "Global reset state sync gagal:",
-        resetSyncError
-      );
-    }
-
-    // Legacy identity remains temporarily required by modules that are not
-    // yet migrated. User/hierarchy authority itself is Supabase profiles.
-    syncLegacyIdentityFromSupabase(
-      authProfile
-    );
-
-    try {
-      // Critical ordering:
-      // load the central Product/Broker/Agent snapshot BEFORE protected
-      // business pages render. This prevents old browser-local master data
-      // from influencing Target checker / Pipeline forms / Master lookups.
-      await syncCentralMasterRuntime(
-        authProfile
-      );
-    } catch (
-      masterDataError
-    ) {
-      console.error(
-        "Central master data gagal dimuat:",
-        masterDataError
-      );
-
-      // Fail closed. Do not silently continue with localStorage master data.
-      clearCentralMasterRuntime();
-      setProfile(null);
-
-      return;
-    }
-
-    setProfile(authProfile);
+const clearAllCentralRuntime =
+  () => {
+    clearCentralBusinessRuntime();
+    clearCentralTargetRuntime();
+    clearCentralMasterRuntime();
+    clearCentralUserRuntime();
   };
 
-  useEffect(() => {
-    let mounted = true;
+export const AuthProvider:
+  React.FC<{
+    children:
+      React.ReactNode;
+  }> = ({
+    children,
+  }) => {
+    const [
+      session,
+      setSession,
+    ] =
+      useState<
+        Session |
+        null
+      >(
+        null
+      );
 
-    const initialize =
-      async () => {
-        const {
-          data: {
-            session:
-              initialSession,
-          },
-        } =
-          await supabase.auth.getSession();
+    const [
+      profile,
+      setProfile,
+    ] =
+      useState<
+        AuthProfile |
+        null
+      >(
+        null
+      );
 
-        if (!mounted) {
+    const [
+      loading,
+      setLoading,
+    ] =
+      useState(
+        true
+      );
+
+    const loadProfile =
+      async (
+        currentSession:
+          Session |
+          null
+      ) => {
+        if (
+          !currentSession
+        ) {
+          clearAllCentralRuntime();
+          setProfile(
+            null
+          );
           return;
         }
 
-        setSession(
-          initialSession
-        );
+        const {
+          data,
+          error,
+        } =
+          await supabase
+            .from(
+              "profiles"
+            )
+            .select(
+              "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
+            )
+            .eq(
+              "auth_user_id",
+              currentSession
+                .user.id
+            )
+            .eq(
+              "active",
+              true
+            )
+            .single();
 
-        await loadProfile(
-          initialSession
-        );
-
-        if (mounted) {
-          setLoading(false);
-        }
-      };
-
-    initialize();
-
-    const {
-      data: {
-        subscription,
-      },
-    } =
-      supabase.auth.onAuthStateChange(
-        (
-          _event,
-          newSession
-        ) => {
-          if (!mounted) {
-            return;
-          }
-
-          setSession(
-            newSession
+        if (
+          error ||
+          !data
+        ) {
+          console.error(
+            "Profile tidak ditemukan:",
+            error
           );
 
-          setLoading(true);
+          clearAllCentralRuntime();
+          setProfile(
+            null
+          );
+          return;
+        }
 
-          loadProfile(
-            newSession
-          ).finally(() => {
-            if (mounted) {
+        const authProfile =
+          data as
+            AuthProfile;
+
+        try {
+          await syncGlobalResetState();
+        } catch (
+          resetSyncError
+        ) {
+          console.error(
+            "Global reset state sync gagal:",
+            resetSyncError
+          );
+        }
+
+        // Temporary legacy identity compatibility.
+        // Canonical identity/hierarchy remains Supabase profiles.
+        syncLegacyIdentityFromSupabase(
+          authProfile
+        );
+
+        try {
+          // Canonical legacy-compatible hierarchy now comes from Supabase
+          // profiles, not browser-local pertalife_users.
+          await syncCentralUserRuntime(
+            authProfile
+          );
+
+          // Phase 1A — central master data.
+          await syncCentralMasterRuntime(
+            authProfile
+          );
+
+          // Phase 1B — central Target & RKAP.
+          await syncCentralTargetRuntime(
+            authProfile.id
+          );
+
+          // Final pack — all remaining legacy business arrays.
+          await syncCentralBusinessRuntime(
+            authProfile
+          );
+        } catch (
+          centralRuntimeError
+        ) {
+          console.error(
+            "Central business runtime gagal dimuat:",
+            centralRuntimeError
+          );
+
+          // Fail closed. Never silently fall back to browser-local
+          // business authority after centralization.
+          clearAllCentralRuntime();
+          setProfile(
+            null
+          );
+          return;
+        }
+
+        // File migration is best-effort and does not become a fallback.
+        // Existing files present on this browser are copied to private
+        // Supabase Storage. Failure is visible in Console and retried later.
+        void migrateLegacyIndexedDbFilesOnce(
+          authProfile.id
+        );
+
+        setProfile(
+          authProfile
+        );
+      };
+
+    useEffect(
+      () => {
+        let mounted =
+          true;
+
+        const initialize =
+          async () => {
+            const {
+              data: {
+                session:
+                  initialSession,
+              },
+            } =
+              await supabase
+                .auth
+                .getSession();
+
+            if (
+              !mounted
+            ) {
+              return;
+            }
+
+            setSession(
+              initialSession
+            );
+
+            await loadProfile(
+              initialSession
+            );
+
+            if (
+              mounted
+            ) {
               setLoading(
                 false
               );
             }
-          });
-        }
-      );
+          };
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-      clearCentralMasterRuntime();
-    };
-  }, []);
+        void initialize();
 
-  useEffect(() => {
-    if (!profile) {
-      return;
-    }
+        const {
+          data: {
+            subscription,
+          },
+        } =
+          supabase
+            .auth
+            .onAuthStateChange(
+              (
+                _event,
+                newSession
+              ) => {
+                if (
+                  !mounted
+                ) {
+                  return;
+                }
 
-    const intervalId =
-      window.setInterval(
-        async () => {
-          try {
-            const changed =
-              await syncGlobalResetState();
+                setSession(
+                  newSession
+                );
 
-            if (changed) {
-              window.location.reload();
-            }
-          } catch (error) {
-            console.error(
-              "Periodic global reset sync gagal:",
-              error
+                setLoading(
+                  true
+                );
+
+                loadProfile(
+                  newSession
+                )
+                  .finally(
+                    () => {
+                      if (
+                        mounted
+                      ) {
+                        setLoading(
+                          false
+                        );
+                      }
+                    }
+                  );
+              }
             );
-          }
-        },
-        60_000
-      );
 
-    return () => {
-      window.clearInterval(
-        intervalId
-      );
-    };
-  }, [profile?.id]);
+        return () => {
+          mounted =
+            false;
 
-  const signOut = async () => {
-    clearCentralMasterRuntime();
+          subscription.unsubscribe();
+          clearAllCentralRuntime();
+        };
+      },
+      []
+    );
 
-    await supabase.auth.signOut();
+    useEffect(
+      () => {
+        if (
+          !profile
+        ) {
+          return;
+        }
 
-    setSession(null);
-    setProfile(null);
+        const intervalId =
+          window.setInterval(
+            async () => {
+              try {
+                const changed =
+                  await syncGlobalResetState();
+
+                if (
+                  changed
+                ) {
+                  window.location.reload();
+                }
+              } catch (
+                error
+              ) {
+                console.error(
+                  "Periodic global reset sync gagal:",
+                  error
+                );
+              }
+            },
+            60_000
+          );
+
+        return () => {
+          window.clearInterval(
+            intervalId
+          );
+        };
+      },
+      [
+        profile?.id,
+      ]
+    );
+
+    const signOut =
+      async () => {
+        clearAllCentralRuntime();
+
+        await supabase
+          .auth
+          .signOut();
+
+        setSession(
+          null
+        );
+
+        setProfile(
+          null
+        );
+      };
+
+    return (
+      <AuthContext.Provider
+        value={{
+          session,
+          profile,
+          loading,
+          signOut,
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    );
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        profile,
-        loading,
-        signOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
+export const useAuth =
+  () => {
+    const context =
+      useContext(
+        AuthContext
+      );
 
-export const useAuth = () => {
-  const context =
-    useContext(AuthContext);
+    if (
+      !context
+    ) {
+      throw new Error(
+        "useAuth harus digunakan di dalam AuthProvider"
+      );
+    }
 
-  if (!context) {
-    throw new Error(
-      "useAuth harus digunakan di dalam AuthProvider"
-    );
-  }
-
-  return context;
-};
+    return context;
+  };
