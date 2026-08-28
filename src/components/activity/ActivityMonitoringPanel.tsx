@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -137,6 +136,31 @@ const getBranchLabel = (
   return `${profile.full_name} — ${profile.role_level}`;
 };
 
+const getDivisionLabel = (
+  profile: DirectoryProfile
+) => {
+  const unit = profile.unit?.trim();
+
+  if (
+    unit &&
+    unit.toLowerCase() !== "directorate marketing" &&
+    unit.toLowerCase() !== "direktorat marketing"
+  ) {
+    return unit;
+  }
+
+  const department = profile.department?.trim();
+  if (department) return department;
+
+  if (
+    profile.role_level.trim().toUpperCase() === "ADVISOR"
+  ) {
+    return "Direktorat Marketing / Advisor";
+  }
+
+  return getBranchLabel(profile);
+};
+
 const isActive = (
   activity: UniversalActivity
 ) => ACTIVE_STATUSES.has(activity.status);
@@ -190,11 +214,21 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
   directory,
   onOpenActivity,
 }) => {
-  const [branchId, setBranchId] = useState("ALL");
+  const [divisionId, setDivisionId] = useState("ALL");
+  const [subUnitId, setSubUnitId] = useState("ALL");
   const [personId, setPersonId] = useState("ALL");
   const [alertFilter, setAlertFilter] = useState<
     AlertType | "ALL"
   >("ALL");
+
+  const roleKey =
+    currentProfile.role_level
+      ?.trim()
+      .toUpperCase() || "";
+
+  const isDirector =
+    roleKey === "DIRECTOR" ||
+    roleKey === "DIREKTUR";
 
   const profileMap = useMemo(
     () =>
@@ -267,16 +301,71 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
     return result;
   };
 
-  const baseScopeIds = useMemo(() => {
+  const divisionOptions = useMemo(
+    () =>
+      isDirector
+        ? [...directReports].sort((a, b) =>
+            getDivisionLabel(a).localeCompare(
+              getDivisionLabel(b),
+              "id"
+            )
+          )
+        : [],
+    [directReports, isDirector]
+  );
+
+  const subUnitOptions = useMemo(() => {
+    if (!hasSubordinates) {
+      return [];
+    }
+
+    if (!isDirector) {
+      return directReports;
+    }
+
+    if (divisionId === "ALL") {
+      return [];
+    }
+
+    return (childrenMap.get(divisionId) || [])
+      .map((id) => profileMap.get(id))
+      .filter(
+        (
+          item
+        ): item is DirectoryProfile =>
+          Boolean(item)
+      )
+      .sort((a, b) =>
+        getBranchLabel(a).localeCompare(
+          getBranchLabel(b),
+          "id"
+        )
+      );
+  }, [
+    childrenMap,
+    directReports,
+    divisionId,
+    hasSubordinates,
+    isDirector,
+    profileMap,
+  ]);
+
+  const divisionScopeIds = useMemo(() => {
     if (!hasSubordinates) {
       return new Set([currentProfile.id]);
     }
 
-    if (branchId !== "ALL") {
-      return getSubtreeIds(branchId);
-    }
-
     const result = new Set<string>();
+
+    if (
+      isDirector &&
+      divisionId !== "ALL"
+    ) {
+      getSubtreeIds(divisionId).forEach(
+        (id) => result.add(id)
+      );
+      return result;
+    }
 
     directReports.forEach((report) => {
       getSubtreeIds(report.id).forEach(
@@ -287,11 +376,28 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    branchId,
     childrenMap,
     currentProfile.id,
     directReports,
+    divisionId,
     hasSubordinates,
+    isDirector,
+  ]);
+
+  const baseScopeIds = useMemo(() => {
+    if (
+      subUnitId !== "ALL" &&
+      divisionScopeIds.has(subUnitId)
+    ) {
+      return getSubtreeIds(subUnitId);
+    }
+
+    return divisionScopeIds;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    childrenMap,
+    divisionScopeIds,
+    subUnitId,
   ]);
 
   const scopeProfiles = useMemo(
@@ -468,11 +574,12 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
   const workloadRows = useMemo(() => {
     return scopeProfiles
       .map((person) => {
-        const owned = scopeActivities.filter(
-          (activity) =>
-            activity.owner_profile_id ===
-            person.id
-        );
+        const owned =
+          scopeActivities.filter(
+            (activity) =>
+              activity.owner_profile_id ===
+              person.id
+          );
 
         const active =
           owned.filter(isActive);
@@ -482,9 +589,11 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
             ? Math.round(
                 active.reduce(
                   (sum, item) =>
-                    sum + item.progress,
+                    sum +
+                    item.progress,
                   0
-                ) / active.length
+                ) /
+                  active.length
               )
             : 0;
 
@@ -496,12 +605,12 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
               item.status ===
               "ON_PROGRESS"
           ).length,
-          overdue: owned.filter(
-            isOverdue
-          ).length,
-          dueSoon: owned.filter(
-            isDueSoon
-          ).length,
+          overdue:
+            owned.filter(isOverdue)
+              .length,
+          dueSoon:
+            owned.filter(isDueSoon)
+              .length,
           pending: owned.filter(
             (item) =>
               item.status ===
@@ -530,27 +639,59 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
           "id"
         );
       });
-  }, [scopeActivities, scopeProfiles]);
+  }, [
+    scopeActivities,
+    scopeProfiles,
+  ]);
 
-  const selectedBranchName = useMemo(() => {
+  const selectedDivisionName = useMemo(() => {
+    if (!isDirector) {
+      return null;
+    }
+
+    if (divisionId === "ALL") {
+      return "Semua Divisi";
+    }
+
+    const division =
+      profileMap.get(divisionId);
+
+    return division
+      ? getDivisionLabel(division)
+      : "Divisi";
+  }, [
+    divisionId,
+    isDirector,
+    profileMap,
+  ]);
+
+  const selectedSubUnitName = useMemo(() => {
     if (!hasSubordinates) {
       return "Aktivitas Saya";
     }
 
-    if (branchId === "ALL") {
+    if (subUnitId === "ALL") {
+      if (isDirector) {
+        return divisionId === "ALL"
+          ? "Semua Sub Unit"
+          : "Semua Sub Unit di Divisi";
+      }
+
       return "Semua Sub Unit";
     }
 
-    const branch =
-      profileMap.get(branchId);
+    const subUnit =
+      profileMap.get(subUnitId);
 
-    return branch
-      ? getBranchLabel(branch)
+    return subUnit
+      ? getBranchLabel(subUnit)
       : "Sub Unit";
   }, [
-    branchId,
+    divisionId,
     hasSubordinates,
+    isDirector,
     profileMap,
+    subUnitId,
   ]);
 
   const summaryCards = [
@@ -614,22 +755,69 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
 
               <p className="mt-1 text-xs text-slate-500">
                 {hasSubordinates
-                  ? "Scope mengikuti hierarchy organisasi. Pilih sub unit/divisi untuk mempermudah monitoring level SPV, DH, VP hingga Direktur."
+                  ? isDirector
+                    ? "Filter Direktur: pilih Divisi, lalu Sub Unit dan PIC. Scope tetap mengikuti hierarchy organisasi."
+                    : "Scope mengikuti hierarchy organisasi. Pilih sub unit dan PIC untuk mempermudah monitoring."
                   : "Menampilkan aktivitas pribadi yang membutuhkan perhatian."}
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {hasSubordinates && (
+            {hasSubordinates && (
+              <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-3">
+                {isDirector && (
+                  <Select
+                    value={divisionId}
+                    onValueChange={(value) => {
+                      setDivisionId(value);
+                      setSubUnitId("ALL");
+                      setPersonId("ALL");
+                    }}
+                  >
+                    <SelectTrigger className="w-full xl:w-[230px]">
+                      <SelectValue placeholder="Pilih Divisi" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="ALL">
+                        Semua Divisi
+                      </SelectItem>
+
+                      {divisionOptions.map(
+                        (division) => (
+                          <SelectItem
+                            key={division.id}
+                            value={division.id}
+                          >
+                            {getDivisionLabel(
+                              division
+                            )}
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+
                 <Select
-                  value={branchId}
+                  value={subUnitId}
                   onValueChange={(value) => {
-                    setBranchId(value);
+                    setSubUnitId(value);
                     setPersonId("ALL");
                   }}
+                  disabled={
+                    isDirector &&
+                    divisionId === "ALL"
+                  }
                 >
-                  <SelectTrigger className="w-full sm:w-[280px]">
-                    <SelectValue placeholder="Pilih Sub Unit / Divisi" />
+                  <SelectTrigger className="w-full xl:w-[280px]">
+                    <SelectValue
+                      placeholder={
+                        isDirector &&
+                        divisionId === "ALL"
+                          ? "Pilih Divisi dulu"
+                          : "Pilih Sub Unit"
+                      }
+                    />
                   </SelectTrigger>
 
                   <SelectContent>
@@ -637,28 +825,26 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
                       Semua Sub Unit
                     </SelectItem>
 
-                    {directReports.map(
-                      (report) => (
+                    {subUnitOptions.map(
+                      (subUnit) => (
                         <SelectItem
-                          key={report.id}
-                          value={report.id}
+                          key={subUnit.id}
+                          value={subUnit.id}
                         >
                           {getBranchLabel(
-                            report
+                            subUnit
                           )}
                         </SelectItem>
                       )
                     )}
                   </SelectContent>
                 </Select>
-              )}
 
-              {hasSubordinates && (
                 <Select
                   value={personId}
                   onValueChange={setPersonId}
                 >
-                  <SelectTrigger className="w-full sm:w-[240px]">
+                  <SelectTrigger className="w-full xl:w-[230px]">
                     <SelectValue placeholder="Pilih PIC" />
                   </SelectTrigger>
 
@@ -679,20 +865,29 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
                     )}
                   </SelectContent>
                 </Select>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </CardHeader>
 
         <CardContent>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
             Scope aktif:{" "}
+            {selectedDivisionName && (
+              <>
+                <span className="font-bold text-slate-900">
+                  {selectedDivisionName}
+                </span>
+                {" • "}
+              </>
+            )}
             <span className="font-bold text-slate-900">
-              {selectedBranchName}
+              {selectedSubUnitName}
             </span>
+
             {personId !== "ALL" && (
               <>
-                {" "}• PIC:{" "}
+                {" • PIC: "}
                 <span className="font-bold text-slate-900">
                   {
                     profileMap.get(
