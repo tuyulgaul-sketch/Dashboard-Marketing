@@ -9,6 +9,10 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { syncLegacyIdentityFromSupabase } from "@/lib/legacyIdentityBridge";
 import { syncGlobalResetState } from "@/lib/globalResetSync";
+import {
+  clearCentralMasterRuntime,
+  syncCentralMasterRuntime,
+} from "@/services/centralMasterRuntime";
 
 export type AuthProfile = {
   id: string;
@@ -55,6 +59,7 @@ export const AuthProvider: React.FC<{
     currentSession: Session | null
   ) => {
     if (!currentSession) {
+      clearCentralMasterRuntime();
       setProfile(null);
       return;
     }
@@ -81,6 +86,7 @@ export const AuthProvider: React.FC<{
         error
       );
 
+      clearCentralMasterRuntime();
       setProfile(null);
       return;
     }
@@ -97,9 +103,34 @@ export const AuthProvider: React.FC<{
       );
     }
 
+    // Legacy identity remains temporarily required by modules that are not
+    // yet migrated. User/hierarchy authority itself is Supabase profiles.
     syncLegacyIdentityFromSupabase(
       authProfile
     );
+
+    try {
+      // Critical ordering:
+      // load the central Product/Broker/Agent snapshot BEFORE protected
+      // business pages render. This prevents old browser-local master data
+      // from influencing Target checker / Pipeline forms / Master lookups.
+      await syncCentralMasterRuntime(
+        authProfile
+      );
+    } catch (
+      masterDataError
+    ) {
+      console.error(
+        "Central master data gagal dimuat:",
+        masterDataError
+      );
+
+      // Fail closed. Do not silently continue with localStorage master data.
+      clearCentralMasterRuntime();
+      setProfile(null);
+
+      return;
+    }
 
     setProfile(authProfile);
   };
@@ -171,6 +202,7 @@ export const AuthProvider: React.FC<{
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      clearCentralMasterRuntime();
     };
   }, []);
 
@@ -207,7 +239,10 @@ export const AuthProvider: React.FC<{
   }, [profile?.id]);
 
   const signOut = async () => {
+    clearCentralMasterRuntime();
+
     await supabase.auth.signOut();
+
     setSession(null);
     setProfile(null);
   };
