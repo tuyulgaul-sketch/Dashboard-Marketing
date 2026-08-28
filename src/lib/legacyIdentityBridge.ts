@@ -12,12 +12,10 @@ type SupabaseLegacyIdentity = {
 const LEGACY_USERS_STORAGE_KEY =
   "pertalife_users";
 
-const buildHaikhalLegacyUser = (
-  profile: SupabaseLegacyIdentity
-) => ({
+const buildHaikhalLegacyUser = () => ({
   id: "USR-000032",
-  name: profile.full_name,
-  email: profile.email,
+  name: "Haikhal Khadafi",
+  email: "haikhal.khadafi@pertalife.com",
   role: "STAFF_MARKETING",
   position: "Staff Captive II",
   unit: "Captive Marketing",
@@ -38,14 +36,59 @@ export const syncLegacyIdentityFromSupabase = (
 
   let users = store.getUsers();
 
-  // Final hierarchy corrections for old browser-only UAT data.
+  /**
+   * Canonical hierarchy normalization for old browser-only UAT data.
+   *
+   * This runs for EVERY authenticated legacy user so Target/RKAP checker
+   * does not depend on which user happened to log in previously on the
+   * same browser.
+   *
+   * Final target-holder hierarchy:
+   * - USR-000008 Hidayatulloh: inactive / historical only; ID not reused.
+   * - USR-000009 Ganesti: SPV Captive II, direct to Resty (USR-000007).
+   * - USR-000032 Haikhal: Staff Captive II, direct to Resty.
+   * - USR-000013 Prisko: Staff Captive III, direct to Affit (USR-000010).
+   * - USR-000026/027 Marketing Administration: direct to Endah (USR-000028).
+   */
   users = users.map((user) => {
+    if (user.id === "USR-000008") {
+      return {
+        ...user,
+        status: "Inactive",
+      };
+    }
+
     if (user.id === "USR-000009") {
       return {
         ...user,
         role: "SUPERVISOR_MARKETING",
         position: "Supervisor Captive II",
         superiorId: "USR-000007",
+        status: "Active",
+      };
+    }
+
+    if (user.id === "USR-000032") {
+      return {
+        ...user,
+        role: "STAFF_MARKETING",
+        position: "Staff Captive II",
+        unit: "Captive Marketing",
+        department: "Captive II",
+        superiorId: "USR-000007",
+        status: "Active",
+      };
+    }
+
+    if (user.id === "USR-000013") {
+      return {
+        ...user,
+        role: "STAFF_MARKETING",
+        position: "Staff Captive III",
+        unit: "Captive Marketing",
+        department: "Captive III",
+        superiorId: "USR-000010",
+        status: "Active",
       };
     }
 
@@ -62,16 +105,16 @@ export const syncLegacyIdentityFromSupabase = (
     return user;
   });
 
-  // Hidayatulloh's old slot USR-000008 is intentionally NOT reused.
-  // It may still be referenced by historical UAT records.
+  // USR-000008 remains historical and is intentionally never reused.
+  // Ensure Haikhal exists in every browser's legacy user master, even
+  // when the current login is Arianie/Director/another user.
   if (
-    requestedId === "USR-000032" &&
     !users.some(
       (user) => user.id === "USR-000032"
     )
   ) {
     users.push(
-      buildHaikhalLegacyUser(profile) as any
+      buildHaikhalLegacyUser() as any
     );
   }
 
