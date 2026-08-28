@@ -29,6 +29,7 @@ import {
 import Index from "./pages/Index";
 import TargetRkapPage from "./pages/TargetRkapPage";
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
+import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import BookingPipelinePage from "./pages/BookingPipelinePage";
 import ProduksiPage from "./pages/ProduksiPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
@@ -116,9 +117,6 @@ const HomeRoute: React.FC = () => {
     return <DigitalAffinityPage />;
   }
 
-  // Safety fallback:
-  // a newly imported profile without a legacy mapping never gets the
-  // legacy dashboard fallback identity. Activity is Supabase-native.
   if (
     !profile.legacy_user_id
   ) {
@@ -170,6 +168,17 @@ const AppRoutes = () => (
         <Protected>
           <FeatureOnly feature="ACTIVITY">
             <AktivitasUniversalPage />
+          </FeatureOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/booking-ruang-meeting"
+      element={
+        <Protected>
+          <FeatureOnly feature="MEETING_ROOM">
+            <MarketingMeetingRoomPage />
           </FeatureOnly>
         </Protected>
       }
