@@ -3,6 +3,7 @@ import type { AuthProfile } from "@/contexts/AuthContext";
 export type AppFeature =
   | "DASHBOARD"
   | "ACTIVITY"
+  | "MEETING_ROOM"
   | "TARGET_RKAP"
   | "BOOKING_PIPELINE"
   | "PRODUCTION"
@@ -99,7 +100,10 @@ export const canAccessFeature = (
     return false;
   }
 
-  if (feature === "ACTIVITY") {
+  if (
+    feature === "ACTIVITY" ||
+    feature === "MEETING_ROOM"
+  ) {
     return !isSystemAdminProfile(profile);
   }
 
@@ -111,7 +115,7 @@ export const canAccessFeature = (
     return !isSystemAdminProfile(profile);
   }
 
-  // All modules below are still backed by the legacy UAT/localStorage
+  // Modules below are still backed by the legacy UAT/localStorage
   // business store. A stable legacy_user_id is mandatory so the logged-in
   // Supabase identity cannot accidentally fall back to another user.
   if (!hasLegacyBusinessIdentity(profile)) {
