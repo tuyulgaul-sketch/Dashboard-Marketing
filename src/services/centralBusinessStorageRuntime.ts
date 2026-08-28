@@ -43,6 +43,21 @@ const pendingByKey =
     Promise<void>
   >();
 
+const desiredByKey =
+  new Map<
+    CentralBusinessStorageKey,
+    EntityPayload[]
+  >();
+
+const flushTimerByKey =
+  new Map<
+    CentralBusinessStorageKey,
+    number
+  >();
+
+const BATCH_DEBOUNCE_MS =
+  700;
+
 let activeProfileId:
   string | null = null;
 
@@ -455,13 +470,26 @@ const syncDesiredCollection =
     await refreshCentralBusinessRuntime();
   };
 
-const enqueueCollectionSync =
+const flushCollectionSync =
   (
     storageKey:
-      CentralBusinessStorageKey,
-    desiredRows:
-      EntityPayload[]
+      CentralBusinessStorageKey
   ) => {
+    const desiredRows =
+      desiredByKey.get(
+        storageKey
+      );
+
+    if (
+      !desiredRows
+    ) {
+      return;
+    }
+
+    desiredByKey.delete(
+      storageKey
+    );
+
     const previous =
       pendingByKey.get(
         storageKey
@@ -503,8 +531,6 @@ const enqueueCollectionSync =
                 ? `Perubahan ditolak database pusat: ${error.message}`
                 : "Perubahan ditolak database pusat."
             );
-
-            throw error;
           }
         )
         .finally(
@@ -518,6 +544,31 @@ const enqueueCollectionSync =
                 storageKey
               );
             }
+
+            if (
+              desiredByKey.has(
+                storageKey
+              )
+            ) {
+              const timer =
+                window.setTimeout(
+                  () => {
+                    flushTimerByKey.delete(
+                      storageKey
+                    );
+
+                    flushCollectionSync(
+                      storageKey
+                    );
+                  },
+                  BATCH_DEBOUNCE_MS
+                );
+
+              flushTimerByKey.set(
+                storageKey,
+                timer
+              );
+            }
           }
         );
 
@@ -526,6 +577,58 @@ const enqueueCollectionSync =
       task
     );
   };
+
+const enqueueCollectionSync =
+  (
+    storageKey:
+      CentralBusinessStorageKey,
+    desiredRows:
+      EntityPayload[]
+  ) => {
+    // Keep only the latest desired snapshot. Bulk importers may call
+    // localStorage.setItem hundreds of times while building one collection;
+    // debouncing collapses that burst into one RPC / one DB transaction.
+    desiredByKey.set(
+      storageKey,
+      cloneRows(
+        desiredRows
+      )
+    );
+
+    const existingTimer =
+      flushTimerByKey.get(
+        storageKey
+      );
+
+    if (
+      existingTimer !==
+      undefined
+    ) {
+      window.clearTimeout(
+        existingTimer
+      );
+    }
+
+    const timer =
+      window.setTimeout(
+        () => {
+          flushTimerByKey.delete(
+            storageKey
+          );
+
+          flushCollectionSync(
+            storageKey
+          );
+        },
+        BATCH_DEBOUNCE_MS
+      );
+
+    flushTimerByKey.set(
+      storageKey,
+      timer
+    );
+  };
+
 
 export const installCentralBusinessStorageInterceptor =
   () => {
@@ -797,6 +900,16 @@ export const clearCentralBusinessRuntime =
       realtimeTimer =
         null;
     }
+
+    flushTimerByKey.forEach(
+      timer =>
+        window.clearTimeout(
+          timer
+        )
+    );
+
+    flushTimerByKey.clear();
+    desiredByKey.clear();
 
     visibleCollections.clear();
     serverCollections.clear();
