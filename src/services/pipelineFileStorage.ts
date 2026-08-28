@@ -1,17 +1,8 @@
-const PIPELINE_FILE_DB_NAME =
-  'pertalife_pipeline_files';
-
-const PIPELINE_FILE_DB_VERSION =
-  3;
-
-const QUOTATION_FILE_STORE =
-  'quotation_files';
-
-const OUTCOME_FILE_STORE =
-  'outcome_files';
-
-const QUOTATION_REVISION_FILE_STORE =
-  'quotation_revision_files';
+import {
+  downloadCentralBusinessFile,
+  getCentralBusinessFile,
+  uploadCentralBusinessFile,
+} from "@/services/businessFileStorage";
 
 interface StoredPipelineFile {
   id: string;
@@ -21,557 +12,295 @@ interface StoredPipelineFile {
   savedAt: string;
 }
 
-const openPipelineFileDb =
-  (): Promise<IDBDatabase> =>
-    new Promise(
+type PipelineLike = {
+  id?: string;
+  picUserId?: string;
+  documents?: Array<{ id?: string }>;
+  closingDocuments?: Array<{ id?: string }>;
+  quotations?: Array<{ id?: string }>;
+  outcomeDocuments?: Array<{ id?: string }>;
+  quotationRevisionDocuments?: Array<{ id?: string }>;
+  quotationRevisionRequests?: Array<{
+    documents?: Array<{ id?: string }>;
+  }>;
+};
+
+const getCentralPipelineRows =
+  (): PipelineLike[] => {
+    try {
+      const raw =
+        localStorage.getItem(
+          "pertalife_pipelines"
+        );
+
+      const parsed =
+        raw
+          ? JSON.parse(raw)
+          : [];
+
+      return Array.isArray(parsed)
+        ? parsed
+        : [];
+    } catch {
+      return [];
+    }
+  };
+
+const containsFileId = (
+  pipeline:
+    PipelineLike,
+  fileId:
+    string
+) => {
+  const directArrays = [
+    pipeline.documents,
+    pipeline.closingDocuments,
+    pipeline.quotations,
+    pipeline.outcomeDocuments,
+    pipeline.quotationRevisionDocuments,
+  ];
+
+  if (
+    directArrays.some(
+      list =>
+        Array.isArray(list) &&
+        list.some(
+          item =>
+            item?.id ===
+            fileId
+        )
+    )
+  ) {
+    return true;
+  }
+
+  return (
+    pipeline.quotationRevisionRequests ||
+    []
+  ).some(
+    request =>
       (
-        resolve,
-        reject
-      ) => {
-        const request =
-          indexedDB.open(
-            PIPELINE_FILE_DB_NAME,
-            PIPELINE_FILE_DB_VERSION
-          );
+        request.documents ||
+        []
+      ).some(
+        item =>
+          item?.id ===
+          fileId
+      )
+  );
+};
 
-        request.onupgradeneeded =
-          () => {
-            const db =
-              request.result;
+const findPipelineContext = (
+  fileId:
+    string
+) => {
+  const pipeline =
+    getCentralPipelineRows()
+      .find(
+        item =>
+          containsFileId(
+            item,
+            fileId
+          )
+      );
 
-            if (
-              !db.objectStoreNames.contains(
-                QUOTATION_FILE_STORE
-              )
-            ) {
-              db.createObjectStore(
-                QUOTATION_FILE_STORE,
-                {
-                  keyPath:
-                    'id',
-                }
-              );
-            }
+  return {
+    entityId:
+      pipeline?.id ||
+      fileId,
+    visibilityPayload: {
+      picUserId:
+        pipeline?.picUserId ||
+        "",
+      pipelineId:
+        pipeline?.id ||
+        "",
+    },
+  };
+};
 
-            if (
-              !db.objectStoreNames.contains(
-                OUTCOME_FILE_STORE
-              )
-            ) {
-              db.createObjectStore(
-                OUTCOME_FILE_STORE,
-                {
-                  keyPath:
-                    'id',
-                }
-              );
-            }
+const getStoredFile =
+  async (
+    fileId:
+      string
+  ): Promise<
+    StoredPipelineFile | null
+  > => {
+    const stored =
+      await getCentralBusinessFile(
+        fileId
+      );
 
-            if (
-              !db.objectStoreNames.contains(
-                QUOTATION_REVISION_FILE_STORE
-              )
-            ) {
-              db.createObjectStore(
-                QUOTATION_REVISION_FILE_STORE,
-                {
-                  keyPath:
-                    'id',
-                }
-              );
-            }
-          };
+    if (
+      !stored
+    ) {
+      return null;
+    }
 
-        request.onsuccess =
-          () =>
-            resolve(
-              request.result
-            );
+    return {
+      id:
+        fileId,
+      blob:
+        stored.blob,
+      fileName:
+        stored.metadata
+          .file_name,
+      mimeType:
+        stored.metadata
+          .mime_type ||
+        "application/octet-stream",
+      savedAt:
+        stored.metadata
+          .uploaded_at,
+    };
+  };
 
-        request.onerror =
-          () =>
-            reject(
-              request.error
-            );
-      }
-    );
+const saveFile =
+  async (
+    module:
+      | "PIPELINE_QUOTATION"
+      | "PIPELINE_OUTCOME"
+      | "PIPELINE_REVISION",
+    fileId:
+      string,
+    file:
+      File
+  ) => {
+    const context =
+      findPipelineContext(
+        fileId
+      );
+
+    await uploadCentralBusinessFile({
+      fileId,
+      module,
+      storageKey:
+        "pertalife_pipelines",
+      entityId:
+        context.entityId,
+      file,
+      visibilityPayload:
+        context.visibilityPayload,
+      metadata: {
+        source:
+          "pipelineFileStorage",
+      },
+    });
+  };
 
 export const saveQuotationFile =
   async (
-    quotationId: string,
-    file: File
+    quotationId:
+      string,
+    file:
+      File
   ) => {
-    const db =
-      await openPipelineFileDb();
-
-    await new Promise<void>(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            QUOTATION_FILE_STORE,
-            'readwrite'
-          );
-
-        const store =
-          transaction.objectStore(
-            QUOTATION_FILE_STORE
-          );
-
-        const payload:
-          StoredPipelineFile = {
-            id:
-              quotationId,
-            blob:
-              file,
-            fileName:
-              file.name,
-            mimeType:
-              file.type ||
-              'application/octet-stream',
-            savedAt:
-              new Date().toISOString(),
-          };
-
-        store.put(
-          payload
-        );
-
-        transaction.oncomplete =
-          () => {
-            db.close();
-            resolve();
-          };
-
-        transaction.onerror =
-          () => {
-            db.close();
-            reject(
-              transaction.error
-            );
-          };
-      }
+    await saveFile(
+      "PIPELINE_QUOTATION",
+      quotationId,
+      file
     );
   };
 
 export const getQuotationFile =
   async (
-    quotationId: string
-  ): Promise<StoredPipelineFile | null> => {
-    const db =
-      await openPipelineFileDb();
-
-    return new Promise(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            QUOTATION_FILE_STORE,
-            'readonly'
-          );
-
-        const store =
-          transaction.objectStore(
-            QUOTATION_FILE_STORE
-          );
-
-        const request =
-          store.get(
-            quotationId
-          );
-
-        request.onsuccess =
-          () => {
-            db.close();
-            resolve(
-              request.result ||
-              null
-            );
-          };
-
-        request.onerror =
-          () => {
-            db.close();
-            reject(
-              request.error
-            );
-          };
-      }
+    quotationId:
+      string
+  ): Promise<
+    StoredPipelineFile | null
+  > =>
+    getStoredFile(
+      quotationId
     );
-  };
 
 export const downloadQuotationFile =
   async (
-    quotationId: string,
-    fallbackFileName?: string
+    quotationId:
+      string,
+    fallbackFileName?:
+      string
   ) => {
-    const stored =
-      await getQuotationFile(
-        quotationId
-      );
-
-    if (!stored) {
-      throw new Error(
-        'File binary penawaran tidak tersedia pada browser ini. Data dummy/legacy hanya memiliki metadata file.'
-      );
-    }
-
-    const url =
-      URL.createObjectURL(
-        stored.blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      stored.fileName ||
+    await downloadCentralBusinessFile(
+      quotationId,
       fallbackFileName ||
-      'Penawaran';
-
-    document.body.appendChild(
-      anchor
-    );
-
-    anchor.click();
-    anchor.remove();
-
-    window.setTimeout(
-      () =>
-        URL.revokeObjectURL(
-          url
-        ),
-      1000
+        "Penawaran"
     );
   };
 
-
 export const saveOutcomeDocumentFile =
   async (
-    documentId: string,
-    file: File
+    documentId:
+      string,
+    file:
+      File
   ) => {
-    const db =
-      await openPipelineFileDb();
-
-    await new Promise<void>(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            OUTCOME_FILE_STORE,
-            'readwrite'
-          );
-
-        const store =
-          transaction.objectStore(
-            OUTCOME_FILE_STORE
-          );
-
-        const payload:
-          StoredPipelineFile = {
-            id:
-              documentId,
-            blob:
-              file,
-            fileName:
-              file.name,
-            mimeType:
-              file.type ||
-              'application/octet-stream',
-            savedAt:
-              new Date().toISOString(),
-          };
-
-        store.put(
-          payload
-        );
-
-        transaction.oncomplete =
-          () => {
-            db.close();
-            resolve();
-          };
-
-        transaction.onerror =
-          () => {
-            db.close();
-            reject(
-              transaction.error
-            );
-          };
-      }
+    await saveFile(
+      "PIPELINE_OUTCOME",
+      documentId,
+      file
     );
   };
 
 export const getOutcomeDocumentFile =
   async (
-    documentId: string
-  ): Promise<StoredPipelineFile | null> => {
-    const db =
-      await openPipelineFileDb();
-
-    return new Promise(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            OUTCOME_FILE_STORE,
-            'readonly'
-          );
-
-        const store =
-          transaction.objectStore(
-            OUTCOME_FILE_STORE
-          );
-
-        const request =
-          store.get(
-            documentId
-          );
-
-        request.onsuccess =
-          () => {
-            db.close();
-
-            resolve(
-              request.result ||
-              null
-            );
-          };
-
-        request.onerror =
-          () => {
-            db.close();
-
-            reject(
-              request.error
-            );
-          };
-      }
+    documentId:
+      string
+  ): Promise<
+    StoredPipelineFile | null
+  > =>
+    getStoredFile(
+      documentId
     );
-  };
 
 export const downloadOutcomeDocumentFile =
   async (
-    documentId: string,
-    fallbackFileName?: string
+    documentId:
+      string,
+    fallbackFileName?:
+      string
   ) => {
-    const stored =
-      await getOutcomeDocumentFile(
-        documentId
-      );
-
-    if (!stored) {
-      throw new Error(
-        'File binary dokumen usulan WIN/LOSE tidak tersedia pada browser ini. Metadata dokumen tetap tercatat.'
-      );
-    }
-
-    const url =
-      URL.createObjectURL(
-        stored.blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      stored.fileName ||
+    await downloadCentralBusinessFile(
+      documentId,
       fallbackFileName ||
-      'Dokumen Outcome';
-
-    document.body.appendChild(
-      anchor
-    );
-
-    anchor.click();
-    anchor.remove();
-
-    window.setTimeout(
-      () =>
-        URL.revokeObjectURL(
-          url
-        ),
-      1000
+        "Dokumen Outcome"
     );
   };
 
-
 export const saveQuotationRevisionFile =
   async (
-    documentId: string,
-    file: File
+    documentId:
+      string,
+    file:
+      File
   ) => {
-    const db =
-      await openPipelineFileDb();
-
-    await new Promise<void>(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            QUOTATION_REVISION_FILE_STORE,
-            'readwrite'
-          );
-
-        const store =
-          transaction.objectStore(
-            QUOTATION_REVISION_FILE_STORE
-          );
-
-        const payload:
-          StoredPipelineFile = {
-            id:
-              documentId,
-            blob:
-              file,
-            fileName:
-              file.name,
-            mimeType:
-              file.type ||
-              'application/octet-stream',
-            savedAt:
-              new Date().toISOString(),
-          };
-
-        store.put(
-          payload
-        );
-
-        transaction.oncomplete =
-          () => {
-            db.close();
-            resolve();
-          };
-
-        transaction.onerror =
-          () => {
-            db.close();
-            reject(
-              transaction.error
-            );
-          };
-      }
+    await saveFile(
+      "PIPELINE_REVISION",
+      documentId,
+      file
     );
   };
 
 export const getQuotationRevisionFile =
   async (
-    documentId: string
-  ): Promise<StoredPipelineFile | null> => {
-    const db =
-      await openPipelineFileDb();
-
-    return new Promise(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            QUOTATION_REVISION_FILE_STORE,
-            'readonly'
-          );
-
-        const store =
-          transaction.objectStore(
-            QUOTATION_REVISION_FILE_STORE
-          );
-
-        const request =
-          store.get(
-            documentId
-          );
-
-        request.onsuccess =
-          () => {
-            db.close();
-
-            resolve(
-              request.result ||
-              null
-            );
-          };
-
-        request.onerror =
-          () => {
-            db.close();
-
-            reject(
-              request.error
-            );
-          };
-      }
+    documentId:
+      string
+  ): Promise<
+    StoredPipelineFile | null
+  > =>
+    getStoredFile(
+      documentId
     );
-  };
 
 export const downloadQuotationRevisionFile =
   async (
-    documentId: string,
-    fallbackFileName?: string
+    documentId:
+      string,
+    fallbackFileName?:
+      string
   ) => {
-    const stored =
-      await getQuotationRevisionFile(
-        documentId
-      );
-
-    if (!stored) {
-      throw new Error(
-        'File lampiran revisi penawaran tidak tersedia pada browser ini. Metadata file tetap tercatat.'
-      );
-    }
-
-    const url =
-      URL.createObjectURL(
-        stored.blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      stored.fileName ||
+    await downloadCentralBusinessFile(
+      documentId,
       fallbackFileName ||
-      'Lampiran Revisi Penawaran';
-
-    document.body.appendChild(
-      anchor
-    );
-
-    anchor.click();
-    anchor.remove();
-
-    window.setTimeout(
-      () =>
-        URL.revokeObjectURL(
-          url
-        ),
-      1000
+        "Lampiran Revisi Penawaran"
     );
   };

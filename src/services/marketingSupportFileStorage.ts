@@ -1,14 +1,9 @@
-const MARKETING_SUPPORT_FILE_DB =
-  'pertalife_marketing_os_files';
-
-const MARKETING_SUPPORT_FILE_DB_VERSION =
-  2;
-
-const MARKETING_SUPPORT_FILE_STORE =
-  'marketing_support_files';
-
-const LEGACY_SUPPORTING_FILE_STORE =
-  'supporting_document_files';
+import {
+  deleteCentralBusinessFile,
+  downloadCentralBusinessFile,
+  getCentralBusinessFile,
+  uploadCentralBusinessFile,
+} from "@/services/businessFileStorage";
 
 export interface StoredMarketingSupportFile {
   id: string;
@@ -18,127 +13,84 @@ export interface StoredMarketingSupportFile {
   savedAt: string;
 }
 
-const openDb =
-  (): Promise<IDBDatabase> =>
-    new Promise(
-      (
-        resolve,
-        reject
-      ) => {
-        const request =
-          indexedDB.open(
-            MARKETING_SUPPORT_FILE_DB,
-            MARKETING_SUPPORT_FILE_DB_VERSION
-          );
-
-        request.onupgradeneeded =
-          () => {
-            const db =
-              request.result;
-
-            if (
-              !db.objectStoreNames.contains(
-                MARKETING_SUPPORT_FILE_STORE
-              )
-            ) {
-              db.createObjectStore(
-                MARKETING_SUPPORT_FILE_STORE,
-                {
-                  keyPath:
-                    'id',
-                }
-              );
-            }
-
-            // Keep the old repository intact. Existing SPAJ/Proposal
-            // binaries from previous UAT versions can still be read
-            // through the fallback download method below.
-            if (
-              !db.objectStoreNames.contains(
-                LEGACY_SUPPORTING_FILE_STORE
-              )
-            ) {
-              db.createObjectStore(
-                LEGACY_SUPPORTING_FILE_STORE,
-                {
-                  keyPath:
-                    'id',
-                }
-              );
-            }
-          };
-
-        request.onsuccess =
-          () =>
-            resolve(
-              request.result
-            );
-
-        request.onerror =
-          () =>
-            reject(
-              request.error
-            );
-      }
-    );
-
-const getFromStore =
-  async (
-    db:
-      IDBDatabase,
-    storeName:
-      string,
+const findDocumentContext =
+  (
     id:
       string
-  ): Promise<
-    StoredMarketingSupportFile | null
-  > =>
-    new Promise(
-      (
-        resolve,
-        reject
-      ) => {
+  ) => {
+    const keys = [
+      "pertalife_service_documents",
+      "pertalife_supporting_docs",
+      "pertalife_marcomm_requests",
+    ];
+
+    for (
+      const key of keys
+    ) {
+      try {
+        const raw =
+          localStorage.getItem(
+            key
+          );
+
+        const parsed =
+          raw
+            ? JSON.parse(raw)
+            : [];
+
         if (
-          !db.objectStoreNames.contains(
-            storeName
+          !Array.isArray(
+            parsed
           )
         ) {
-          resolve(
-            null
-          );
-
-          return;
+          continue;
         }
 
-        const transaction =
-          db.transaction(
-            storeName,
-            'readonly'
+        const record =
+          parsed.find(
+            item =>
+              item?.id === id ||
+              item?.documentId === id ||
+              item?.fileId === id
           );
 
-        const request =
-          transaction
-            .objectStore(
-              storeName
-            )
-            .get(
-              id
-            );
-
-        request.onsuccess =
-          () =>
-            resolve(
-              request.result ||
-              null
-            );
-
-        request.onerror =
-          () =>
-            reject(
-              request.error
-            );
+        if (
+          record
+        ) {
+          return {
+            storageKey:
+              key,
+            entityId:
+              String(
+                record.id ||
+                id
+              ),
+            visibilityPayload: {
+              picUserId:
+                record.picUserId ||
+                record.userId ||
+                "",
+              requesterUserId:
+                record.requesterUserId ||
+                record.requestedByUserId ||
+                "",
+            },
+          };
+        }
+      } catch {
+        // Continue to the next central collection.
       }
-    );
+    }
+
+    return {
+      storageKey:
+        "pertalife_service_documents",
+      entityId:
+        id,
+      visibilityPayload:
+        {},
+    };
+  };
 
 export const saveMarketingSupportFile =
   async (
@@ -147,50 +99,28 @@ export const saveMarketingSupportFile =
     file:
       File
   ) => {
-    const db =
-      await openDb();
+    const context =
+      findDocumentContext(
+        id
+      );
 
-    await new Promise<void>(
-      (
-        resolve,
-        reject
-      ) => {
-        const transaction =
-          db.transaction(
-            MARKETING_SUPPORT_FILE_STORE,
-            'readwrite'
-          );
-
-        transaction
-          .objectStore(
-            MARKETING_SUPPORT_FILE_STORE
-          )
-          .put({
-            id,
-            blob:
-              file,
-            fileName:
-              file.name,
-            mimeType:
-              file.type ||
-              'application/octet-stream',
-            savedAt:
-              new Date().toISOString(),
-          } satisfies StoredMarketingSupportFile);
-
-        transaction.oncomplete =
-          () =>
-            resolve();
-
-        transaction.onerror =
-          () =>
-            reject(
-              transaction.error
-            );
-      }
-    );
-
-    db.close();
+    await uploadCentralBusinessFile({
+      fileId:
+        id,
+      module:
+        "MARKETING_SUPPORT",
+      storageKey:
+        context.storageKey,
+      entityId:
+        context.entityId,
+      file,
+      visibilityPayload:
+        context.visibilityPayload,
+      metadata: {
+        source:
+          "marketingSupportFileStorage",
+      },
+    });
   };
 
 export const getMarketingSupportFile =
@@ -200,31 +130,32 @@ export const getMarketingSupportFile =
   ): Promise<
     StoredMarketingSupportFile | null
   > => {
-    const db =
-      await openDb();
-
-    try {
-      const current =
-        await getFromStore(
-          db,
-          MARKETING_SUPPORT_FILE_STORE,
-          id
-        );
-
-      if (
-        current
-      ) {
-        return current;
-      }
-
-      return await getFromStore(
-        db,
-        LEGACY_SUPPORTING_FILE_STORE,
+    const stored =
+      await getCentralBusinessFile(
         id
       );
-    } finally {
-      db.close();
+
+    if (
+      !stored
+    ) {
+      return null;
     }
+
+    return {
+      id,
+      blob:
+        stored.blob,
+      fileName:
+        stored.metadata
+          .file_name,
+      mimeType:
+        stored.metadata
+          .mime_type ||
+        "application/octet-stream",
+      savedAt:
+        stored.metadata
+          .uploaded_at,
+    };
   };
 
 export const downloadMarketingSupportFile =
@@ -234,51 +165,10 @@ export const downloadMarketingSupportFile =
     fallbackFileName?:
       string
   ) => {
-    const stored =
-      await getMarketingSupportFile(
-        id
-      );
-
-    if (
-      !stored
-    ) {
-      throw new Error(
-        'File binary tidak tersedia pada browser ini. Metadata dokumen tetap tercatat.'
-      );
-    }
-
-    const url =
-      URL.createObjectURL(
-        stored.blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      stored.fileName ||
+    await downloadCentralBusinessFile(
+      id,
       fallbackFileName ||
-      'dokumen';
-
-    document.body.appendChild(
-      anchor
-    );
-
-    anchor.click();
-
-    anchor.remove();
-
-    window.setTimeout(
-      () =>
-        URL.revokeObjectURL(
-          url
-        ),
-      1000
+        "dokumen"
     );
   };
 
@@ -287,47 +177,7 @@ export const deleteMarketingSupportFile =
     id:
       string
   ) => {
-    const db =
-      await openDb();
-
-    try {
-      if (
-        db.objectStoreNames.contains(
-          MARKETING_SUPPORT_FILE_STORE
-        )
-      ) {
-        await new Promise<void>(
-          (
-            resolve,
-            reject
-          ) => {
-            const transaction =
-              db.transaction(
-                MARKETING_SUPPORT_FILE_STORE,
-                'readwrite'
-              );
-
-            transaction
-              .objectStore(
-                MARKETING_SUPPORT_FILE_STORE
-              )
-              .delete(
-                id
-              );
-
-            transaction.oncomplete =
-              () =>
-                resolve();
-
-            transaction.onerror =
-              () =>
-                reject(
-                  transaction.error
-                );
-          }
-        );
-      }
-    } finally {
-      db.close();
-    }
+    await deleteCentralBusinessFile(
+      id
+    );
   };

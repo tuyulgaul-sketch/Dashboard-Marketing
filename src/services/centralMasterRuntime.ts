@@ -11,7 +11,6 @@ import {
   createCentralBroker,
   deleteCentralAgent,
   deleteCentralBroker,
-  ensureCentralBrokerBaseline,
   listCentralAgents,
   listCentralBrokers,
   listCentralProducts,
@@ -447,33 +446,6 @@ const patchStoreRuntime = () => {
   };
 };
 
-const canBootstrapBroker =
-  (
-    profile: AuthProfile
-  ) => {
-    const unit =
-      (
-        profile.unit || ""
-      )
-        .trim()
-        .toLowerCase();
-
-    const role =
-      (
-        profile.role_level ||
-        ""
-      )
-        .trim()
-        .toUpperCase();
-
-    return (
-      unit ===
-        "marketing support" ||
-      role ===
-        "SYSTEM_ADMIN"
-    );
-  };
-
 /**
  * Installs the central Product/Broker/Agent runtime before protected pages
  * render. The legacy store remains only a compatibility API surface.
@@ -500,24 +472,10 @@ export const syncCentralMasterRuntime =
         profile.id;
     }
 
-    if (
-      canBootstrapBroker(profile)
-    ) {
-      try {
-        await ensureCentralBrokerBaseline();
-      } catch (error) {
-        // Bootstrap is only needed when the central table is empty.
-        // A failure must remain visible because allowing a hidden fallback
-        // to localStorage would reintroduce split-brain authority.
-        console.error(
-          "[Central Master] Bootstrap broker gagal",
-          error
-        );
 
-        throw error;
-      }
-    }
-
+    // Final centralization: no automatic Broker re-bootstrap.
+    // This preserves the canonical Global Reset baseline (User + Product only).
+    // Broker/Agent restoration must be an explicit authorized action.
     await refreshCentralMasterCache();
 
     if (
