@@ -37,19 +37,13 @@ export const AppSidebar: React.FC = () => {
   const location = useLocation();
 
   const isDigitalAffinity =
-    isDigitalAffinityProfile(
-      profile
-    );
+    isDigitalAffinityProfile(profile);
 
   const isSystemAdmin =
-    isSystemAdminProfile(
-      profile
-    );
+    isSystemAdminProfile(profile);
 
   const isSupportRoot =
-    isMarketingSupportRootProfile(
-      profile
-    );
+    isMarketingSupportRootProfile(profile);
 
   const canSeeTarget =
     canAccessFeature(
@@ -81,6 +75,12 @@ export const AppSidebar: React.FC = () => {
       "DOCUMENT_ADMIN"
     );
 
+  const canSeeTandaTerima =
+    canAccessFeature(
+      profile,
+      "TANDA_TERIMA"
+    );
+
   const canSeeMarcommDocs =
     canAccessFeature(
       profile,
@@ -91,7 +91,8 @@ export const AppSidebar: React.FC = () => {
     canSeeMeetingRoom ||
     canSeeBooking ||
     canSeeProduction ||
-    canSeeAdminDocs;
+    canSeeAdminDocs ||
+    canSeeTandaTerima;
 
   const showCommunication =
     canSeeMarcommDocs;
@@ -116,9 +117,7 @@ export const AppSidebar: React.FC = () => {
     }
 
     const expected =
-      new URLSearchParams(
-        search
-      );
+      new URLSearchParams(search);
 
     const current =
       new URLSearchParams(
@@ -126,14 +125,11 @@ export const AppSidebar: React.FC = () => {
       );
 
     for (
-      const [
-        key,
-        value,
-      ] of expected.entries()
+      const [key, value]
+      of expected.entries()
     ) {
       if (
-        current.get(key) !==
-        value
+        current.get(key) !== value
       ) {
         return false;
       }
@@ -151,8 +147,7 @@ export const AppSidebar: React.FC = () => {
                 "Booking Ruangan Meeting Marketing",
               path:
                 "/booking-ruang-meeting",
-              icon:
-                CalendarDays,
+              icon: CalendarDays,
             },
           ]
         : []),
@@ -174,8 +169,10 @@ export const AppSidebar: React.FC = () => {
             {
               label:
                 "Produksi",
-              path: "/produksi",
-              icon: TrendingUp,
+              path:
+                "/produksi",
+              icon:
+                TrendingUp,
             },
           ]
         : []),
@@ -187,7 +184,21 @@ export const AppSidebar: React.FC = () => {
                 "Dokumen Administrasi",
               path:
                 "/dokumen-pendukung?area=administration",
-              icon: FileText,
+              icon:
+                FileText,
+            },
+          ]
+        : []),
+
+      ...(canSeeTandaTerima
+        ? [
+            {
+              label:
+                "Tanda Terima",
+              path:
+                "/tanda-terima",
+              icon:
+                FileText,
             },
           ]
         : []),
@@ -202,14 +213,16 @@ export const AppSidebar: React.FC = () => {
                 "Marketing Tools",
               path:
                 "/dokumen-pendukung?area=marketing-tools",
-              icon: FileText,
+              icon:
+                FileText,
             },
             {
               label:
                 "Permintaan Marcomm",
               path:
                 "/dokumen-pendukung?area=marcomm-requests",
-              icon: Megaphone,
+              icon:
+                Megaphone,
             },
           ]
         : []),
@@ -228,7 +241,8 @@ export const AppSidebar: React.FC = () => {
       return null;
     }
 
-    const GroupIcon = icon;
+    const GroupIcon =
+      icon;
 
     const groupActive =
       items.some((item) =>
