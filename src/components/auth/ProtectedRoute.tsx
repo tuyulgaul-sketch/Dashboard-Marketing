@@ -8,7 +8,25 @@ const ProtectedRoute: React.FC<{
   const { session, profile, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  /**
+   * IMPORTANT:
+   * Supabase can emit auth-state events again when the browser tab
+   * regains focus / the token is refreshed. AuthContext briefly sets
+   * loading=true during that background profile refresh.
+   *
+   * Previously we replaced the entire protected page with the
+   * "Memeriksa sesi login..." screen every time loading became true.
+   * That unmounted the active page and destroyed local UI state
+   * (open Dialogs, forms, tabs, selections, etc).
+   *
+   * Only show the blocking loader when we do NOT yet have an
+   * authenticated session/profile. If both already exist, keep the
+   * page mounted while auth refresh runs in the background.
+   */
+  if (
+    loading &&
+    (!session || !profile)
+  ) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-sm">
@@ -23,7 +41,11 @@ const ProtectedRoute: React.FC<{
       <Navigate
         to="/login"
         replace
-        state={{ from: location.pathname + location.search }}
+        state={{
+          from:
+            location.pathname +
+            location.search,
+        }}
       />
     );
   }
