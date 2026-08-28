@@ -14,6 +14,7 @@ import {
 import {
   Briefcase,
   CalendarCheck,
+  CalendarDays,
   ChevronRight,
   FileText,
   LayoutDashboard,
@@ -56,6 +57,12 @@ export const AppSidebar: React.FC = () => {
       "TARGET_RKAP"
     );
 
+  const canSeeMeetingRoom =
+    canAccessFeature(
+      profile,
+      "MEETING_ROOM"
+    );
+
   const canSeeBooking =
     canAccessFeature(
       profile,
@@ -81,6 +88,7 @@ export const AppSidebar: React.FC = () => {
     );
 
   const showAdministration =
+    canSeeMeetingRoom ||
     canSeeBooking ||
     canSeeProduction ||
     canSeeAdminDocs;
@@ -136,6 +144,19 @@ export const AppSidebar: React.FC = () => {
 
   const administrationItems:
     FlyoutItem[] = [
+      ...(canSeeMeetingRoom
+        ? [
+            {
+              label:
+                "Booking Ruangan Meeting Marketing",
+              path:
+                "/booking-ruang-meeting",
+              icon:
+                CalendarDays,
+            },
+          ]
+        : []),
+
       ...(canSeeBooking
         ? [
             {
@@ -238,7 +259,7 @@ export const AppSidebar: React.FC = () => {
           <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </button>
 
-        <div className="pointer-events-none absolute left-full top-0 z-[200] ml-2 w-60 rounded-xl border border-slate-700 bg-slate-950 p-2 opacity-0 shadow-2xl transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <div className="pointer-events-none absolute left-full top-0 z-[200] ml-2 w-72 rounded-xl border border-slate-700 bg-slate-950 p-2 opacity-0 shadow-2xl transition-all group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
           <div className="px-3 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-600">
             {label}
           </div>
