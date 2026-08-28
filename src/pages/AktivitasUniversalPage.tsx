@@ -45,7 +45,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -520,7 +523,21 @@ const AktivitasUniversalPage: React.FC = () => {
         (item) =>
           item.id !== profile?.id &&
           item.id !== ownerProfileId &&
-          !collaboratorIds.includes(item.id)
+          !collaboratorIds.includes(item.id) &&
+          !(
+            item.role_level
+              .trim()
+              .toUpperCase()
+              .includes("SYSTEM") &&
+            item.role_level
+              .trim()
+              .toUpperCase()
+              .includes("ADMIN")
+          ) &&
+          item.unit
+            .trim()
+            .toLowerCase() !==
+            "administrasi sistem"
       ),
     [
       collaboratorIds,
@@ -529,6 +546,177 @@ const AktivitasUniversalPage: React.FC = () => {
       profile?.id,
     ]
   );
+
+  const collaboratorDivisionGroups = useMemo(() => {
+    const getDivisionRoot = (
+      item: DirectoryProfile
+    ) => {
+      let current = item;
+      const visited =
+        new Set<string>();
+
+      while (
+        current.manager_id &&
+        !visited.has(current.id)
+      ) {
+        visited.add(
+          current.id
+        );
+
+        const manager =
+          profileMap.get(
+            current.manager_id
+          );
+
+        if (!manager) {
+          break;
+        }
+
+        const managerRole =
+          manager.role_level
+            .trim()
+            .toUpperCase();
+
+        if (
+          managerRole ===
+            "DIRECTOR" ||
+          managerRole ===
+            "DIREKTUR"
+        ) {
+          return current;
+        }
+
+        current = manager;
+      }
+
+      return current;
+    };
+
+    const groupMap = new Map<
+      string,
+      {
+        label: string;
+        items: DirectoryProfile[];
+      }
+    >();
+
+    collaboratorCandidates.forEach(
+      (item) => {
+        const divisionRoot =
+          getDivisionRoot(
+            item
+          );
+
+        const rootRole =
+          divisionRoot.role_level
+            .trim()
+            .toUpperCase();
+
+        const label =
+          rootRole ===
+            "DIRECTOR" ||
+          rootRole ===
+            "DIREKTUR"
+            ? "Direktorat Marketing"
+            : getWorkspaceDivisionLabel(
+                divisionRoot
+              );
+
+        const key =
+          label
+            .trim()
+            .toLowerCase();
+
+        const existing =
+          groupMap.get(key);
+
+        if (existing) {
+          existing.items.push(
+            item
+          );
+        } else {
+          groupMap.set(
+            key,
+            {
+              label,
+              items: [item],
+            }
+          );
+        }
+      }
+    );
+
+    const preferredOrder =
+      [
+        "captive marketing",
+        "corporate & retail marketing",
+        "marketing support",
+        "direktorat marketing / advisor",
+        "direktorat marketing",
+      ];
+
+    return Array.from(
+      groupMap.values()
+    )
+      .map((group) => ({
+        ...group,
+        items: [
+          ...group.items,
+        ].sort((a, b) =>
+          a.full_name.localeCompare(
+            b.full_name,
+            "id"
+          )
+        ),
+      }))
+      .sort((a, b) => {
+        const aKey =
+          a.label
+            .trim()
+            .toLowerCase();
+
+        const bKey =
+          b.label
+            .trim()
+            .toLowerCase();
+
+        const aIndex =
+          preferredOrder.indexOf(
+            aKey
+          );
+
+        const bIndex =
+          preferredOrder.indexOf(
+            bKey
+          );
+
+        if (
+          aIndex !== -1 ||
+          bIndex !== -1
+        ) {
+          if (aIndex === -1) {
+            return 1;
+          }
+
+          if (bIndex === -1) {
+            return -1;
+          }
+
+          return (
+            aIndex -
+            bIndex
+          );
+        }
+
+        return a.label.localeCompare(
+          b.label,
+          "id"
+        );
+      });
+  }, [
+    collaboratorCandidates,
+    profileMap,
+  ]);
 
   const refresh = async () => {
     setLoading(true);
@@ -2059,12 +2247,62 @@ const AktivitasUniversalPage: React.FC = () => {
                       <SelectValue placeholder="Pilih user dari department mana pun" />
                     </SelectTrigger>
 
-                    <SelectContent>
-                      {collaboratorCandidates.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.full_name} — {getOrgLabel(item)}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-80">
+                      {collaboratorDivisionGroups.map(
+                        (
+                          group,
+                          groupIndex
+                        ) => (
+                          <React.Fragment
+                            key={
+                              group.label
+                            }
+                          >
+                            {groupIndex >
+                              0 && (
+                              <SelectSeparator />
+                            )}
+
+                            <SelectGroup>
+                              <SelectLabel className="px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                {
+                                  group.label
+                                }{" "}
+                                (
+                                {
+                                  group
+                                    .items
+                                    .length
+                                }
+                                )
+                              </SelectLabel>
+
+                              {group.items.map(
+                                (
+                                  item
+                                ) => (
+                                  <SelectItem
+                                    key={
+                                      item.id
+                                    }
+                                    value={
+                                      item.id
+                                    }
+                                  >
+                                    {
+                                      item.full_name
+                                    }{" "}
+                                    —{" "}
+                                    {getOrgLabel(
+                                      item
+                                    )}
+                                  </SelectItem>
+                                )
+                              )}
+                            </SelectGroup>
+                          </React.Fragment>
+                        )
+                      )}
                     </SelectContent>
                   </Select>
 
