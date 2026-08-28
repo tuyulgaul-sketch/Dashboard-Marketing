@@ -176,6 +176,35 @@ const isSalesConditionalCategory = (
 const getOrgLabel = (profile?: DirectoryProfile | null) =>
   profile?.department || profile?.unit || "-";
 
+const getWorkspaceDivisionLabel = (
+  profile: DirectoryProfile
+) => {
+  const role = profile.role_level.trim().toUpperCase();
+  const unit = profile.unit?.trim();
+
+  if (role === "ADVISOR") {
+    return "Direktorat Marketing / Advisor";
+  }
+
+  if (
+    unit &&
+    !["DIRECTORATE MARKETING", "DIREKTORAT MARKETING"].includes(
+      unit.toUpperCase()
+    )
+  ) {
+    return unit;
+  }
+
+  return profile.department?.trim() || profile.full_name;
+};
+
+const getWorkspaceBranchLabel = (
+  profile: DirectoryProfile
+) =>
+  profile.department?.trim() ||
+  profile.unit?.trim() ||
+  `${profile.full_name} — ${profile.role_level}`;
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return "-";
 
@@ -227,6 +256,12 @@ const AktivitasUniversalPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
+  const [workspaceDivisionId, setWorkspaceDivisionId] =
+    useState<string>("ALL");
+  const [workspaceBranchId, setWorkspaceBranchId] =
+    useState<string>("ALL");
+  const [workspacePicId, setWorkspacePicId] =
+    useState<string>("ALL");
 
   const [activityMode, setActivityMode] =
     useState<ActivityMode>("PERSONAL");
@@ -284,21 +319,47 @@ const AktivitasUniversalPage: React.FC = () => {
     [directory]
   );
 
-  const subordinateIds = useMemo(() => {
-    if (!profile) return new Set<string>();
-
-    const children = new Map<string, string[]>();
+  const childrenMap = useMemo(() => {
+    const result = new Map<string, string[]>();
 
     directory.forEach((item) => {
       if (!item.manager_id) return;
 
-      const list = children.get(item.manager_id) || [];
+      const list = result.get(item.manager_id) || [];
       list.push(item.id);
-      children.set(item.manager_id, list);
+      result.set(item.manager_id, list);
     });
 
+    return result;
+  }, [directory]);
+
+  const directReports = useMemo(
+    () =>
+      profile
+        ? directory
+            .filter((item) => item.manager_id === profile.id)
+            .sort((a, b) =>
+              getWorkspaceBranchLabel(a).localeCompare(
+                getWorkspaceBranchLabel(b),
+                "id"
+              )
+            )
+        : [],
+    [directory, profile]
+  );
+
+  const hasSubordinates = directReports.length > 0;
+
+  const profileRoleKey =
+    profile?.role_level?.trim().toUpperCase() || "";
+
+  const isDirectorWorkspace =
+    profileRoleKey === "DIRECTOR" ||
+    profileRoleKey === "DIREKTUR";
+
+  const getSubtreeIds = (rootId: string) => {
     const result = new Set<string>();
-    const stack = [...(children.get(profile.id) || [])];
+    const stack = [rootId];
 
     while (stack.length > 0) {
       const id = stack.pop()!;
@@ -307,12 +368,23 @@ const AktivitasUniversalPage: React.FC = () => {
 
       result.add(id);
 
-      const nextChildren = children.get(id) || [];
+      const nextChildren = childrenMap.get(id) || [];
       nextChildren.forEach((childId) => stack.push(childId));
     }
 
     return result;
-  }, [directory, profile]);
+  };
+
+  const subordinateIds = useMemo(() => {
+    const result = new Set<string>();
+
+    directReports.forEach((report) => {
+      getSubtreeIds(report.id).forEach((id) => result.add(id));
+    });
+
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childrenMap, directReports]);
 
   const subordinateProfiles = useMemo(
     () =>
@@ -321,6 +393,126 @@ const AktivitasUniversalPage: React.FC = () => {
       ),
     [directory, subordinateIds]
   );
+
+  const workspaceDivisionOptions = useMemo(
+    () =>
+      isDirectorWorkspace
+        ? [...directReports].sort((a, b) =>
+            getWorkspaceDivisionLabel(a).localeCompare(
+              getWorkspaceDivisionLabel(b),
+              "id"
+            )
+          )
+        : [],
+    [directReports, isDirectorWorkspace]
+  );
+
+  const workspaceBranchOptions = useMemo(() => {
+    if (!hasSubordinates) return [];
+
+    if (!isDirectorWorkspace) {
+      return directReports;
+    }
+
+    if (workspaceDivisionId === "ALL") {
+      return [];
+    }
+
+    return (childrenMap.get(workspaceDivisionId) || [])
+      .map((id) => profileMap.get(id))
+      .filter((item): item is DirectoryProfile => Boolean(item))
+      .sort((a, b) =>
+        getWorkspaceBranchLabel(a).localeCompare(
+          getWorkspaceBranchLabel(b),
+          "id"
+        )
+      );
+  }, [
+    childrenMap,
+    directReports,
+    hasSubordinates,
+    isDirectorWorkspace,
+    profileMap,
+    workspaceDivisionId,
+  ]);
+
+  const workspaceBaseOwnerIds = useMemo(() => {
+    if (!hasSubordinates) {
+      return null as Set<string> | null;
+    }
+
+    if (workspaceBranchId !== "ALL") {
+      return getSubtreeIds(workspaceBranchId);
+    }
+
+    if (
+      isDirectorWorkspace &&
+      workspaceDivisionId !== "ALL"
+    ) {
+      return getSubtreeIds(workspaceDivisionId);
+    }
+
+    return new Set(subordinateIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    childrenMap,
+    hasSubordinates,
+    isDirectorWorkspace,
+    subordinateIds,
+    workspaceBranchId,
+    workspaceDivisionId,
+  ]);
+
+  const workspacePicProfiles = useMemo(
+    () =>
+      workspaceBaseOwnerIds
+        ? directory
+            .filter((item) => workspaceBaseOwnerIds.has(item.id))
+            .sort((a, b) =>
+              a.full_name.localeCompare(b.full_name, "id")
+            )
+        : [],
+    [directory, workspaceBaseOwnerIds]
+  );
+
+  const workspaceOwnerFilterIds = useMemo(() => {
+    if (!hasSubordinates) {
+      return null as Set<string> | null;
+    }
+
+    if (
+      workspacePicId !== "ALL" &&
+      subordinateIds.has(workspacePicId)
+    ) {
+      return new Set([workspacePicId]);
+    }
+
+    if (
+      workspaceBranchId !== "ALL" ||
+      (isDirectorWorkspace && workspaceDivisionId !== "ALL")
+    ) {
+      return workspaceBaseOwnerIds;
+    }
+
+    return null;
+  }, [
+    hasSubordinates,
+    isDirectorWorkspace,
+    subordinateIds,
+    workspaceBaseOwnerIds,
+    workspaceBranchId,
+    workspaceDivisionId,
+    workspacePicId,
+  ]);
+
+  const workspaceManagerFilterLabel =
+    profileRoleKey === "VP"
+      ? "Sub Unit"
+      : profileRoleKey === "DH"
+      ? "Tim / Bawahan"
+      : profileRoleKey === "SPV"
+      ? "Bawahan"
+      : "Unit / Tim";
 
   const collaboratorCandidates = useMemo(
     () =>
@@ -375,10 +567,20 @@ const AktivitasUniversalPage: React.FC = () => {
         !["DONE", "CANCELLED"].includes(activity.status)
     );
 
+  const orgScopedActivities = useMemo(
+    () =>
+      workspaceOwnerFilterIds
+        ? activities.filter((activity) =>
+            workspaceOwnerFilterIds.has(activity.owner_profile_id)
+          )
+        : activities,
+    [activities, workspaceOwnerFilterIds]
+  );
+
   const filteredActivities = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    return activities.filter((activity) => {
+    return orgScopedActivities.filter((activity) => {
       const owner = profileMap.get(activity.owner_profile_id);
 
       if (
@@ -445,8 +647,8 @@ const AktivitasUniversalPage: React.FC = () => {
       return true;
     });
   }, [
-    activities,
     categoryFilter,
+    orgScopedActivities,
     profile?.id,
     profileMap,
     query,
@@ -482,13 +684,13 @@ const AktivitasUniversalPage: React.FC = () => {
     (activity) => activity.owner_profile_id === profile?.id
   ).length;
 
-  const onProgressCount = activities.filter(
+  const onProgressCount = orgScopedActivities.filter(
     (activity) => activity.status === "ON_PROGRESS"
   ).length;
 
-  const overdueCount = activities.filter(isOverdue).length;
+  const overdueCount = orgScopedActivities.filter(isOverdue).length;
 
-  const actionCount = activities.filter(
+  const actionCount = orgScopedActivities.filter(
     (activity) =>
       activity.status === "PENDING_VALIDATION" &&
       activity.validation_approver_profile_id === profile?.id
@@ -1067,6 +1269,121 @@ const AktivitasUniversalPage: React.FC = () => {
           </CardHeader>
 
           <CardContent>
+            {hasSubordinates && (
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Filter Organisasi
+                </div>
+
+                <div
+                  className={`grid gap-3 ${
+                    isDirectorWorkspace
+                      ? "md:grid-cols-3"
+                      : "md:grid-cols-2"
+                  }`}
+                >
+                  {isDirectorWorkspace && (
+                    <Select
+                      value={workspaceDivisionId}
+                      onValueChange={(value) => {
+                        setWorkspaceDivisionId(value);
+                        setWorkspaceBranchId("ALL");
+                        setWorkspacePicId("ALL");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih Divisi" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        <SelectItem value="ALL">
+                          Semua Divisi
+                        </SelectItem>
+
+                        {workspaceDivisionOptions.map((division) => (
+                          <SelectItem
+                            key={division.id}
+                            value={division.id}
+                          >
+                            {getWorkspaceDivisionLabel(division)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  <Select
+                    value={workspaceBranchId}
+                    onValueChange={(value) => {
+                      setWorkspaceBranchId(value);
+                      setWorkspacePicId("ALL");
+                    }}
+                    disabled={
+                      isDirectorWorkspace &&
+                      workspaceDivisionId === "ALL"
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          isDirectorWorkspace
+                            ? workspaceDivisionId === "ALL"
+                              ? "Pilih Divisi dulu"
+                              : "Pilih Sub Unit"
+                            : `Pilih ${workspaceManagerFilterLabel}`
+                        }
+                      />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="ALL">
+                        {isDirectorWorkspace
+                          ? "Semua Sub Unit"
+                          : `Semua ${workspaceManagerFilterLabel}`}
+                      </SelectItem>
+
+                      {workspaceBranchOptions.map((branch) => (
+                        <SelectItem
+                          key={branch.id}
+                          value={branch.id}
+                        >
+                          {getWorkspaceBranchLabel(branch)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={workspacePicId}
+                    onValueChange={setWorkspacePicId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih PIC" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="ALL">
+                        Semua PIC
+                      </SelectItem>
+
+                      {workspacePicProfiles.map((person) => (
+                        <SelectItem
+                          key={person.id}
+                          value={person.id}
+                        >
+                          {person.full_name} — {getOrgLabel(person)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="mt-2 text-[10px] text-slate-500">
+                  Filter hanya mempersempit aktivitas yang memang sudah boleh dilihat berdasarkan hierarchy akun.
+                </div>
+              </div>
+            )}
+
             <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
