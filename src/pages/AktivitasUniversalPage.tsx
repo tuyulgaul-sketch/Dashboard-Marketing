@@ -839,41 +839,53 @@ const AktivitasUniversalPage: React.FC = () => {
       }
 
       if (scope === "TEAM") {
-        const viewerDepartment =
-          profile?.department
-            ?.trim()
-            .toLowerCase() || "";
+        const isHierarchyTeamMember =
+          activity.owner_profile_id === profile?.id ||
+          subordinateIds.has(
+            activity.owner_profile_id
+          );
 
-        const ownerDepartment =
-          owner?.department
-            ?.trim()
-            .toLowerCase() || "";
+        if (hasSubordinates) {
+          if (!isHierarchyTeamMember) {
+            return false;
+          }
+        } else {
+          const viewerDepartment =
+            profile?.department
+              ?.trim()
+              .toLowerCase() || "";
 
-        const viewerUnit =
-          profile?.unit
-            ?.trim()
-            .toLowerCase() || "";
+          const ownerDepartment =
+            owner?.department
+              ?.trim()
+              .toLowerCase() || "";
 
-        const ownerUnit =
-          owner?.unit
-            ?.trim()
-            .toLowerCase() || "";
+          const viewerUnit =
+            profile?.unit
+              ?.trim()
+              .toLowerCase() || "";
 
-        const sameTeam =
-          viewerDepartment &&
-          !["none", "null"].includes(
-            viewerDepartment
-          )
-            ? ownerDepartment ===
+          const ownerUnit =
+            owner?.unit
+              ?.trim()
+              .toLowerCase() || "";
+
+          const sameTeam =
+            viewerDepartment &&
+            !["none", "null"].includes(
               viewerDepartment
-            : Boolean(
-                viewerUnit &&
-                  ownerUnit ===
-                    viewerUnit
-              );
+            )
+              ? ownerDepartment ===
+                viewerDepartment
+              : Boolean(
+                  viewerUnit &&
+                    ownerUnit ===
+                      viewerUnit
+                );
 
-        if (!sameTeam) {
-          return false;
+          if (!sameTeam) {
+            return false;
+          }
         }
       }
 
@@ -936,6 +948,8 @@ const AktivitasUniversalPage: React.FC = () => {
     query,
     scope,
     statusFilter,
+    hasSubordinates,
+    subordinateIds,
   ]);
 
 
