@@ -312,9 +312,6 @@ const LoginPage:
     className="h-14 w-auto object-contain"
   />
 </div>
-              P
-            </div>
-
             <h1 className="text-xl font-bold text-slate-900">
               Dashboard Marketing PertaLife
             </h1>
