@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
+import ActivityPeoplePicker from "@/components/activity/ActivityPeoplePicker";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityActionRole,
@@ -46,10 +47,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -95,7 +93,6 @@ import {
   UserRound,
   UserRoundPlus,
   UsersRound,
-  X,
 } from "lucide-react";
 
 const CATEGORY_LABELS: Record<ActivityCategory, string> = {
@@ -185,6 +182,8 @@ const TRANSITION_ACTION_LABELS: Record<
 const ACTION_ROLE_LABELS: Record<ActivityActionRole, string> = {
   OWNER: "Assigned to You",
   COLLABORATOR: "Collaboration",
+  FOLLOW_UP: "Follow Up Requested",
+  SUPPORT: "Support Requested",
   APPROVER: "Awaiting Your Approval",
   CREATOR: "Draft Owner",
 };
@@ -201,6 +200,28 @@ const getAllowedTransitionTargets = (
     return actionRole === "APPROVER"
       ? ["DONE", "ON_PROGRESS"]
       : [];
+  }
+
+  if (
+    ["COLLABORATOR", "FOLLOW_UP", "SUPPORT"].includes(
+      actionRole
+    )
+  ) {
+    return [];
+  }
+
+  if (
+    activity.status === "DRAFT" &&
+    actionRole !== "CREATOR"
+  ) {
+    return [];
+  }
+
+  if (
+    activity.status !== "DRAFT" &&
+    actionRole !== "OWNER"
+  ) {
+    return [];
   }
 
   if (
@@ -347,7 +368,7 @@ const AktivitasUniversalPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
 
-  const [scope, setScope] = useState<ScopeFilter>("ALL");
+  const [scope, setScope] = useState<ScopeFilter>("TEAM");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
@@ -373,8 +394,6 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const [collaboratorIds, setCollaboratorIds] =
     useState<string[]>([]);
-  const [collaboratorCandidateId, setCollaboratorCandidateId] =
-    useState("");
 
   const [companyName, setCompanyName] = useState("");
   const [personMet, setPersonMet] = useState("");
@@ -409,6 +428,8 @@ const AktivitasUniversalPage: React.FC = () => {
     useState(todayKey());
   const [transitionResult, setTransitionResult] =
     useState("");
+  const [transitionCollaboratorIds, setTransitionCollaboratorIds] =
+    useState<string[]>([]);
 
   const [progressValue, setProgressValue] = useState(0);
   const [progressBusy, setProgressBusy] = useState(false);
@@ -623,207 +644,6 @@ const AktivitasUniversalPage: React.FC = () => {
       : profileRoleKey === "SPV"
       ? "Bawahan"
       : "Unit / Tim";
-
-  const collaboratorCandidates = useMemo(
-    () =>
-      directory.filter(
-        (item) =>
-          item.id !== profile?.id &&
-          item.id !== ownerProfileId &&
-          !collaboratorIds.includes(item.id) &&
-          !(
-            item.role_level
-              .trim()
-              .toUpperCase()
-              .includes("SYSTEM") &&
-            item.role_level
-              .trim()
-              .toUpperCase()
-              .includes("ADMIN")
-          ) &&
-          item.unit
-            .trim()
-            .toLowerCase() !==
-            "administrasi sistem"
-      ),
-    [
-      collaboratorIds,
-      directory,
-      ownerProfileId,
-      profile?.id,
-    ]
-  );
-
-  const collaboratorDivisionGroups = useMemo(() => {
-    const getDivisionRoot = (
-      item: DirectoryProfile
-    ) => {
-      let current = item;
-      const visited =
-        new Set<string>();
-
-      while (
-        current.manager_id &&
-        !visited.has(current.id)
-      ) {
-        visited.add(
-          current.id
-        );
-
-        const manager =
-          profileMap.get(
-            current.manager_id
-          );
-
-        if (!manager) {
-          break;
-        }
-
-        const managerRole =
-          manager.role_level
-            .trim()
-            .toUpperCase();
-
-        if (
-          managerRole ===
-            "DIRECTOR" ||
-          managerRole ===
-            "DIREKTUR"
-        ) {
-          return current;
-        }
-
-        current = manager;
-      }
-
-      return current;
-    };
-
-    const groupMap = new Map<
-      string,
-      {
-        label: string;
-        items: DirectoryProfile[];
-      }
-    >();
-
-    collaboratorCandidates.forEach(
-      (item) => {
-        const divisionRoot =
-          getDivisionRoot(
-            item
-          );
-
-        const rootRole =
-          divisionRoot.role_level
-            .trim()
-            .toUpperCase();
-
-        const label =
-          rootRole ===
-            "DIRECTOR" ||
-          rootRole ===
-            "DIREKTUR"
-            ? "Direktorat Marketing"
-            : getWorkspaceDivisionLabel(
-                divisionRoot
-              );
-
-        const key =
-          label
-            .trim()
-            .toLowerCase();
-
-        const existing =
-          groupMap.get(key);
-
-        if (existing) {
-          existing.items.push(
-            item
-          );
-        } else {
-          groupMap.set(
-            key,
-            {
-              label,
-              items: [item],
-            }
-          );
-        }
-      }
-    );
-
-    const preferredOrder =
-      [
-        "captive marketing",
-        "corporate & retail marketing",
-        "marketing support",
-        "direktorat marketing / advisor",
-        "direktorat marketing",
-      ];
-
-    return Array.from(
-      groupMap.values()
-    )
-      .map((group) => ({
-        ...group,
-        items: [
-          ...group.items,
-        ].sort((a, b) =>
-          a.full_name.localeCompare(
-            b.full_name,
-            "id"
-          )
-        ),
-      }))
-      .sort((a, b) => {
-        const aKey =
-          a.label
-            .trim()
-            .toLowerCase();
-
-        const bKey =
-          b.label
-            .trim()
-            .toLowerCase();
-
-        const aIndex =
-          preferredOrder.indexOf(
-            aKey
-          );
-
-        const bIndex =
-          preferredOrder.indexOf(
-            bKey
-          );
-
-        if (
-          aIndex !== -1 ||
-          bIndex !== -1
-        ) {
-          if (aIndex === -1) {
-            return 1;
-          }
-
-          if (bIndex === -1) {
-            return -1;
-          }
-
-          return (
-            aIndex -
-            bIndex
-          );
-        }
-
-        return a.label.localeCompare(
-          b.label,
-          "id"
-        );
-      });
-  }, [
-    collaboratorCandidates,
-    profileMap,
-  ]);
 
   const refresh = async () => {
     setLoading(true);
@@ -1095,7 +915,6 @@ const AktivitasUniversalPage: React.FC = () => {
     setDescription("");
     setNextAction("");
     setCollaboratorIds([]);
-    setCollaboratorCandidateId("");
     setCompanyName("");
     setPersonMet("");
     setPositionMet("");
@@ -1107,34 +926,12 @@ const AktivitasUniversalPage: React.FC = () => {
   const changeMode = (mode: ActivityMode) => {
     setActivityMode(mode);
     setCollaboratorIds([]);
-    setCollaboratorCandidateId("");
 
     if (mode === "ASSIGNMENT") {
       setOwnerProfileId("");
     } else {
       setOwnerProfileId(profile?.id || "");
     }
-  };
-
-  const addCollaborator = () => {
-    if (!collaboratorCandidateId) return;
-
-    setCollaboratorIds((current) =>
-      Array.from(
-        new Set([
-          ...current,
-          collaboratorCandidateId,
-        ])
-      )
-    );
-
-    setCollaboratorCandidateId("");
-  };
-
-  const removeCollaborator = (id: string) => {
-    setCollaboratorIds((current) =>
-      current.filter((item) => item !== id)
-    );
   };
 
   const handleCreate = async (
@@ -1262,6 +1059,7 @@ const AktivitasUniversalPage: React.FC = () => {
     setTransitionResult(
       activity.result || ""
     );
+    setTransitionCollaboratorIds([]);
     setTransitionOpen(true);
   };
 
@@ -1284,6 +1082,8 @@ const AktivitasUniversalPage: React.FC = () => {
           transitionFollowUpDate,
         result:
           transitionResult.trim(),
+        collaborator_ids:
+          transitionCollaboratorIds,
       };
 
       if (
@@ -1308,6 +1108,17 @@ const AktivitasUniversalPage: React.FC = () => {
       ) {
         window.alert(
           "Jelaskan dukungan yang dibutuhkan."
+        );
+        return;
+      }
+
+      if (
+        transitionTarget ===
+          "NEED_SUPPORT" &&
+        transitionCollaboratorIds.length === 0
+      ) {
+        window.alert(
+          "Pilih minimal 1 user yang dibutuhkan untuk membantu menyelesaikan task ini."
         );
         return;
       }
@@ -1367,6 +1178,7 @@ const AktivitasUniversalPage: React.FC = () => {
         setTransitionOpen(false);
         setTransitionActivity(null);
         setTransitionTarget("");
+        setTransitionCollaboratorIds([]);
         await refresh();
 
         if (
@@ -2879,118 +2691,20 @@ const AktivitasUniversalPage: React.FC = () => {
             {(activityMode === "ASSIGNMENT" ||
               activityMode === "COLLABORATION") && (
               <div className="md:col-span-2">
-                <label className="mb-1.5 block text-xs font-bold">
-                  Kolaborator
-                  {activityMode === "COLLABORATION" ? " *" : " (opsional)"}
-                </label>
-
-                <div className="flex gap-2">
-                  <Select
-                    value={collaboratorCandidateId}
-                    onValueChange={setCollaboratorCandidateId}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Pilih user dari department mana pun" />
-                    </SelectTrigger>
-
-                    <SelectContent className="max-h-80">
-                      {collaboratorDivisionGroups.map(
-                        (
-                          group,
-                          groupIndex
-                        ) => (
-                          <React.Fragment
-                            key={
-                              group.label
-                            }
-                          >
-                            {groupIndex >
-                              0 && (
-                              <SelectSeparator />
-                            )}
-
-                            <SelectGroup>
-                              <SelectLabel className="px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                                {
-                                  group.label
-                                }{" "}
-                                (
-                                {
-                                  group
-                                    .items
-                                    .length
-                                }
-                                )
-                              </SelectLabel>
-
-                              {group.items.map(
-                                (
-                                  item
-                                ) => (
-                                  <SelectItem
-                                    key={
-                                      item.id
-                                    }
-                                    value={
-                                      item.id
-                                    }
-                                  >
-                                    {
-                                      item.full_name
-                                    }{" "}
-                                    —{" "}
-                                    {getOrgLabel(
-                                      item
-                                    )}
-                                  </SelectItem>
-                                )
-                              )}
-                            </SelectGroup>
-                          </React.Fragment>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addCollaborator}
-                    disabled={!collaboratorCandidateId}
-                  >
-                    Tambah
-                  </Button>
-                </div>
-
-                {collaboratorIds.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {collaboratorIds.map((id) => {
-                      const collaborator = profileMap.get(id);
-
-                      return (
-                        <Badge
-                          key={id}
-                          variant="secondary"
-                          className="gap-1 py-1"
-                        >
-                          {collaborator?.full_name || id}
-
-                          <button
-                            type="button"
-                            onClick={() => removeCollaborator(id)}
-                            className="ml-1 rounded hover:bg-slate-300/50"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <p className="mt-1 text-[10px] text-slate-500">
-                  Kolaborator dapat berasal dari department lain dan mendapat akses edit ke aktivitas ini.
-                </p>
+                <ActivityPeoplePicker
+                  directory={directory}
+                  selectedIds={collaboratorIds}
+                  onChange={setCollaboratorIds}
+                  currentUserId={profile?.id}
+                  excludedIds={[ownerProfileId].filter(Boolean)}
+                  label="Kolaborator"
+                  required={activityMode === "COLLABORATION"}
+                  helperText={
+                    activityMode === "COLLABORATION"
+                      ? "Cari berdasarkan nama, unit, department, atau jabatan. Kolaborator dapat berasal dari tim lain dan akan menerima notifikasi."
+                      : "Opsional. Gunakan jika assignment membutuhkan kontribusi dari user atau tim lain."
+                  }
+                />
               </div>
             )}
 
@@ -3163,6 +2877,7 @@ const AktivitasUniversalPage: React.FC = () => {
             setTransitionNextAction("");
             setTransitionFollowUpDate(todayKey());
             setTransitionResult("");
+            setTransitionCollaboratorIds([]);
           }
         }}
       >
@@ -3223,6 +2938,7 @@ const AktivitasUniversalPage: React.FC = () => {
                       value as UniversalActivityStatus
                     );
                     setTransitionNote("");
+                    setTransitionCollaboratorIds([]);
                   }}
                 >
                   <SelectTrigger>
@@ -3304,29 +3020,59 @@ const AktivitasUniversalPage: React.FC = () => {
                       }
                     />
                   </div>
+
+                  <ActivityPeoplePicker
+                    directory={directory}
+                    selectedIds={transitionCollaboratorIds}
+                    onChange={setTransitionCollaboratorIds}
+                    currentUserId={profile?.id}
+                    excludedIds={[transitionActivity.owner_profile_id]}
+                    label="Kolaborasi untuk Follow Up"
+                    helperText="Opsional. Pilih user internal jika follow up ini membutuhkan kontribusi tim lain. User yang dipilih akan masuk Need My Action dan menerima notifikasi."
+                  />
                 </>
               )}
 
               {transitionTarget ===
                 "NEED_SUPPORT" && (
-                <div>
-                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                    Dukungan yang Dibutuhkan
-                  </label>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Dukungan yang Dibutuhkan
+                    </label>
 
-                  <Textarea
-                    value={transitionNote}
-                    onChange={(event) =>
-                      setTransitionNote(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Jelaskan support/eskalasi yang dibutuhkan..."
-                  />
+                    <Textarea
+                      value={transitionNote}
+                      onChange={(event) =>
+                        setTransitionNote(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Jelaskan support/eskalasi yang dibutuhkan..."
+                    />
 
-                  <div className="mt-1.5 text-[10px] text-slate-500">
-                    Direct superior akan menerima in-app notification dan email.
+                    <div className="mt-1.5 text-[10px] text-slate-500">
+                      Direct superior tetap mendapat awareness. Pilih minimal 1 user yang dibutuhkan untuk membantu penyelesaian task.
+                    </div>
                   </div>
+
+                  <ActivityPeoplePicker
+                    directory={directory}
+                    selectedIds={transitionCollaboratorIds}
+                    onChange={setTransitionCollaboratorIds}
+                    currentUserId={profile?.id}
+                    excludedIds={[transitionActivity.owner_profile_id]}
+                    recommendedProfileIds={
+                      [
+                        profileMap.get(
+                          transitionActivity.owner_profile_id
+                        )?.manager_id,
+                      ].filter((id): id is string => Boolean(id))
+                    }
+                    label="Minta Bantuan Dari"
+                    required
+                    helperText="Support target akan mendapat email + in-app notification dan task ini muncul di Need My Action mereka. Mereka dapat comment/upload evidence, tetapi tidak dapat mengubah status utama task."
+                  />
                 </div>
               )}
 
@@ -3595,7 +3341,7 @@ const AktivitasUniversalPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {detail.can_edit &&
+                  {actionRoleByActivityId[detail.activity.id] === "OWNER" &&
                     !["PENDING_VALIDATION", "DONE", "CANCELLED"].includes(
                       detail.activity.status
                     ) && (
