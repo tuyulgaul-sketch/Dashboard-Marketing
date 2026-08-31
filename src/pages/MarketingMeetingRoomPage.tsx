@@ -153,8 +153,12 @@ const MarketingMeetingRoomPage:
       } | null>(null);
 
     const refresh =
-      async () => {
-        setLoading(true);
+      async (
+        silent = false
+      ) => {
+        if (!silent) {
+          setLoading(true);
+        }
 
         try {
           const fromDate =
@@ -189,23 +193,67 @@ const MarketingMeetingRoomPage:
             error
           );
 
-          setMessage({
-            type: "error",
-            text:
-              error instanceof
-              Error
-                ? error.message
-                : "Gagal membaca jadwal ruangan.",
-          });
+          if (!silent) {
+            setMessage({
+              type: "error",
+              text:
+                error instanceof
+                Error
+                  ? error.message
+                  : "Gagal membaca jadwal ruangan.",
+            });
+          }
         } finally {
-          setLoading(
-            false
-          );
+          if (!silent) {
+            setLoading(
+              false
+            );
+          }
         }
       };
 
     useEffect(() => {
-      refresh();
+      void refresh(false);
+
+      const intervalId =
+        window.setInterval(
+          () => {
+            if (
+              document.visibilityState ===
+              "visible"
+            ) {
+              void refresh(true);
+            }
+          },
+          10_000
+        );
+
+      const handleVisibilityChange =
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void refresh(true);
+          }
+        };
+
+      document.addEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+
+      return () => {
+        window.clearInterval(
+          intervalId
+        );
+
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange
+        );
+      };
+
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       profile?.id,

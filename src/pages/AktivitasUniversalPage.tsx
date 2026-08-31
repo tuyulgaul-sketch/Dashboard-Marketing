@@ -645,9 +645,13 @@ const AktivitasUniversalPage: React.FC = () => {
       ? "Bawahan"
       : "Unit / Tim";
 
-  const refresh = async () => {
-    setLoading(true);
-    setError("");
+  const refresh = async (
+    silent = false
+  ) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
 
     try {
       const [
@@ -674,11 +678,16 @@ const AktivitasUniversalPage: React.FC = () => {
       );
     } catch (err) {
       console.error(err);
-      setError(
-        "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
-      );
+
+      if (!silent) {
+        setError(
+          "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -714,7 +723,47 @@ const AktivitasUniversalPage: React.FC = () => {
       );
     }
 
-    refresh();
+    void refresh(false);
+
+    const intervalId =
+      window.setInterval(
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void refresh(true);
+          }
+        },
+        10_000
+      );
+
+    const handleVisibilityChange =
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          void refresh(true);
+        }
+      };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      window.clearInterval(
+        intervalId
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
