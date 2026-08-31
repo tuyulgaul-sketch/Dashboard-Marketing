@@ -22,49 +22,27 @@ import {
   AppFeature,
   canAccessFeature,
   getDocumentFeatureFromSearch,
-  isDigitalAffinityProfile,
   isSystemAdminProfile,
 } from "@/lib/accessControl";
 
-import Index from "./pages/Index";
-import TargetRkapPage from "./pages/TargetRkapPage";
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
-import BookingPipelinePage from "./pages/BookingPipelinePage";
-import ProduksiPage from "./pages/ProduksiPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
-import AdministrasiPage from "./pages/AdministrasiPage";
 import TandaTerimaPage from "./pages/TandaTerimaPage";
+import AdministrasiPage from "./pages/AdministrasiPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
 import LoginPage from "./pages/LoginPage";
-import DigitalAffinityPage from "./pages/DigitalAffinityPage";
-import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const FeatureOnly: React.FC<{
   feature: AppFeature;
   children: React.ReactElement;
-}> = ({
-  feature,
-  children,
-}) => {
+}> = ({ feature, children }) => {
   const { profile } = useAuth();
 
   if (!canAccessFeature(profile, feature)) {
-    return (
-      <Navigate
-        to={
-          canAccessFeature(
-            profile,
-            "ACTIVITY"
-          )
-            ? "/aktivitas"
-            : "/"
-        }
-        replace
-      />
-    );
+    return <Navigate to="/aktivitas" replace />;
   }
 
   return children;
@@ -87,7 +65,12 @@ const DocumentOnly: React.FC<{
       feature
     )
   ) {
-    return <Navigate to="/aktivitas" replace />;
+    return (
+      <Navigate
+        to="/aktivitas"
+        replace
+      />
+    );
   }
 
   return children;
@@ -100,7 +83,11 @@ const HomeRoute: React.FC = () => {
     return null;
   }
 
-  if (isSystemAdminProfile(profile)) {
+  if (
+    isSystemAdminProfile(
+      profile
+    )
+  ) {
     return (
       <Navigate
         to="/administrasi"
@@ -109,26 +96,12 @@ const HomeRoute: React.FC = () => {
     );
   }
 
-  if (
-    isDigitalAffinityProfile(
-      profile
-    )
-  ) {
-    return <DigitalAffinityPage />;
-  }
-
-  if (
-    !profile.legacy_user_id
-  ) {
-    return (
-      <Navigate
-        to="/aktivitas"
-        replace
-      />
-    );
-  }
-
-  return <Index />;
+  return (
+    <Navigate
+      to="/aktivitas"
+      replace
+    />
+  );
 };
 
 const Protected = ({
@@ -185,39 +158,6 @@ const AppRoutes = () => (
     />
 
     <Route
-      path="/target-rkap"
-      element={
-        <Protected>
-          <FeatureOnly feature="TARGET_RKAP">
-            <TargetRkapPage />
-          </FeatureOnly>
-        </Protected>
-      }
-    />
-
-    <Route
-      path="/booking-pipeline"
-      element={
-        <Protected>
-          <FeatureOnly feature="BOOKING_PIPELINE">
-            <BookingPipelinePage />
-          </FeatureOnly>
-        </Protected>
-      }
-    />
-
-    <Route
-      path="/produksi"
-      element={
-        <Protected>
-          <FeatureOnly feature="PRODUCTION">
-            <ProduksiPage />
-          </FeatureOnly>
-        </Protected>
-      }
-    />
-
-    <Route
       path="/dokumen-pendukung"
       element={
         <Protected>
@@ -254,7 +194,10 @@ const AppRoutes = () => (
       path="*"
       element={
         <Protected>
-          <NotFound />
+          <Navigate
+            to="/aktivitas"
+            replace
+          />
         </Protected>
       }
     />
