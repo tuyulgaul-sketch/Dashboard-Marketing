@@ -710,11 +710,16 @@ const AktivitasUniversalPage: React.FC = () => {
           return result;
         }, {})
       );
+
+      setError("");
     } catch (err) {
       console.error(err);
-      setError(
-        "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
-      );
+
+      if (!silent) {
+        setError(
+          "Gagal membaca data aktivitas. Silakan coba Refresh kembali."
+        );
+      }
     } finally {
       if (!silent) {
         setLoading(false);
