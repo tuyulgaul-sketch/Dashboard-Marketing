@@ -340,10 +340,10 @@ export const AppSidebar:
 
         <div className="border-t border-slate-800/80 p-4 text-[11px] text-slate-500">
           <div className="font-semibold text-slate-400">
-            Perta Life Marketing OS
+            Dashboard Marketing PertaLife
           </div>
           <div>
-            Supabase Lite
+            By Digital Affinity
           </div>
         </div>
       </aside>
