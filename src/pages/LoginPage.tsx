@@ -307,7 +307,7 @@ const LoginPage:
           <div className="mb-6">
             <div className="mb-5">
   <img
-    src="/pertalife-logo.png"
+    src="/pertalife.png"
     alt="PertaLife Insurance"
     className="h-14 w-auto object-contain"
   />
