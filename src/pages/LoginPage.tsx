@@ -296,10 +296,22 @@ const LoginPage:
       };
 
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-white p-7 shadow-2xl">
+      <div
+  className="relative min-h-screen flex items-center justify-center p-6 bg-cover bg-center bg-no-repeat"
+  style={{
+    backgroundImage: "url('/login-bg.png')",
+  }}
+>
+  <div className="absolute inset-0 bg-slate-900/35" />
+       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/40 bg-white/95 p-7 shadow-2xl backdrop-blur-sm">
           <div className="mb-6">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-700 text-xl font-black text-white">
+            <div className="mb-5">
+  <img
+    src="/pertalife-logo.png"
+    alt="PertaLife Insurance"
+    className="h-14 w-auto object-contain"
+  />
+</div>
               P
             </div>
 
