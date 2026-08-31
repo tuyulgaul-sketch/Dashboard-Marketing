@@ -37,6 +37,8 @@ export type UniversalActivityStatus =
 export type ActivityActionRole =
   | "OWNER"
   | "COLLABORATOR"
+  | "FOLLOW_UP"
+  | "SUPPORT"
   | "APPROVER"
   | "CREATOR";
 
@@ -45,6 +47,7 @@ export type ActivityTransitionPayload = {
   next_action?: string;
   follow_up_date?: string;
   result?: string;
+  collaborator_ids?: string[];
 };
 
 export type ActivityActionRoleRow = {
@@ -250,7 +253,12 @@ export async function transitionUniversalActivity(
     {
       p_activity_id: activityId,
       p_target_status: targetStatus,
-      p_payload: payload,
+      p_payload: {
+        ...payload,
+        collaborator_ids: Array.from(
+          new Set(payload.collaborator_ids || [])
+        ),
+      },
     }
   );
 
