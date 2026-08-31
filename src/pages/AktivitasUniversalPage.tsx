@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import ActivityPeoplePicker from "@/components/activity/ActivityPeoplePicker";
+import ActivityDiscussionV2 from "@/components/activity/ActivityDiscussionV2";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityActionRole,
@@ -14,7 +15,6 @@ import {
   DirectoryProfile,
   UniversalActivity,
   UniversalActivityStatus,
-  addUniversalActivityComment,
   createUniversalActivity,
   deleteUniversalActivityAttachment,
   getActivityDirectory,
@@ -91,7 +91,6 @@ import {
   RefreshCw,
   Rows3,
   Search,
-  Send,
   ShieldCheck,
   Trash2,
   UploadCloud,
@@ -429,8 +428,13 @@ const AktivitasUniversalPage: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] =
     useState<ActivityDetailPayload | null>(null);
-  const [commentText, setCommentText] = useState("");
-  const [commentBusy, setCommentBusy] = useState(false);
+  const [detailTab, setDetailTab] =
+    useState<
+      "overview" |
+      "discussion" |
+      "attachments" |
+      "history"
+    >("overview");
 
   const [viewMode, setViewMode] =
     useState<ActivityViewMode>("KANBAN");
@@ -1373,7 +1377,6 @@ const AktivitasUniversalPage: React.FC = () => {
   const openActivityDetail = async (activityId: string) => {
     setDetailOpen(true);
     setDetailLoading(true);
-    setCommentText("");
 
     try {
       const nextDetail =
@@ -1417,38 +1420,22 @@ const AktivitasUniversalPage: React.FC = () => {
     }
 
     deepLinkHandledRef.current = deepLinkedTaskId;
+
+    if (
+      requestedDetailTab === "discussion"
+    ) {
+      setDetailTab("discussion");
+    }
+
     void openActivityDetail(deepLinkedTaskId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkedTaskId, profile?.id]);
 
-  const handleAddComment = async () => {
-    if (!detail || !commentText.trim()) return;
+  const requestedDetailTab =
+    searchParams.get("tab");
 
-    try {
-      setCommentBusy(true);
-
-      await addUniversalActivityComment(
-        detail.activity.id,
-        commentText
-      );
-
-      setCommentText("");
-
-      const refreshed =
-        await getUniversalActivityDetail(
-          detail.activity.id
-        );
-
-      setDetail(refreshed);
-    } catch (err: any) {
-      console.error(err);
-      window.alert(
-        err?.message || "Gagal mengirim komentar."
-      );
-    } finally {
-      setCommentBusy(false);
-    }
-  };
+  const requestedCommentId =
+    searchParams.get("comment");
 
 
   const handleUpdateProgress = async () => {
@@ -3449,15 +3436,23 @@ const AktivitasUniversalPage: React.FC = () => {
 
           if (!open) {
             setDetail(null);
-            setCommentText("");
             setAttachmentFile(null);
             setAttachmentInputKey((value) => value + 1);
+            setDetailTab("overview");
             deepLinkHandledRef.current = null;
 
-            if (searchParams.has("task")) {
+            if (
+              searchParams.has("task") ||
+              searchParams.has("tab") ||
+              searchParams.has("comment")
+            ) {
               const nextParams =
                 new URLSearchParams(searchParams);
+
               nextParams.delete("task");
+              nextParams.delete("tab");
+              nextParams.delete("comment");
+
               setSearchParams(nextParams, {
                 replace: true,
               });
@@ -3496,7 +3491,19 @@ const AktivitasUniversalPage: React.FC = () => {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="overview" className="mt-2">
+              <Tabs
+                value={detailTab}
+                onValueChange={(value) =>
+                  setDetailTab(
+                    value as
+                      | "overview"
+                      | "discussion"
+                      | "attachments"
+                      | "history"
+                  )
+                }
+                className="mt-2"
+              >
                 <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview">
                     <Eye className="mr-2 h-4 w-4" />
@@ -3784,77 +3791,15 @@ const AktivitasUniversalPage: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="discussion" className="mt-5">
-                  <div className="space-y-4">
-                    <div className="max-h-[380px] space-y-3 overflow-y-auto pr-1">
-                      {detail.comments.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                          Belum ada komentar.
-                        </div>
-                      ) : (
-                        detail.comments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className="rounded-xl border border-slate-200 bg-white p-4"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <div className="text-sm font-bold text-slate-900">
-                                  {comment.author_name}
-                                </div>
-
-                                <div className="text-[10px] text-slate-500">
-                                  {comment.author_role} • {comment.author_department || comment.author_unit}
-                                </div>
-                              </div>
-
-                              <div className="shrink-0 text-[10px] text-slate-400">
-                                {formatDateTime(comment.created_at)}
-                              </div>
-                            </div>
-
-                            <div className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
-                              {comment.body}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="mb-2 text-xs font-bold text-slate-700">
-                        Tambah Komentar
-                      </div>
-
-                      <Textarea
-                        value={commentText}
-                        onChange={(event) =>
-                          setCommentText(event.target.value)
-                        }
-                        placeholder="Tulis update, pertanyaan, atau catatan untuk aktivitas ini..."
-                        maxLength={4000}
-                      />
-
-                      <div className="mt-2 flex items-center justify-between">
-                        <div className="text-[10px] text-slate-400">
-                          {commentText.length}/4000
-                        </div>
-
-                        <Button
-                          size="sm"
-                          onClick={handleAddComment}
-                          disabled={
-                            commentBusy ||
-                            !commentText.trim()
-                          }
-                        >
-                          <Send className="mr-2 h-4 w-4" />
-                          {commentBusy
-                            ? "Mengirim..."
-                            : "Kirim Komentar"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                  <ActivityDiscussionV2
+                    detail={detail}
+                    directory={directory}
+                    currentProfileId={profile?.id}
+                    highlightCommentId={
+                      requestedCommentId
+                    }
+                    onDetailChange={setDetail}
+                  />
                 </TabsContent>
 
                 <TabsContent value="attachments" className="mt-5">

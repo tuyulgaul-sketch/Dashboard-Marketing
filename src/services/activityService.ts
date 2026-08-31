@@ -177,6 +177,14 @@ export type ActivityCollaboratorDetail = {
   created_at: string;
 };
 
+export type ActivityCommentMention = {
+  profile_id: string;
+  full_name: string;
+  role_level?: string | null;
+  unit?: string | null;
+  department?: string | null;
+};
+
 export type ActivityCommentDetail = {
   id: string;
   body: string;
@@ -186,6 +194,10 @@ export type ActivityCommentDetail = {
   author_unit: string;
   author_department: string | null;
   created_at: string;
+  parent_comment_id?: string | null;
+  parent_author_name?: string | null;
+  parent_body?: string | null;
+  mentions?: ActivityCommentMention[];
 };
 
 export type ActivityHistoryDetail = {
@@ -397,6 +409,21 @@ export async function reviewUniversalActivityValidation(
   );
 }
 
+export async function getActivityDiscussionV2(
+  activityId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "get_activity_discussion_v2",
+    {
+      p_activity_id: activityId,
+    }
+  );
+
+  if (error) throw error;
+
+  return (data || []) as ActivityCommentDetail[];
+}
+
 export async function getUniversalActivityDetail(
   activityId: string
 ) {
@@ -409,7 +436,21 @@ export async function getUniversalActivityDetail(
 
   if (error) throw error;
 
-  return data as ActivityDetailPayload;
+  const detail = data as ActivityDetailPayload;
+
+  try {
+    detail.comments =
+      await getActivityDiscussionV2(
+        activityId
+      );
+  } catch (discussionError) {
+    console.warn(
+      "Comment V2 belum tersedia; menggunakan discussion legacy.",
+      discussionError
+    );
+  }
+
+  return detail;
 }
 
 export async function addUniversalActivityComment(
@@ -427,6 +468,54 @@ export async function addUniversalActivityComment(
   if (error) throw error;
 
   return data as ActivityCommentDetail;
+}
+
+export async function addUniversalActivityCommentV2(
+  activityId: string,
+  body: string,
+  options: {
+    parentCommentId?: string | null;
+    mentionedProfileIds?: string[];
+  } = {}
+) {
+  const comment =
+    await addUniversalActivityComment(
+      activityId,
+      body
+    );
+
+  const { error } = await supabase.rpc(
+    "decorate_activity_comment_v2",
+    {
+      p_comment_id: comment.id,
+      p_parent_comment_id:
+        options.parentCommentId || null,
+      p_mentioned_profile_ids:
+        Array.from(
+          new Set(
+            options.mentionedProfileIds || []
+          )
+        ),
+    }
+  );
+
+  if (error) {
+    console.error(
+      "Komentar tersimpan tetapi Comment V2 gagal:",
+      error
+    );
+
+    return {
+      comment,
+      warning:
+        "Komentar sudah tersimpan, tetapi mention/reply belum berhasil diproses. Silakan refresh sebelum mencoba lagi.",
+    };
+  }
+
+  return {
+    comment,
+    warning: undefined as string | undefined,
+  };
 }
 
 

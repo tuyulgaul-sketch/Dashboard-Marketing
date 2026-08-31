@@ -55,8 +55,17 @@ export function resolveNotificationTarget(item: AppNotification) {
     currentPath.startsWith("/aktivitas");
 
   if (isActivityNotification && item.related_record_id) {
-    const params = new URLSearchParams();
-    params.set("task", item.related_record_id);
+    const [, rawQuery = ""] =
+      currentPath.split("?");
+
+    const params =
+      new URLSearchParams(rawQuery);
+
+    params.set(
+      "task",
+      item.related_record_id
+    );
+
     return `/aktivitas?${params.toString()}`;
   }
 

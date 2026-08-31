@@ -143,6 +143,35 @@ export async function getMyActivityAttention(
 ): Promise<ActivityAttentionRow[]> {
   if (!profileId) return [];
 
+  try {
+    const { data, error } = await supabase.rpc(
+      "get_my_activity_attention_v2"
+    );
+
+    if (!error) {
+      return (data || []).map((row: any) => ({
+        activity_id: row.activity_id,
+        unseen_count: Number(
+          row.unseen_count || 0
+        ),
+        latest_notification_at:
+          row.latest_event_at || null,
+        last_seen_at:
+          row.last_seen_at || null,
+      }));
+    }
+
+    console.warn(
+      "Activity attention V2 belum tersedia; fallback ke notification attention.",
+      error
+    );
+  } catch (error) {
+    console.warn(
+      "Activity attention V2 gagal; fallback ke notification attention.",
+      error
+    );
+  }
+
   const [notifications, serverStates] = await Promise.all([
     getMyNotifications(500).catch((error) => {
       console.warn(
