@@ -645,9 +645,9 @@ const AktivitasUniversalPage: React.FC = () => {
       ? "Bawahan"
       : "Unit / Tim";
 
-  const refresh = async (
-    silent = false
-  ) => {
+  const refresh = async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+
     if (!silent) {
       setLoading(true);
       setError("");
@@ -678,12 +678,9 @@ const AktivitasUniversalPage: React.FC = () => {
       );
     } catch (err) {
       console.error(err);
-
-      if (!silent) {
-        setError(
-          "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
-        );
-      }
+      setError(
+        "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
+      );
     } finally {
       if (!silent) {
         setLoading(false);
@@ -723,47 +720,35 @@ const AktivitasUniversalPage: React.FC = () => {
       );
     }
 
-    void refresh(false);
+    void refresh();
 
-    const intervalId =
-      window.setInterval(
-        () => {
-          if (
-            document.visibilityState ===
-            "visible"
-          ) {
-            void refresh(true);
-          }
-        },
-        10_000
-      );
+    // Live-readiness fallback: data Activity is central in Supabase.
+    // Refresh silently so changes from another laptop/browser appear
+    // without forcing the user to reload the page.
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refresh({ silent: true });
+      }
+    }, 10_000);
 
-    const handleVisibilityChange =
-      () => {
-        if (
-          document.visibilityState ===
-          "visible"
-        ) {
-          void refresh(true);
-        }
-      };
-
-    document.addEventListener(
-      "visibilitychange",
-      handleVisibilityChange
-    );
-
-    return () => {
-      window.clearInterval(
-        intervalId
-      );
-
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange
-      );
+    const handleFocus = () => {
+      void refresh({ silent: true });
     };
 
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refresh({ silent: true });
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 

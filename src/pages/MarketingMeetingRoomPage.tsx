@@ -153,9 +153,9 @@ const MarketingMeetingRoomPage:
       } | null>(null);
 
     const refresh =
-      async (
-        silent = false
-      ) => {
+      async (options?: { silent?: boolean }) => {
+        const silent = Boolean(options?.silent);
+
         if (!silent) {
           setLoading(true);
         }
@@ -193,16 +193,14 @@ const MarketingMeetingRoomPage:
             error
           );
 
-          if (!silent) {
-            setMessage({
-              type: "error",
-              text:
-                error instanceof
-                Error
-                  ? error.message
-                  : "Gagal membaca jadwal ruangan.",
-            });
-          }
+          setMessage({
+            type: "error",
+            text:
+              error instanceof
+              Error
+                ? error.message
+                : "Gagal membaca jadwal ruangan.",
+          });
         } finally {
           if (!silent) {
             setLoading(
@@ -213,47 +211,35 @@ const MarketingMeetingRoomPage:
       };
 
     useEffect(() => {
-      void refresh(false);
+      void refresh();
 
-      const intervalId =
-        window.setInterval(
-          () => {
-            if (
-              document.visibilityState ===
-              "visible"
-            ) {
-              void refresh(true);
-            }
-          },
-          10_000
-        );
+      // Cross-device live-readiness fallback. The booking source of truth
+      // remains the Supabase RPC/database; this only keeps an open browser
+      // synchronized with bookings created from other devices.
+      const intervalId = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void refresh({ silent: true });
+        }
+      }, 10_000);
 
-      const handleVisibilityChange =
-        () => {
-          if (
-            document.visibilityState ===
-            "visible"
-          ) {
-            void refresh(true);
-          }
-        };
-
-      document.addEventListener(
-        "visibilitychange",
-        handleVisibilityChange
-      );
-
-      return () => {
-        window.clearInterval(
-          intervalId
-        );
-
-        document.removeEventListener(
-          "visibilitychange",
-          handleVisibilityChange
-        );
+      const handleFocus = () => {
+        void refresh({ silent: true });
       };
 
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible") {
+          void refresh({ silent: true });
+        }
+      };
+
+      window.addEventListener("focus", handleFocus);
+      document.addEventListener("visibilitychange", handleVisibility);
+
+      return () => {
+        window.clearInterval(intervalId);
+        window.removeEventListener("focus", handleFocus);
+        document.removeEventListener("visibilitychange", handleVisibility);
+      };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       profile?.id,
