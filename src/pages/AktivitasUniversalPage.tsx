@@ -3,11 +3,13 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  ActivityActionRole,
   ActivityAttachmentDetail,
   ActivityCategory,
   ActivityDetailPayload,
   ActivityMode,
   ActivityPriority,
+  ActivityTransitionPayload,
   DirectoryProfile,
   UniversalActivity,
   UniversalActivityStatus,
@@ -15,13 +17,12 @@ import {
   createUniversalActivity,
   deleteUniversalActivityAttachment,
   getActivityDirectory,
+  getMyActivityActionRoles,
   getUniversalActivities,
   getUniversalActivityAttachmentUrl,
   getUniversalActivityDetail,
-  reviewUniversalActivityValidation,
-  submitUniversalActivityForValidation,
+  transitionUniversalActivity,
   updateUniversalActivityProgress,
-  updateUniversalActivityStatus,
   uploadUniversalActivityAttachment,
 } from "@/services/activityService";
 import {
@@ -147,18 +148,107 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   PROGRESS_UPDATED: "Progress diperbarui",
   ATTACHMENT_ADDED: "Lampiran ditambahkan",
   ATTACHMENT_DELETED: "Lampiran dihapus",
+  PUBLISHED: "Draft dipublish",
+  WORK_STARTED: "Pekerjaan dimulai",
+  WORK_RESUMED: "Pekerjaan dilanjutkan",
+  WAITING_FOLLOW_UP: "Menunggu follow up",
+  NEED_SUPPORT_REQUESTED: "Meminta dukungan",
+  ACTIVITY_CANCELLED: "Aktivitas dibatalkan",
 };
 
-const MOVABLE_STATUSES: Array<
-  Exclude<UniversalActivityStatus, "PENDING_VALIDATION" | "DONE">
+const KANBAN_STATUSES: Array<
+  Exclude<UniversalActivityStatus, "CANCELLED">
 > = [
   "DRAFT",
   "TO_DO",
   "ON_PROGRESS",
   "WAITING_FOLLOW_UP",
   "NEED_SUPPORT",
-  "CANCELLED",
+  "PENDING_VALIDATION",
+  "DONE",
 ];
+
+const TRANSITION_ACTION_LABELS: Record<
+  UniversalActivityStatus,
+  string
+> = {
+  DRAFT: "Kembalikan ke Draft",
+  TO_DO: "Publish / To Do",
+  ON_PROGRESS: "Mulai / Lanjutkan",
+  WAITING_FOLLOW_UP: "Waiting / Follow Up",
+  NEED_SUPPORT: "Need Support",
+  PENDING_VALIDATION: "Ajukan Validasi",
+  DONE: "Approve & Done",
+  CANCELLED: "Batalkan Aktivitas",
+};
+
+const ACTION_ROLE_LABELS: Record<ActivityActionRole, string> = {
+  OWNER: "Assigned to You",
+  COLLABORATOR: "Collaboration",
+  APPROVER: "Awaiting Your Approval",
+  CREATOR: "Draft Owner",
+};
+
+const getAllowedTransitionTargets = (
+  activity: UniversalActivity,
+  actionRole?: ActivityActionRole
+): UniversalActivityStatus[] => {
+  if (!actionRole) return [];
+
+  if (
+    activity.status === "PENDING_VALIDATION"
+  ) {
+    return actionRole === "APPROVER"
+      ? ["DONE", "ON_PROGRESS"]
+      : [];
+  }
+
+  if (
+    ["DONE", "CANCELLED"].includes(
+      activity.status
+    )
+  ) {
+    return [];
+  }
+
+  switch (activity.status) {
+    case "DRAFT":
+      return ["TO_DO", "CANCELLED"];
+    case "TO_DO":
+      return [
+        "ON_PROGRESS",
+        "WAITING_FOLLOW_UP",
+        "NEED_SUPPORT",
+        "CANCELLED",
+      ];
+    case "ON_PROGRESS":
+      return [
+        "WAITING_FOLLOW_UP",
+        "NEED_SUPPORT",
+        "PENDING_VALIDATION",
+        "CANCELLED",
+      ];
+    case "WAITING_FOLLOW_UP":
+      return [
+        "ON_PROGRESS",
+        "NEED_SUPPORT",
+        "CANCELLED",
+      ];
+    case "NEED_SUPPORT":
+      return [
+        "ON_PROGRESS",
+        "WAITING_FOLLOW_UP",
+        "CANCELLED",
+      ];
+    default:
+      return [];
+  }
+};
+
+type ActivityViewMode =
+  | "KANBAN"
+  | "LIST"
+  | "CALENDAR";
 
 type ScopeFilter =
   | "MY"
@@ -250,6 +340,8 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const [activities, setActivities] = useState<UniversalActivity[]>([]);
   const [directory, setDirectory] = useState<DirectoryProfile[]>([]);
+  const [actionRoleByActivityId, setActionRoleByActivityId] =
+    useState<Record<string, ActivityActionRole>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -299,9 +391,24 @@ const AktivitasUniversalPage: React.FC = () => {
   const [commentBusy, setCommentBusy] = useState(false);
 
   const [viewMode, setViewMode] =
-    useState<"LIST" | "CALENDAR">("LIST");
+    useState<ActivityViewMode>("KANBAN");
   const [calendarMonth, setCalendarMonth] =
     useState(new Date());
+
+  const [transitionOpen, setTransitionOpen] =
+    useState(false);
+  const [transitionActivity, setTransitionActivity] =
+    useState<UniversalActivity | null>(null);
+  const [transitionTarget, setTransitionTarget] =
+    useState<UniversalActivityStatus | "">("");
+  const [transitionNote, setTransitionNote] =
+    useState("");
+  const [transitionNextAction, setTransitionNextAction] =
+    useState("");
+  const [transitionFollowUpDate, setTransitionFollowUpDate] =
+    useState(todayKey());
+  const [transitionResult, setTransitionResult] =
+    useState("");
 
   const [progressValue, setProgressValue] = useState(0);
   const [progressBusy, setProgressBusy] = useState(false);
@@ -723,18 +830,32 @@ const AktivitasUniversalPage: React.FC = () => {
     setError("");
 
     try {
-      const [activityRows, directoryRows] =
-        await Promise.all([
-          getUniversalActivities(),
-          getActivityDirectory(),
-        ]);
+      const [
+        activityRows,
+        directoryRows,
+        actionRoleRows,
+      ] = await Promise.all([
+        getUniversalActivities(),
+        getActivityDirectory(),
+        getMyActivityActionRoles(),
+      ]);
 
       setActivities(activityRows);
       setDirectory(directoryRows);
+
+      setActionRoleByActivityId(
+        actionRoleRows.reduce<
+          Record<string, ActivityActionRole>
+        >((result, row) => {
+          result[row.activity_id] =
+            row.action_role;
+          return result;
+        }, {})
+      );
     } catch (err) {
       console.error(err);
       setError(
-        "Gagal membaca data aktivitas. Pastikan SQL Activity v2.2 sudah dijalankan di Supabase."
+        "Gagal membaca data aktivitas. Pastikan SQL Activity vNext sudah dijalankan di Supabase."
       );
     } finally {
       setLoading(false);
@@ -743,10 +864,52 @@ const AktivitasUniversalPage: React.FC = () => {
 
   useEffect(() => {
     if (!profile) return;
+
     setOwnerProfileId(profile.id);
+
+    const storedView =
+      window.localStorage.getItem(
+        `pertalife_activity_view_${profile.id}`
+      ) as ActivityViewMode | null;
+
+    if (
+      storedView &&
+      ["KANBAN", "LIST", "CALENDAR"].includes(
+        storedView
+      )
+    ) {
+      setViewMode(storedView);
+    } else {
+      const role =
+        profile.role_level
+          ?.trim()
+          .toUpperCase();
+
+      setViewMode(
+        role === "VP" ||
+          role === "DIRECTOR" ||
+          role === "DIREKTUR"
+          ? "LIST"
+          : "KANBAN"
+      );
+    }
+
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
+
+  const changeViewMode = (
+    nextView: ActivityViewMode
+  ) => {
+    setViewMode(nextView);
+
+    if (profile?.id) {
+      window.localStorage.setItem(
+        `pertalife_activity_view_${profile.id}`,
+        nextView
+      );
+    }
+  };
 
   const isOverdue = (activity: UniversalActivity) =>
     Boolean(
@@ -778,19 +941,50 @@ const AktivitasUniversalPage: React.FC = () => {
         return false;
       }
 
-      if (
-        scope === "TEAM" &&
-        activity.owner_profile_id === profile?.id
-      ) {
-        return false;
+      if (scope === "TEAM") {
+        const viewerDepartment =
+          profile?.department
+            ?.trim()
+            .toLowerCase() || "";
+
+        const ownerDepartment =
+          owner?.department
+            ?.trim()
+            .toLowerCase() || "";
+
+        const viewerUnit =
+          profile?.unit
+            ?.trim()
+            .toLowerCase() || "";
+
+        const ownerUnit =
+          owner?.unit
+            ?.trim()
+            .toLowerCase() || "";
+
+        const sameTeam =
+          viewerDepartment &&
+          !["none", "null"].includes(
+            viewerDepartment
+          )
+            ? ownerDepartment ===
+              viewerDepartment
+            : Boolean(
+                viewerUnit &&
+                  ownerUnit ===
+                    viewerUnit
+              );
+
+        if (!sameTeam) {
+          return false;
+        }
       }
 
       if (
         scope === "ACTION" &&
-        !(
-          activity.status === "PENDING_VALIDATION" &&
-          activity.validation_approver_profile_id === profile?.id
-        )
+        !actionRoleByActivityId[
+          activity.id
+        ]
       ) {
         return false;
       }
@@ -835,9 +1029,12 @@ const AktivitasUniversalPage: React.FC = () => {
       return true;
     });
   }, [
+    actionRoleByActivityId,
     categoryFilter,
     orgScopedActivities,
+    profile?.department,
     profile?.id,
+    profile?.unit,
     profileMap,
     query,
     scope,
@@ -880,8 +1077,11 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const actionCount = orgScopedActivities.filter(
     (activity) =>
-      activity.status === "PENDING_VALIDATION" &&
-      activity.validation_approver_profile_id === profile?.id
+      Boolean(
+        actionRoleByActivityId[
+          activity.id
+        ]
+      )
   ).length;
 
   const resetForm = () => {
@@ -937,7 +1137,9 @@ const AktivitasUniversalPage: React.FC = () => {
     );
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (
+    initialStatus: "DRAFT" | "TO_DO" = "TO_DO"
+  ) => {
     if (!profile) return;
 
     if (!title.trim()) {
@@ -968,6 +1170,7 @@ const AktivitasUniversalPage: React.FC = () => {
 
       await createUniversalActivity({
         activity_mode: activityMode,
+        initial_status: initialStatus,
         title,
         category,
         priority,
@@ -1003,90 +1206,276 @@ const AktivitasUniversalPage: React.FC = () => {
     }
   };
 
-  const handleMoveStatus = async (
-    activityId: string,
-    status: Exclude<
-      UniversalActivityStatus,
-      "PENDING_VALIDATION" | "DONE"
-    >
+  const requestTransition = (
+    activity: UniversalActivity,
+    targetStatus?: UniversalActivityStatus
   ) => {
-    try {
-      setBusyId(activityId);
-      await updateUniversalActivityStatus(activityId, status);
-      await refresh();
+    const actionRole =
+      actionRoleByActivityId[
+        activity.id
+      ];
 
-      if (detail?.activity.id === activityId) {
-        await openActivityDetail(activityId);
-      }
-    } catch (err: any) {
-      console.error(err);
-      window.alert(
-        err?.message || "Gagal mengubah status."
+    const allowedTargets =
+      getAllowedTransitionTargets(
+        activity,
+        actionRole
       );
-    } finally {
-      setBusyId(null);
-    }
-  };
 
-  const handleSubmitValidation = async (activityId: string) => {
-    try {
-      setBusyId(activityId);
-      await submitUniversalActivityForValidation(activityId);
-      await refresh();
-
-      if (detail?.activity.id === activityId) {
-        await openActivityDetail(activityId);
-      }
-    } catch (err: any) {
-      console.error(err);
+    if (allowedTargets.length === 0) {
       window.alert(
-        err?.message || "Gagal submit validasi."
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleReview = async (
-    activityId: string,
-    approve: boolean
-  ) => {
-    const notes =
-      window.prompt(
-        approve
-          ? "Catatan approval (opsional):"
-          : "Alasan dikembalikan:"
-      ) || "";
-
-    if (!approve && !notes.trim()) {
-      window.alert(
-        "Alasan wajib diisi jika aktivitas dikembalikan."
+        "Anda hanya memiliki akses observer pada aktivitas ini."
       );
       return;
     }
 
-    try {
-      setBusyId(activityId);
-
-      await reviewUniversalActivityValidation(
-        activityId,
-        approve,
-        notes
-      );
-
-      await refresh();
-
-      if (detail?.activity.id === activityId) {
-        await openActivityDetail(activityId);
-      }
-    } catch (err: any) {
-      console.error(err);
+    if (
+      targetStatus &&
+      !allowedTargets.includes(
+        targetStatus
+      )
+    ) {
       window.alert(
-        err?.message || "Gagal memproses validasi."
+        "Perpindahan status tersebut tidak diizinkan oleh flow aktivitas."
       );
-    } finally {
-      setBusyId(null);
+      return;
     }
+
+    setTransitionActivity(
+      activity
+    );
+    setTransitionTarget(
+      targetStatus ||
+        (
+          allowedTargets.length === 1
+            ? allowedTargets[0]
+            : ""
+        )
+    );
+    setTransitionNote("");
+    setTransitionNextAction(
+      activity.next_action || ""
+    );
+    setTransitionFollowUpDate(
+      activity.follow_up_date ||
+        todayKey()
+    );
+    setTransitionResult(
+      activity.result || ""
+    );
+    setTransitionOpen(true);
+  };
+
+  const handleConfirmTransition =
+    async () => {
+      if (
+        !transitionActivity ||
+        !transitionTarget
+      ) {
+        return;
+      }
+
+      const payload:
+        ActivityTransitionPayload = {
+        note:
+          transitionNote.trim(),
+        next_action:
+          transitionNextAction.trim(),
+        follow_up_date:
+          transitionFollowUpDate,
+        result:
+          transitionResult.trim(),
+      };
+
+      if (
+        transitionTarget ===
+          "WAITING_FOLLOW_UP" &&
+        (
+          !payload.note ||
+          !payload.next_action ||
+          !payload.follow_up_date
+        )
+      ) {
+        window.alert(
+          "Waiting / Follow Up membutuhkan alasan, Next Action, dan tanggal follow up."
+        );
+        return;
+      }
+
+      if (
+        transitionTarget ===
+          "NEED_SUPPORT" &&
+        !payload.note
+      ) {
+        window.alert(
+          "Jelaskan dukungan yang dibutuhkan."
+        );
+        return;
+      }
+
+      if (
+        transitionTarget ===
+          "CANCELLED" &&
+        !payload.note
+      ) {
+        window.alert(
+          "Alasan pembatalan wajib diisi."
+        );
+        return;
+      }
+
+      if (
+        transitionTarget ===
+          "PENDING_VALIDATION" &&
+        (
+          !payload.result ||
+          payload.result.length < 3
+        )
+      ) {
+        window.alert(
+          "Ringkasan hasil aktivitas wajib diisi sebelum Ajukan Validasi."
+        );
+        return;
+      }
+
+      if (
+        transitionActivity.status ===
+          "PENDING_VALIDATION" &&
+        transitionTarget ===
+          "ON_PROGRESS" &&
+        !payload.note
+      ) {
+        window.alert(
+          "Alasan Return wajib diisi."
+        );
+        return;
+      }
+
+      try {
+        setBusyId(
+          transitionActivity.id
+        );
+
+        await transitionUniversalActivity(
+          transitionActivity.id,
+          transitionTarget,
+          payload
+        );
+
+        const transitionedId =
+          transitionActivity.id;
+
+        setTransitionOpen(false);
+        setTransitionActivity(null);
+        setTransitionTarget("");
+        await refresh();
+
+        if (
+          detail?.activity.id ===
+          transitionedId
+        ) {
+          await openActivityDetail(
+            transitionedId
+          );
+        }
+      } catch (err: any) {
+        console.error(err);
+        window.alert(
+          err?.message ||
+            "Gagal memproses perpindahan status."
+        );
+      } finally {
+        setBusyId(null);
+      }
+    };
+
+  const findActivity = (
+    activityId: string
+  ) =>
+    activities.find(
+      (activity) =>
+        activity.id ===
+        activityId
+    ) ||
+    (
+      detail?.activity.id ===
+      activityId
+        ? detail.activity
+        : null
+    );
+
+  const handleMoveStatus = (
+    activityId: string,
+    status: UniversalActivityStatus
+  ) => {
+    const activity =
+      findActivity(
+        activityId
+      );
+
+    if (!activity) return;
+
+    requestTransition(
+      activity,
+      status
+    );
+  };
+
+  const handleSubmitValidation = (
+    activityId: string
+  ) => {
+    const activity =
+      findActivity(
+        activityId
+      );
+
+    if (!activity) return;
+
+    requestTransition(
+      activity,
+      "PENDING_VALIDATION"
+    );
+  };
+
+  const handleReview = (
+    activityId: string,
+    approve: boolean
+  ) => {
+    const activity =
+      findActivity(
+        activityId
+      );
+
+    if (!activity) return;
+
+    requestTransition(
+      activity,
+      approve
+        ? "DONE"
+        : "ON_PROGRESS"
+    );
+  };
+
+  const handleKanbanDrop = (
+    activityId: string,
+    targetStatus: UniversalActivityStatus
+  ) => {
+    const activity =
+      findActivity(
+        activityId
+      );
+
+    if (
+      !activity ||
+      activity.status ===
+        targetStatus
+    ) {
+      return;
+    }
+
+    requestTransition(
+      activity,
+      targetStatus
+    );
   };
 
   const openActivityDetail = async (activityId: string) => {
@@ -1408,7 +1797,7 @@ const AktivitasUniversalPage: React.FC = () => {
                 </div>
 
                 <div className="text-xs text-slate-500">
-                  Menunggu Approval Saya
+                  Need My Action
                 </div>
               </div>
             </CardContent>
@@ -1427,12 +1816,35 @@ const AktivitasUniversalPage: React.FC = () => {
                   type="button"
                   size="sm"
                   variant={
+                    viewMode === "KANBAN"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() =>
+                    changeViewMode(
+                      "KANBAN"
+                    )
+                  }
+                >
+                  <ListTodo className="mr-1.5 h-4 w-4" />
+                  Kanban
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
                     viewMode === "LIST"
                       ? "default"
                       : "ghost"
                   }
                   className="h-8"
-                  onClick={() => setViewMode("LIST")}
+                  onClick={() =>
+                    changeViewMode(
+                      "LIST"
+                    )
+                  }
                 >
                   <Rows3 className="mr-1.5 h-4 w-4" />
                   List
@@ -1447,7 +1859,11 @@ const AktivitasUniversalPage: React.FC = () => {
                       : "ghost"
                   }
                   className="h-8"
-                  onClick={() => setViewMode("CALENDAR")}
+                  onClick={() =>
+                    changeViewMode(
+                      "CALENDAR"
+                    )
+                  }
                 >
                   <CalendarDays className="mr-1.5 h-4 w-4" />
                   Calendar
@@ -1646,7 +2062,247 @@ const AktivitasUniversalPage: React.FC = () => {
               </Select>
             </div>
 
-            {viewMode === "LIST" ? (
+            {viewMode === "KANBAN" ? (
+              <div className="overflow-x-auto pb-2">
+                {statusFilter === "CANCELLED" ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    Aktivitas Cancelled disimpan sebagai archive. Gunakan List View untuk melihatnya.
+                  </div>
+                ) : (
+                  <div className="grid min-w-max auto-cols-[290px] grid-flow-col gap-3">
+                    {KANBAN_STATUSES.map((bucketStatus) => {
+                      const bucketItems =
+                        filteredActivities.filter(
+                          (activity) =>
+                            activity.status === bucketStatus
+                        );
+
+                      return (
+                        <div
+                          key={bucketStatus}
+                          className="flex min-h-[420px] w-[290px] flex-col rounded-xl border border-slate-200 bg-slate-50/80"
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            const activityId =
+                              event.dataTransfer.getData(
+                                "text/activity-id"
+                              );
+
+                            if (activityId) {
+                              handleKanbanDrop(
+                                activityId,
+                                bucketStatus
+                              );
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
+                            <div className="text-[11px] font-black uppercase tracking-wide text-slate-700">
+                              {STATUS_LABELS[bucketStatus]}
+                            </div>
+
+                            <Badge variant="secondary">
+                              {bucketItems.length}
+                            </Badge>
+                          </div>
+
+                          <div className="flex-1 space-y-3 p-3">
+                            {bucketItems.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-center text-[11px] text-slate-400">
+                                Drop task ke sini jika flow mengizinkan.
+                              </div>
+                            ) : (
+                              bucketItems.map((activity) => {
+                                const owner =
+                                  profileMap.get(
+                                    activity.owner_profile_id
+                                  );
+
+                                const actionRole =
+                                  actionRoleByActivityId[
+                                    activity.id
+                                  ];
+
+                                const allowedTargets =
+                                  getAllowedTransitionTargets(
+                                    activity,
+                                    actionRole
+                                  );
+
+                                const canDrag =
+                                  allowedTargets.length > 0;
+
+                                const actionBadgeLabel =
+                                  actionRole === "OWNER" &&
+                                  activity.status === "ON_PROGRESS" &&
+                                  Boolean(activity.validation_notes)
+                                    ? "Returned to You"
+                                    : actionRole
+                                    ? ACTION_ROLE_LABELS[actionRole]
+                                    : "Observer";
+
+                                return (
+                                  <div
+                                    key={activity.id}
+                                    draggable={canDrag}
+                                    onDragStart={(event) => {
+                                      if (!canDrag) {
+                                        event.preventDefault();
+                                        return;
+                                      }
+
+                                      event.dataTransfer.effectAllowed =
+                                        "move";
+                                      event.dataTransfer.setData(
+                                        "text/activity-id",
+                                        activity.id
+                                      );
+                                    }}
+                                    className={`rounded-xl border bg-white p-3 shadow-sm transition ${
+                                      canDrag
+                                        ? "cursor-grab border-slate-200 hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
+                                        : "cursor-default border-slate-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openActivityDetail(
+                                            activity.id
+                                          )
+                                        }
+                                        className="min-w-0 flex-1 text-left"
+                                      >
+                                        <div className="line-clamp-2 text-xs font-bold text-slate-900 hover:text-blue-700">
+                                          {activity.title}
+                                        </div>
+                                      </button>
+
+                                      <Badge
+                                        variant="outline"
+                                        className="shrink-0 text-[9px]"
+                                      >
+                                        {
+                                          PRIORITY_LABELS[
+                                            activity.priority
+                                          ]
+                                        }
+                                      </Badge>
+                                    </div>
+
+                                    <div className="mt-2 text-[10px] text-slate-500">
+                                      {owner?.full_name || "-"}
+                                      {" • "}
+                                      {getOrgLabel(owner)}
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px]"
+                                      >
+                                        {
+                                          MODE_LABELS[
+                                            activity.activity_mode ||
+                                              "PERSONAL"
+                                          ]
+                                        }
+                                      </Badge>
+
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          actionRole
+                                            ? "border-blue-200 bg-blue-50 text-[9px] text-blue-700"
+                                            : "text-[9px] text-slate-500"
+                                        }
+                                      >
+                                        {actionBadgeLabel}
+                                      </Badge>
+                                    </div>
+
+                                    <div className="mt-3">
+                                      <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+                                        <span>
+                                          Progress
+                                        </span>
+                                        <span className="font-bold text-slate-700">
+                                          {activity.progress}%
+                                        </span>
+                                      </div>
+
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                        <div
+                                          className="h-full rounded-full bg-blue-600"
+                                          style={{
+                                            width: `${Math.max(
+                                              0,
+                                              Math.min(
+                                                100,
+                                                activity.progress
+                                              )
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 flex items-center justify-between gap-2">
+                                      <div
+                                        className={`text-[10px] ${
+                                          isOverdue(activity)
+                                            ? "font-bold text-red-700"
+                                            : "text-slate-500"
+                                        }`}
+                                      >
+                                        Due:{" "}
+                                        {formatDateOnly(
+                                          activity.due_date
+                                        )}
+                                      </div>
+
+                                      {allowedTargets.length > 0 && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2 text-[10px]"
+                                          disabled={
+                                            busyId === activity.id
+                                          }
+                                          onClick={() =>
+                                            requestTransition(
+                                              activity
+                                            )
+                                          }
+                                        >
+                                          Aksi
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    {activity.status_note && (
+                                      <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] leading-4 text-amber-800">
+                                        {activity.status_note}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : viewMode === "LIST" ? (
               <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="w-full min-w-[1280px] text-left text-xs">
                   <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
@@ -1684,6 +2340,26 @@ const AktivitasUniversalPage: React.FC = () => {
                         const awaitingMyApproval =
                           activity.status === "PENDING_VALIDATION" &&
                           activity.validation_approver_profile_id === profile?.id;
+
+                        const actionRole =
+                          actionRoleByActivityId[
+                            activity.id
+                          ];
+
+                        const allowedTargets =
+                          getAllowedTransitionTargets(
+                            activity,
+                            actionRole
+                          );
+
+                        const actionBadgeLabel =
+                          actionRole === "OWNER" &&
+                          activity.status === "ON_PROGRESS" &&
+                          Boolean(activity.validation_notes)
+                            ? "Returned to You"
+                            : actionRole
+                            ? ACTION_ROLE_LABELS[actionRole]
+                            : "Observer";
 
                         return (
                           <tr key={activity.id} className="align-top hover:bg-slate-50/60">
@@ -1750,44 +2426,32 @@ const AktivitasUniversalPage: React.FC = () => {
                             </td>
 
                             <td className="p-3">
-                              {activity.status === "PENDING_VALIDATION" ||
-                              activity.status === "DONE" ? (
+                              <div className="space-y-1.5">
                                 <Badge
                                   variant={
                                     activity.status === "DONE"
                                       ? "default"
-                                      : "secondary"
+                                      : activity.status === "PENDING_VALIDATION"
+                                      ? "secondary"
+                                      : "outline"
                                   }
                                 >
                                   {STATUS_LABELS[activity.status]}
                                 </Badge>
-                              ) : (
-                                <Select
-                                  value={activity.status}
-                                  onValueChange={(value) =>
-                                    handleMoveStatus(
-                                      activity.id,
-                                      value as Exclude<
-                                        UniversalActivityStatus,
-                                        "PENDING_VALIDATION" | "DONE"
-                                      >
-                                    )
-                                  }
-                                  disabled={busyId === activity.id}
-                                >
-                                  <SelectTrigger className="h-8 w-44 text-[11px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
 
-                                  <SelectContent>
-                                    {MOVABLE_STATUSES.map((status) => (
-                                      <SelectItem key={status} value={status}>
-                                        {STATUS_LABELS[status]}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
+                                <div>
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      actionRole
+                                        ? "border-blue-200 bg-blue-50 text-[9px] text-blue-700"
+                                        : "text-[9px] text-slate-500"
+                                    }
+                                  >
+                                    {actionBadgeLabel}
+                                  </Badge>
+                                </div>
+                              </div>
                             </td>
 
                             <td className="p-3">
@@ -1824,46 +2488,28 @@ const AktivitasUniversalPage: React.FC = () => {
                                   Detail
                                 </Button>
 
-                                {awaitingMyApproval ? (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      className="h-8 text-[11px]"
-                                      disabled={busyId === activity.id}
-                                      onClick={() =>
-                                        handleReview(activity.id, true)
-                                      }
-                                    >
-                                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                      Approve
-                                    </Button>
-
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-8 text-[11px]"
-                                      disabled={busyId === activity.id}
-                                      onClick={() =>
-                                        handleReview(activity.id, false)
-                                      }
-                                    >
-                                      Return
-                                    </Button>
-                                  </>
-                                ) : !["DONE", "CANCELLED", "PENDING_VALIDATION"].includes(
-                                    activity.status
-                                  ) ? (
+                                {allowedTargets.length > 0 ? (
                                   <Button
                                     size="sm"
-                                    variant="outline"
+                                    variant={
+                                      awaitingMyApproval
+                                        ? "default"
+                                        : "outline"
+                                    }
                                     className="h-8 text-[11px]"
                                     disabled={busyId === activity.id}
                                     onClick={() =>
-                                      handleSubmitValidation(activity.id)
+                                      requestTransition(activity)
                                     }
                                   >
-                                    <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-                                    Submit Validation
+                                    {awaitingMyApproval ? (
+                                      <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                                    ) : (
+                                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                    )}
+                                    {awaitingMyApproval
+                                      ? "Review"
+                                      : "Aksi Status"}
                                   </Button>
                                 ) : null}
                               </div>
@@ -2479,12 +3125,344 @@ const AktivitasUniversalPage: React.FC = () => {
             </Button>
 
             <Button
-              onClick={handleCreate}
+              variant="outline"
+              onClick={() =>
+                handleCreate("DRAFT")
+              }
+              disabled={busyId === "CREATE"}
+            >
+              Simpan Draft
+            </Button>
+
+            <Button
+              onClick={() =>
+                handleCreate("TO_DO")
+              }
               disabled={busyId === "CREATE"}
             >
               {busyId === "CREATE"
                 ? "Menyimpan..."
-                : "Simpan Aktivitas"}
+                : "Buat Aktivitas"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* GOVERNED STATUS TRANSITION — shared by Kanban, List, Detail */}
+      <Dialog
+        open={transitionOpen}
+        onOpenChange={(open) => {
+          if (busyId) return;
+
+          setTransitionOpen(open);
+
+          if (!open) {
+            setTransitionActivity(null);
+            setTransitionTarget("");
+            setTransitionNote("");
+            setTransitionNextAction("");
+            setTransitionFollowUpDate(todayKey());
+            setTransitionResult("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Validasi Perubahan Status
+            </DialogTitle>
+
+            <DialogDescription>
+              {transitionActivity
+                ? transitionActivity.title
+                : "Pilih aksi status yang akan dilakukan."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {transitionActivity && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Flow Status
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="outline">
+                    {STATUS_LABELS[
+                      transitionActivity.status
+                    ]}
+                  </Badge>
+
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
+
+                  <Badge
+                    variant={
+                      transitionTarget === "DONE"
+                        ? "default"
+                        : "secondary"
+                    }
+                  >
+                    {transitionTarget
+                      ? STATUS_LABELS[
+                          transitionTarget
+                        ]
+                      : "Pilih tujuan"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                  Aksi Status
+                </label>
+
+                <Select
+                  value={transitionTarget}
+                  onValueChange={(value) => {
+                    setTransitionTarget(
+                      value as UniversalActivityStatus
+                    );
+                    setTransitionNote("");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih aksi yang diizinkan" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {getAllowedTransitionTargets(
+                      transitionActivity,
+                      actionRoleByActivityId[
+                        transitionActivity.id
+                      ]
+                    ).map((status) => (
+                      <SelectItem
+                        key={status}
+                        value={status}
+                      >
+                        {
+                          TRANSITION_ACTION_LABELS[
+                            status
+                          ]
+                        }
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {transitionTarget ===
+                "WAITING_FOLLOW_UP" && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Alasan Waiting / Follow Up
+                    </label>
+
+                    <Textarea
+                      value={transitionNote}
+                      onChange={(event) =>
+                        setTransitionNote(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Apa yang sedang ditunggu?"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Next Action
+                    </label>
+
+                    <Textarea
+                      value={transitionNextAction}
+                      onChange={(event) =>
+                        setTransitionNextAction(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Tindak lanjut berikutnya..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Tanggal Follow Up
+                    </label>
+
+                    <Input
+                      type="date"
+                      value={
+                        transitionFollowUpDate
+                      }
+                      min={todayKey()}
+                      onChange={(event) =>
+                        setTransitionFollowUpDate(
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </>
+              )}
+
+              {transitionTarget ===
+                "NEED_SUPPORT" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Dukungan yang Dibutuhkan
+                  </label>
+
+                  <Textarea
+                    value={transitionNote}
+                    onChange={(event) =>
+                      setTransitionNote(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Jelaskan support/eskalasi yang dibutuhkan..."
+                  />
+
+                  <div className="mt-1.5 text-[10px] text-slate-500">
+                    Direct superior akan menerima in-app notification dan email.
+                  </div>
+                </div>
+              )}
+
+              {transitionTarget ===
+                "PENDING_VALIDATION" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Ringkasan Hasil Aktivitas
+                  </label>
+
+                  <Textarea
+                    value={transitionResult}
+                    onChange={(event) =>
+                      setTransitionResult(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Tuliskan hasil/deliverable yang sudah diselesaikan..."
+                  />
+
+                  <div className="mt-1.5 text-[10px] leading-4 text-slate-500">
+                    Jika aktivitas memerlukan evidence file, upload dari Detail sebelum submit. Progress otomatis menjadi 100% dan direct manager akan menerima notifikasi validasi.
+                  </div>
+                </div>
+              )}
+
+              {transitionActivity.status ===
+                "PENDING_VALIDATION" &&
+                transitionTarget ===
+                  "ON_PROGRESS" && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Alasan Return
+                    </label>
+
+                    <Textarea
+                      value={transitionNote}
+                      onChange={(event) =>
+                        setTransitionNote(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Jelaskan apa yang perlu diperbaiki..."
+                    />
+                  </div>
+                )}
+
+              {transitionActivity.status ===
+                "PENDING_VALIDATION" &&
+                transitionTarget ===
+                  "DONE" && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Catatan Approval
+                    </label>
+
+                    <Textarea
+                      value={transitionNote}
+                      onChange={(event) =>
+                        setTransitionNote(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Opsional"
+                    />
+                  </div>
+                )}
+
+              {transitionTarget ===
+                "CANCELLED" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                    Alasan Pembatalan
+                  </label>
+
+                  <Textarea
+                    value={transitionNote}
+                    onChange={(event) =>
+                      setTransitionNote(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Alasan aktivitas dibatalkan..."
+                  />
+                </div>
+              )}
+
+              {transitionTarget &&
+                ![
+                  "WAITING_FOLLOW_UP",
+                  "NEED_SUPPORT",
+                  "PENDING_VALIDATION",
+                  "CANCELLED",
+                  "DONE",
+                ].includes(
+                  transitionTarget
+                ) &&
+                !(
+                  transitionActivity.status ===
+                    "PENDING_VALIDATION" &&
+                  transitionTarget ===
+                    "ON_PROGRESS"
+                ) && (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-[11px] leading-5 text-blue-800">
+                    Perubahan ini akan dicatat ke Activity History. Status tidak akan berubah sampai Anda menekan Konfirmasi.
+                  </div>
+                )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setTransitionOpen(false)
+              }
+              disabled={Boolean(busyId)}
+            >
+              Batal
+            </Button>
+
+            <Button
+              type="button"
+              onClick={
+                handleConfirmTransition
+              }
+              disabled={
+                !transitionActivity ||
+                !transitionTarget ||
+                Boolean(busyId)
+              }
+            >
+              {busyId
+                ? "Memproses..."
+                : "Konfirmasi"}
             </Button>
           </DialogFooter>
         </DialogContent>
