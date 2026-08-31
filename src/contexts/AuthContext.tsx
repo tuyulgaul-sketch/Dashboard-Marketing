@@ -27,23 +27,9 @@ import {
 } from "@/services/centralUserRuntime";
 
 import {
-  clearCentralMasterRuntime,
-  syncCentralMasterRuntime,
-} from "@/services/centralMasterRuntime";
-
-import {
-  clearCentralTargetRuntime,
-  syncCentralTargetRuntime,
-} from "@/services/centralTargetRuntime";
-
-import {
   clearCentralBusinessRuntime,
   syncCentralBusinessRuntime,
 } from "@/services/centralBusinessStorageRuntime";
-
-import {
-  migrateLegacyIndexedDbFilesOnce,
-} from "@/services/legacyFileMigration";
 
 export type AuthProfile = {
   id: string;
@@ -69,15 +55,11 @@ const AuthContext =
   createContext<
     AuthContextValue |
     undefined
-  >(
-    undefined
-  );
+  >(undefined);
 
-const clearAllCentralRuntime =
+const clearLiteRuntime =
   () => {
     clearCentralBusinessRuntime();
-    clearCentralTargetRuntime();
-    clearCentralMasterRuntime();
     clearCentralUserRuntime();
   };
 
@@ -93,44 +75,31 @@ export const AuthProvider:
       setSession,
     ] =
       useState<
-        Session |
-        null
-      >(
-        null
-      );
+        Session | null
+      >(null);
 
     const [
       profile,
       setProfile,
     ] =
       useState<
-        AuthProfile |
-        null
-      >(
-        null
-      );
+        AuthProfile | null
+      >(null);
 
     const [
       loading,
       setLoading,
     ] =
-      useState(
-        true
-      );
+      useState(true);
 
     const loadProfile =
       async (
         currentSession:
-          Session |
-          null
+          Session | null
       ) => {
-        if (
-          !currentSession
-        ) {
-          clearAllCentralRuntime();
-          setProfile(
-            null
-          );
+        if (!currentSession) {
+          clearLiteRuntime();
+          setProfile(null);
           return;
         }
 
@@ -139,16 +108,13 @@ export const AuthProvider:
           error,
         } =
           await supabase
-            .from(
-              "profiles"
-            )
+            .from("profiles")
             .select(
               "id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active"
             )
             .eq(
               "auth_user_id",
-              currentSession
-                .user.id
+              currentSession.user.id
             )
             .eq(
               "active",
@@ -165,16 +131,13 @@ export const AuthProvider:
             error
           );
 
-          clearAllCentralRuntime();
-          setProfile(
-            null
-          );
+          clearLiteRuntime();
+          setProfile(null);
           return;
         }
 
         const authProfile =
-          data as
-            AuthProfile;
+          data as AuthProfile;
 
         try {
           await syncGlobalResetState();
@@ -187,57 +150,39 @@ export const AuthProvider:
           );
         }
 
-        // Temporary legacy identity compatibility.
-        // Canonical identity/hierarchy remains Supabase profiles.
+        // Only identity compatibility is retained.
         syncLegacyIdentityFromSupabase(
           authProfile
         );
 
         try {
-          // Canonical legacy-compatible hierarchy now comes from Supabase
-          // profiles, not browser-local pertalife_users.
+          // User directory is needed for assignments, recipients,
+          // hierarchy visibility, and handover receiver selection.
           await syncCentralUserRuntime(
             authProfile
           );
 
-          // Phase 1A — central master data.
-          await syncCentralMasterRuntime(
-            authProfile
-          );
-
-          // Phase 1B — central Target & RKAP.
-          await syncCentralTargetRuntime(
-            authProfile.id
-          );
-
-          // Final pack — all remaining legacy business arrays.
+          // Supabase Lite only syncs the whitelisted service-document,
+          // marcomm, handover, audit and related notification collections.
           await syncCentralBusinessRuntime(
             authProfile
           );
         } catch (
-          centralRuntimeError
+          runtimeError
         ) {
           console.error(
-            "Central business runtime gagal dimuat:",
-            centralRuntimeError
+            "Supabase Lite runtime gagal dimuat:",
+            runtimeError
           );
 
-          // Fail closed. Never silently fall back to browser-local
-          // business authority after centralization.
-          clearAllCentralRuntime();
-          setProfile(
-            null
-          );
+          clearLiteRuntime();
+          setProfile(null);
           return;
         }
 
-        // File migration is best-effort and does not become a fallback.
-        // Existing files present on this browser are copied to private
-        // Supabase Storage. Failure is visible in Console and retried later.
-        void migrateLegacyIndexedDbFilesOnce(
-          authProfile.id
-        );
-
+        // IMPORTANT:
+        // No master target/pipeline/production runtime.
+        // No automatic migration of old IndexedDB files.
         setProfile(
           authProfile
         );
@@ -260,9 +205,7 @@ export const AuthProvider:
                 .auth
                 .getSession();
 
-            if (
-              !mounted
-            ) {
+            if (!mounted) {
               return;
             }
 
@@ -274,9 +217,7 @@ export const AuthProvider:
               initialSession
             );
 
-            if (
-              mounted
-            ) {
+            if (mounted) {
               setLoading(
                 false
               );
@@ -297,43 +238,36 @@ export const AuthProvider:
                 _event,
                 newSession
               ) => {
-                if (
-                  !mounted
-                ) {
+                if (!mounted) {
                   return;
                 }
 
                 setSession(
                   newSession
                 );
-
                 setLoading(
                   true
                 );
 
                 loadProfile(
                   newSession
-                )
-                  .finally(
-                    () => {
-                      if (
-                        mounted
-                      ) {
-                        setLoading(
-                          false
-                        );
-                      }
+                ).finally(
+                  () => {
+                    if (mounted) {
+                      setLoading(
+                        false
+                      );
                     }
-                  );
+                  }
+                );
               }
             );
 
         return () => {
           mounted =
             false;
-
           subscription.unsubscribe();
-          clearAllCentralRuntime();
+          clearLiteRuntime();
         };
       },
       []
@@ -341,9 +275,7 @@ export const AuthProvider:
 
     useEffect(
       () => {
-        if (
-          !profile
-        ) {
+        if (!profile) {
           return;
         }
 
@@ -354,9 +286,7 @@ export const AuthProvider:
                 const changed =
                   await syncGlobalResetState();
 
-                if (
-                  changed
-                ) {
+                if (changed) {
                   window.location.reload();
                 }
               } catch (
@@ -377,26 +307,19 @@ export const AuthProvider:
           );
         };
       },
-      [
-        profile?.id,
-      ]
+      [profile?.id]
     );
 
     const signOut =
       async () => {
-        clearAllCentralRuntime();
+        clearLiteRuntime();
 
         await supabase
           .auth
           .signOut();
 
-        setSession(
-          null
-        );
-
-        setProfile(
-          null
-        );
+        setSession(null);
+        setProfile(null);
       };
 
     return (
@@ -420,9 +343,7 @@ export const useAuth =
         AuthContext
       );
 
-    if (
-      !context
-    ) {
+    if (!context) {
       throw new Error(
         "useAuth harus digunakan di dalam AuthProvider"
       );
