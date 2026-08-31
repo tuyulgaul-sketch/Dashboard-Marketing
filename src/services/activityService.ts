@@ -34,6 +34,24 @@ export type UniversalActivityStatus =
   | "DONE"
   | "CANCELLED";
 
+export type ActivityActionRole =
+  | "OWNER"
+  | "COLLABORATOR"
+  | "APPROVER"
+  | "CREATOR";
+
+export type ActivityTransitionPayload = {
+  note?: string;
+  next_action?: string;
+  follow_up_date?: string;
+  result?: string;
+};
+
+export type ActivityActionRoleRow = {
+  activity_id: string;
+  action_role: ActivityActionRole;
+};
+
 export type DirectoryProfile = {
   id: string;
   full_name: string;
@@ -71,12 +89,15 @@ export type UniversalActivity = {
   validation_submitted_at: string | null;
   validated_at: string | null;
   validation_notes: string | null;
+  status_note: string | null;
+  follow_up_date: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type CreateActivityInput = {
   activity_mode: ActivityMode;
+  initial_status?: "DRAFT" | "TO_DO";
   title: string;
   category: ActivityCategory;
   description?: string;
@@ -160,6 +181,86 @@ export type ActivityDetailPayload = {
   history: ActivityHistoryDetail[];
 };
 
+async function flushNotificationEmailOutboxBestEffort() {
+  try {
+    const { error } = await supabase.functions.invoke(
+      "notification-email-dispatcher",
+      {
+        body: {
+          action: "dispatch",
+          source: "activity",
+        },
+      }
+    );
+
+    if (error) {
+      console.warn(
+        "Email notification dispatcher belum berhasil dipanggil:",
+        error
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "Email notification dispatcher tidak tersedia:",
+      error
+    );
+  }
+}
+
+async function generateDueNotificationsBestEffort() {
+  try {
+    const { error } = await supabase.rpc(
+      "generate_activity_due_notifications"
+    );
+
+    if (error) {
+      console.warn(
+        "Generator due/overdue notification belum tersedia:",
+        error
+      );
+      return;
+    }
+
+    void flushNotificationEmailOutboxBestEffort();
+  } catch (error) {
+    console.warn(
+      "Generator due/overdue notification gagal:",
+      error
+    );
+  }
+}
+
+export async function getMyActivityActionRoles() {
+  const { data, error } = await supabase.rpc(
+    "get_my_activity_action_roles"
+  );
+
+  if (error) throw error;
+
+  return (data || []) as ActivityActionRoleRow[];
+}
+
+export async function transitionUniversalActivity(
+  activityId: string,
+  targetStatus: UniversalActivityStatus,
+  payload: ActivityTransitionPayload = {}
+) {
+  const { data, error } = await supabase.rpc(
+    "transition_activity_vnext",
+    {
+      p_activity_id: activityId,
+      p_target_status: targetStatus,
+      p_payload: payload,
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
 export async function getActivityDirectory() {
   const { data, error } =
     await supabase.rpc("get_profile_directory");
@@ -170,6 +271,8 @@ export async function getActivityDirectory() {
 }
 
 export async function getUniversalActivities() {
+  void generateDueNotificationsBestEffort();
+
   const { data, error } = await supabase
     .from("activities")
     .select("*")
@@ -198,6 +301,8 @@ export async function createUniversalActivity(
 
   if (error) throw error;
 
+  void flushNotificationEmailOutboxBestEffort();
+
   return data as UniversalActivity;
 }
 
@@ -208,30 +313,24 @@ export async function updateUniversalActivityStatus(
     "PENDING_VALIDATION" | "DONE"
   >
 ) {
-  const { data, error } = await supabase.rpc(
-    "update_universal_activity_status",
-    {
-      p_activity_id: activityId,
-      p_status: status,
-    }
+  return transitionUniversalActivity(
+    activityId,
+    status,
+    {}
   );
-
-  if (error) throw error;
-
-  return data as UniversalActivity;
 }
 
 export async function submitUniversalActivityForValidation(
-  activityId: string
+  activityId: string,
+  result?: string
 ) {
-  const { data, error } = await supabase.rpc(
-    "submit_activity_for_validation",
-    { p_activity_id: activityId }
+  return transitionUniversalActivity(
+    activityId,
+    "PENDING_VALIDATION",
+    {
+      result: result || "",
+    }
   );
-
-  if (error) throw error;
-
-  return data as UniversalActivity;
 }
 
 export async function reviewUniversalActivityValidation(
@@ -239,18 +338,13 @@ export async function reviewUniversalActivityValidation(
   approve: boolean,
   notes?: string
 ) {
-  const { data, error } = await supabase.rpc(
-    "review_activity_validation",
+  return transitionUniversalActivity(
+    activityId,
+    approve ? "DONE" : "ON_PROGRESS",
     {
-      p_activity_id: activityId,
-      p_approve: approve,
-      p_notes: notes || null,
+      note: notes || "",
     }
   );
-
-  if (error) throw error;
-
-  return data as UniversalActivity;
 }
 
 export async function getUniversalActivityDetail(
