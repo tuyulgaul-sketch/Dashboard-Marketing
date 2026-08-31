@@ -1995,6 +1995,25 @@ const AktivitasUniversalPage: React.FC = () => {
                                   <div
                                     key={activity.id}
                                     draggable={canDrag}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Buka detail aktivitas ${activity.title}`}
+                                    onClick={() =>
+                                      openActivityDetail(
+                                        activity.id
+                                      )
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key === "Enter" ||
+                                        event.key === " "
+                                      ) {
+                                        event.preventDefault();
+                                        openActivityDetail(
+                                          activity.id
+                                        );
+                                      }
+                                    }}
                                     onDragStart={(event) => {
                                       if (!canDrag) {
                                         event.preventDefault();
@@ -2008,26 +2027,18 @@ const AktivitasUniversalPage: React.FC = () => {
                                         activity.id
                                       );
                                     }}
-                                    className={`rounded-xl border bg-white p-3 shadow-sm transition ${
+                                    className={`group rounded-xl border bg-white p-3 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                                       canDrag
                                         ? "cursor-grab border-slate-200 hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
-                                        : "cursor-default border-slate-200"
+                                        : "cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md"
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          openActivityDetail(
-                                            activity.id
-                                          )
-                                        }
-                                        className="min-w-0 flex-1 text-left"
-                                      >
-                                        <div className="line-clamp-2 text-xs font-bold text-slate-900 hover:text-blue-700">
+                                      <div className="min-w-0 flex-1 text-left">
+                                        <div className="line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-blue-700">
                                           {activity.title}
                                         </div>
-                                      </button>
+                                      </div>
 
                                       <Badge
                                         variant="outline"
@@ -2121,11 +2132,12 @@ const AktivitasUniversalPage: React.FC = () => {
                                           disabled={
                                             busyId === activity.id
                                           }
-                                          onClick={() =>
+                                          onClick={(event) => {
+                                            event.stopPropagation();
                                             requestTransition(
                                               activity
-                                            )
-                                          }
+                                            );
+                                          }}
                                         >
                                           Aksi
                                         </Button>
@@ -2915,7 +2927,7 @@ const AktivitasUniversalPage: React.FC = () => {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
               Validasi Perubahan Status
@@ -3217,7 +3229,7 @@ const AktivitasUniversalPage: React.FC = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 z-20 -mx-6 -mb-6 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
             <Button
               type="button"
               variant="outline"
