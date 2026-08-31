@@ -98,6 +98,46 @@ export type UniversalActivity = {
   updated_at: string;
 };
 
+const ACTIVITY_PRIORITY_WEIGHT: Record<ActivityPriority, number> = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+  URGENT: 4,
+};
+
+export function compareUniversalActivities(
+  a: UniversalActivity,
+  b: UniversalActivity
+) {
+  const priorityDelta =
+    ACTIVITY_PRIORITY_WEIGHT[b.priority] -
+    ACTIVITY_PRIORITY_WEIGHT[a.priority];
+
+  if (priorityDelta !== 0) {
+    return priorityDelta;
+  }
+
+  const aDue = a.due_date || "9999-12-31";
+  const bDue = b.due_date || "9999-12-31";
+
+  if (aDue !== bDue) {
+    return aDue.localeCompare(bDue);
+  }
+
+  const updatedDelta =
+    new Date(b.updated_at).getTime() -
+    new Date(a.updated_at).getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return (
+    new Date(b.created_at).getTime() -
+    new Date(a.created_at).getTime()
+  );
+}
+
 export type CreateActivityInput = {
   activity_mode: ActivityMode;
   initial_status?: "DRAFT" | "TO_DO";
@@ -289,7 +329,9 @@ export async function getUniversalActivities() {
 
   if (error) throw error;
 
-  return (data || []) as UniversalActivity[];
+  return ((data || []) as UniversalActivity[]).sort(
+    compareUniversalActivities
+  );
 }
 
 export async function createUniversalActivity(

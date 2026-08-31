@@ -45,3 +45,20 @@ export async function markAllNotificationsRead() {
   if (error) throw error;
   return Number(data || 0);
 }
+
+export function resolveNotificationTarget(item: AppNotification) {
+  const moduleKey = (item.module || "").trim().toUpperCase();
+  const currentPath = item.link_path || "";
+
+  const isActivityNotification =
+    moduleKey.includes("ACTIV") ||
+    currentPath.startsWith("/aktivitas");
+
+  if (isActivityNotification && item.related_record_id) {
+    const params = new URLSearchParams();
+    params.set("task", item.related_record_id);
+    return `/aktivitas?${params.toString()}`;
+  }
+
+  return currentPath || "/aktivitas";
+}

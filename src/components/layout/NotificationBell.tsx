@@ -10,6 +10,7 @@ import {
   getMyUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
+  resolveNotificationTarget,
 } from "@/services/notificationService";
 
 const relativeTime = (value: string) => {
@@ -90,7 +91,7 @@ export const NotificationBell: React.FC = () => {
     }
     setOpen(false);
     await refresh();
-    navigate(item.link_path || "/aktivitas");
+    navigate(resolveNotificationTarget(item));
   };
 
   if (!profile) return null;

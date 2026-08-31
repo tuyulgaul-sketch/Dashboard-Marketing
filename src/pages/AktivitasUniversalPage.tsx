@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import ActivityPeoplePicker from "@/components/activity/ActivityPeoplePicker";
@@ -26,6 +26,10 @@ import {
   updateUniversalActivityProgress,
   uploadUniversalActivityAttachment,
 } from "@/services/activityService";
+import {
+  getMyActivityAttention,
+  markActivitySeen,
+} from "@/services/activityAttentionService";
 import {
   Card,
   CardContent,
@@ -69,6 +73,7 @@ import {
   subMonths,
 } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarDays,
@@ -125,6 +130,20 @@ const PRIORITY_LABELS: Record<ActivityPriority, string> = {
   MEDIUM: "Medium",
   HIGH: "High",
   URGENT: "Urgent",
+};
+
+const PRIORITY_BADGE_CLASSES: Record<ActivityPriority, string> = {
+  LOW: "border-slate-200 bg-slate-50 text-slate-600",
+  MEDIUM: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  HIGH: "border-amber-300 bg-amber-50 text-amber-800",
+  URGENT: "border-red-300 bg-red-50 text-red-700",
+};
+
+const PRIORITY_CARD_CLASSES: Record<ActivityPriority, string> = {
+  LOW: "border-l-4 border-l-slate-300",
+  MEDIUM: "border-l-4 border-l-emerald-500",
+  HIGH: "border-l-4 border-l-amber-500",
+  URGENT: "border-l-4 border-l-red-600",
 };
 
 const MODE_LABELS: Record<ActivityMode, string> = {
@@ -358,6 +377,10 @@ const formatRupiah = (value?: number | null) => {
 
 const AktivitasUniversalPage: React.FC = () => {
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef<string | null>(null);
+  const [unseenCountByActivityId, setUnseenCountByActivityId] =
+    useState<Record<string, number>>({});
 
   const [activities, setActivities] = useState<UniversalActivity[]>([]);
   const [directory, setDirectory] = useState<DirectoryProfile[]>([]);
@@ -658,14 +681,25 @@ const AktivitasUniversalPage: React.FC = () => {
         activityRows,
         directoryRows,
         actionRoleRows,
+        attentionRows,
       ] = await Promise.all([
         getUniversalActivities(),
         getActivityDirectory(),
         getMyActivityActionRoles(),
+        getMyActivityAttention(profile?.id || ""),
       ]);
 
       setActivities(activityRows);
       setDirectory(directoryRows);
+      setUnseenCountByActivityId(
+        attentionRows.reduce<Record<string, number>>(
+          (result, row) => {
+            result[row.activity_id] = row.unseen_count;
+            return result;
+          },
+          {}
+        )
+      );
 
       setActionRoleByActivityId(
         actionRoleRows.reduce<
@@ -937,6 +971,13 @@ const AktivitasUniversalPage: React.FC = () => {
         ]
       )
   ).length;
+
+  const unseenActivityCount = activities.reduce(
+    (total, activity) =>
+      total +
+      (unseenCountByActivityId[activity.id] > 0 ? 1 : 0),
+    0
+  );
 
   const resetForm = () => {
     setActivityMode("PERSONAL");
@@ -1333,6 +1374,18 @@ const AktivitasUniversalPage: React.FC = () => {
       const nextDetail =
         await getUniversalActivityDetail(activityId);
 
+      if (profile?.id) {
+        await markActivitySeen(
+          activityId,
+          profile.id
+        );
+
+        setUnseenCountByActivityId((current) => ({
+          ...current,
+          [activityId]: 0,
+        }));
+      }
+
       setDetail(nextDetail);
       setProgressValue(nextDetail.activity.progress);
     } catch (err: any) {
@@ -1345,6 +1398,23 @@ const AktivitasUniversalPage: React.FC = () => {
       setDetailLoading(false);
     }
   };
+
+  const deepLinkedTaskId =
+    searchParams.get("task");
+
+  useEffect(() => {
+    if (
+      !profile?.id ||
+      !deepLinkedTaskId ||
+      deepLinkHandledRef.current === deepLinkedTaskId
+    ) {
+      return;
+    }
+
+    deepLinkHandledRef.current = deepLinkedTaskId;
+    void openActivityDetail(deepLinkedTaskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkedTaskId, profile?.id]);
 
   const handleAddComment = async () => {
     if (!detail || !commentText.trim()) return;
@@ -1653,9 +1723,17 @@ const AktivitasUniversalPage: React.FC = () => {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-sm">
-                Aktivitas
-              </CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-sm">
+                  Aktivitas
+                </CardTitle>
+
+                {unseenActivityCount > 0 && (
+                  <Badge className="border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                    {unseenActivityCount} belum dilihat
+                  </Badge>
+                )}
+              </div>
 
               <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
                 <Button
@@ -1951,9 +2029,29 @@ const AktivitasUniversalPage: React.FC = () => {
                               {STATUS_LABELS[bucketStatus]}
                             </div>
 
-                            <Badge variant="secondary">
-                              {bucketItems.length}
-                            </Badge>
+                            <div className="flex items-center gap-1.5">
+                              {bucketItems.some(
+                                (activity) =>
+                                  (unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0) > 0
+                              ) && (
+                                <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                  {
+                                    bucketItems.filter(
+                                      (activity) =>
+                                        (unseenCountByActivityId[
+                                          activity.id
+                                        ] || 0) > 0
+                                    ).length
+                                  } baru
+                                </Badge>
+                              )}
+
+                              <Badge variant="secondary">
+                                {bucketItems.length}
+                              </Badge>
+                            </div>
                           </div>
 
                           <div className="flex-1 space-y-3 p-3">
@@ -1967,6 +2065,11 @@ const AktivitasUniversalPage: React.FC = () => {
                                   profileMap.get(
                                     activity.owner_profile_id
                                   );
+
+                                const unseenCount =
+                                  unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0;
 
                                 const actionRole =
                                   actionRoleByActivityId[
@@ -2027,7 +2130,11 @@ const AktivitasUniversalPage: React.FC = () => {
                                         activity.id
                                       );
                                     }}
-                                    className={`group rounded-xl border bg-white p-3 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+                                    className={`group rounded-xl border p-3 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                                      unseenCount > 0
+                                        ? "bg-slate-100 border-slate-300 shadow-md"
+                                        : "bg-white"
+                                    } ${
                                       canDrag
                                         ? "cursor-grab border-slate-200 hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
                                         : "cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md"
@@ -2042,8 +2149,14 @@ const AktivitasUniversalPage: React.FC = () => {
 
                                       <Badge
                                         variant="outline"
-                                        className="shrink-0 text-[9px]"
+                                        className={`shrink-0 gap-1 text-[9px] ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
                                       >
+                                        {activity.priority === "URGENT" && (
+                                          <AlertTriangle className="h-3 w-3" />
+                                        )}
+                                        {activity.priority === "HIGH" && (
+                                          <span className="font-black">!</span>
+                                        )}
                                         {
                                           PRIORITY_LABELS[
                                             activity.priority
@@ -2051,6 +2164,15 @@ const AktivitasUniversalPage: React.FC = () => {
                                         }
                                       </Badge>
                                     </div>
+
+                                    {unseenCount > 0 && (
+                                      <div className="mt-2">
+                                        <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                          <span className="mr-1 h-1.5 w-1.5 rounded-full bg-blue-600" />
+                                          {unseenCount} update baru
+                                        </Badge>
+                                      </div>
+                                    )}
 
                                     <div className="mt-2 text-[10px] text-slate-500">
                                       {owner?.full_name || "-"}
@@ -2195,6 +2317,11 @@ const AktivitasUniversalPage: React.FC = () => {
                         const owner =
                           profileMap.get(activity.owner_profile_id);
 
+                        const unseenCount =
+                          unseenCountByActivityId[
+                            activity.id
+                          ] || 0;
+
                         const awaitingMyApproval =
                           activity.status === "PENDING_VALIDATION" &&
                           activity.validation_approver_profile_id === profile?.id;
@@ -2220,7 +2347,14 @@ const AktivitasUniversalPage: React.FC = () => {
                             : "Observer";
 
                         return (
-                          <tr key={activity.id} className="align-top hover:bg-slate-50/60">
+                          <tr
+                            key={activity.id}
+                            className={`align-top transition ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                              unseenCount > 0
+                                ? "bg-slate-100/90 hover:bg-slate-100"
+                                : "hover:bg-slate-50/60"
+                            }`}
+                          >
                             <td className="p-3">
                               <button
                                 type="button"
@@ -2234,8 +2368,16 @@ const AktivitasUniversalPage: React.FC = () => {
                                 </div>
                               </button>
 
-                              <div className="mt-1 text-[11px] text-slate-500">
-                                {CATEGORY_LABELS[activity.category]}
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                <span>
+                                  {CATEGORY_LABELS[activity.category]}
+                                </span>
+
+                                {unseenCount > 0 && (
+                                  <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                    {unseenCount} baru
+                                  </Badge>
+                                )}
                               </div>
 
                               {activity.description && (
@@ -2278,7 +2420,16 @@ const AktivitasUniversalPage: React.FC = () => {
                             </td>
 
                             <td className="p-3">
-                              <Badge variant="outline">
+                              <Badge
+                                variant="outline"
+                                className={`gap-1 ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
+                              >
+                                {activity.priority === "URGENT" && (
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                )}
+                                {activity.priority === "HIGH" && (
+                                  <span className="font-black">!</span>
+                                )}
                                 {PRIORITY_LABELS[activity.priority]}
                               </Badge>
                             </td>
@@ -2485,6 +2636,11 @@ const AktivitasUniversalPage: React.FC = () => {
                                     activity.owner_profile_id
                                   );
 
+                                const unseenCount =
+                                  unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
                                 return (
                                   <button
                                     key={activity.id}
@@ -2494,14 +2650,34 @@ const AktivitasUniversalPage: React.FC = () => {
                                         activity.id
                                       )
                                     }
-                                    className="block w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-left hover:border-blue-300 hover:bg-blue-50"
+                                    className={`block w-full rounded-md border px-2 py-1.5 text-left transition hover:border-blue-300 hover:bg-blue-50 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                                      unseenCount > 0
+                                        ? "border-slate-300 bg-slate-200"
+                                        : "border-slate-200 bg-slate-50"
+                                    }`}
                                   >
-                                    <div className="truncate text-[10px] font-bold text-slate-900">
-                                      {activity.title}
+                                    <div className="flex items-center gap-1">
+                                      <div className="min-w-0 flex-1 truncate text-[10px] font-bold text-slate-900">
+                                        {activity.title}
+                                      </div>
+
+                                      <span
+                                        className={`shrink-0 rounded border px-1 py-0.5 text-[8px] font-black ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
+                                      >
+                                        {activity.priority === "URGENT"
+                                          ? "⚠ "
+                                          : activity.priority === "HIGH"
+                                          ? "! "
+                                          : ""}
+                                        {PRIORITY_LABELS[activity.priority]}
+                                      </span>
                                     </div>
 
                                     <div className="mt-0.5 truncate text-[9px] text-slate-500">
                                       {owner?.full_name || "-"} • {STATUS_LABELS[activity.status]}
+                                      {unseenCount > 0
+                                        ? ` • ${unseenCount} baru`
+                                        : ""}
                                     </div>
                                   </button>
                                 );
@@ -3271,6 +3447,16 @@ const AktivitasUniversalPage: React.FC = () => {
             setCommentText("");
             setAttachmentFile(null);
             setAttachmentInputKey((value) => value + 1);
+            deepLinkHandledRef.current = null;
+
+            if (searchParams.has("task")) {
+              const nextParams =
+                new URLSearchParams(searchParams);
+              nextParams.delete("task");
+              setSearchParams(nextParams, {
+                replace: true,
+              });
+            }
           }
         }}
       >
