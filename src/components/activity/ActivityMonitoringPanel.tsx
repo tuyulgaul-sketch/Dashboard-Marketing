@@ -599,7 +599,13 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
 
         return {
           person,
+          total: owned.length,
           active: active.length,
+          done: owned.filter(
+            (item) =>
+              item.status ===
+              "DONE"
+          ).length,
           onProgress: owned.filter(
             (item) =>
               item.status ===
@@ -1096,20 +1102,26 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
             </CardTitle>
 
             <p className="text-[11px] text-slate-500">
-              Prioritas urutan: overdue tertinggi, lalu aktivitas aktif terbanyak.
+              Prioritas urutan: overdue tertinggi, lalu aktivitas aktif terbanyak. Angka mengikuti Periode Aktivitas yang dipilih.
             </p>
           </CardHeader>
 
           <CardContent>
             <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[620px] text-left text-xs">
+              <table className="w-full min-w-[760px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-[9px] uppercase text-slate-500">
                   <tr>
                     <th className="p-3">
                       PIC
                     </th>
                     <th className="p-3 text-center">
+                      Aktivitas
+                    </th>
+                    <th className="p-3 text-center">
                       Active
+                    </th>
+                    <th className="p-3 text-center">
+                      Done
                     </th>
                     <th className="p-3 text-center">
                       On Prog
@@ -1157,8 +1169,16 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
                           </div>
                         </td>
 
+                        <td className="p-3 text-center font-black text-slate-900">
+                          {row.total}
+                        </td>
+
                         <td className="p-3 text-center font-semibold">
                           {row.active}
+                        </td>
+
+                        <td className="p-3 text-center font-semibold text-emerald-700">
+                          {row.done}
                         </td>
 
                         <td className="p-3 text-center">

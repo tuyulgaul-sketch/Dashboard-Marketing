@@ -50,6 +50,11 @@ export type ActivityTransitionPayload = {
   collaborator_ids?: string[];
 };
 
+export type ActivityValidationDecision =
+  | "DONE"
+  | "REVISE"
+  | "REJECT";
+
 export type ActivityActionRoleRow = {
   activity_id: string;
   action_role: ActivityActionRole;
@@ -311,6 +316,27 @@ export async function transitionUniversalActivity(
           new Set(payload.collaborator_ids || [])
         ),
       },
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
+export async function reviewUniversalActivityValidationV2(
+  activityId: string,
+  decision: ActivityValidationDecision,
+  remark: string
+) {
+  const { data, error } = await supabase.rpc(
+    "review_activity_validation_v2",
+    {
+      p_activity_id: activityId,
+      p_decision: decision,
+      p_remark: remark,
     }
   );
 

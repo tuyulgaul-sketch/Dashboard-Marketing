@@ -12,6 +12,7 @@ import {
   ActivityMode,
   ActivityPriority,
   ActivityTransitionPayload,
+  ActivityValidationDecision,
   DirectoryProfile,
   UniversalActivity,
   UniversalActivityStatus,
@@ -22,6 +23,7 @@ import {
   getUniversalActivities,
   getUniversalActivityAttachmentUrl,
   getUniversalActivityDetail,
+  reviewUniversalActivityValidationV2,
   transitionUniversalActivity,
   updateUniversalActivityProgress,
   uploadUniversalActivityAttachment,
@@ -161,6 +163,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   SUBMIT_VALIDATION: "Diajukan untuk validasi",
   VALIDATION_APPROVED: "Validasi disetujui",
   VALIDATION_RETURNED: "Dikembalikan untuk perbaikan",
+  VALIDATION_REJECTED: "Validasi ditolak / aktivitas dibatalkan",
   COMMENT_ADDED: "Komentar ditambahkan",
   PROGRESS_UPDATED: "Progress diperbarui",
   ATTACHMENT_ADDED: "Lampiran ditambahkan",
@@ -218,7 +221,7 @@ const getAllowedTransitionTargets = (
     activity.status === "PENDING_VALIDATION"
   ) {
     return actionRole === "APPROVER"
-      ? ["DONE", "ON_PROGRESS"]
+      ? ["DONE", "ON_PROGRESS", "CANCELLED"]
       : [];
   }
 
@@ -300,6 +303,34 @@ type ScopeFilter =
 
 const todayKey = () =>
   new Date().toISOString().slice(0, 10);
+
+const MONTH_OPTIONS = [
+  { value: "01", label: "Januari" },
+  { value: "02", label: "Februari" },
+  { value: "03", label: "Maret" },
+  { value: "04", label: "April" },
+  { value: "05", label: "Mei" },
+  { value: "06", label: "Juni" },
+  { value: "07", label: "Juli" },
+  { value: "08", label: "Agustus" },
+  { value: "09", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+];
+
+const getTransitionActionLabel = (
+  activity: UniversalActivity,
+  targetStatus: UniversalActivityStatus
+) => {
+  if (activity.status === "PENDING_VALIDATION") {
+    if (targetStatus === "DONE") return "Done";
+    if (targetStatus === "ON_PROGRESS") return "Revisi";
+    if (targetStatus === "CANCELLED") return "Reject";
+  }
+
+  return TRANSITION_ACTION_LABELS[targetStatus];
+};
 
 const isSalesConditionalCategory = (
   category: ActivityCategory
@@ -400,6 +431,8 @@ const AktivitasUniversalPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
+  const [periodYear, setPeriodYear] = useState<string>("ALL");
+  const [periodMonth, setPeriodMonth] = useState<string>("ALL");
   const [workspaceDivisionId, setWorkspaceDivisionId] =
     useState<string>("ALL");
   const [workspaceBranchId, setWorkspaceBranchId] =
@@ -832,14 +865,56 @@ const AktivitasUniversalPage: React.FC = () => {
         !["DONE", "CANCELLED"].includes(activity.status)
     );
 
+  const periodYearOptions = useMemo(() => {
+    const years = new Set<string>([
+      String(new Date().getFullYear()),
+    ]);
+
+    activities.forEach((activity) => {
+      const year = activity.activity_date?.slice(0, 4);
+      if (year) years.add(year);
+    });
+
+    return Array.from(years).sort(
+      (a, b) => Number(b) - Number(a)
+    );
+  }, [activities]);
+
+  const periodFilteredActivities = useMemo(
+    () =>
+      activities.filter((activity) => {
+        const activityYear =
+          activity.activity_date?.slice(0, 4) || "";
+        const activityMonth =
+          activity.activity_date?.slice(5, 7) || "";
+
+        if (
+          periodYear !== "ALL" &&
+          activityYear !== periodYear
+        ) {
+          return false;
+        }
+
+        if (
+          periodMonth !== "ALL" &&
+          activityMonth !== periodMonth
+        ) {
+          return false;
+        }
+
+        return true;
+      }),
+    [activities, periodMonth, periodYear]
+  );
+
   const orgScopedActivities = useMemo(
     () =>
       workspaceOwnerFilterIds
-        ? activities.filter((activity) =>
+        ? periodFilteredActivities.filter((activity) =>
             workspaceOwnerFilterIds.has(activity.owner_profile_id)
           )
-        : activities,
-    [activities, workspaceOwnerFilterIds]
+        : periodFilteredActivities,
+    [periodFilteredActivities, workspaceOwnerFilterIds]
   );
 
   const filteredActivities = useMemo(() => {
@@ -993,7 +1068,7 @@ const AktivitasUniversalPage: React.FC = () => {
     return result;
   }, [filteredActivities]);
 
-  const myCount = activities.filter(
+  const myCount = periodFilteredActivities.filter(
     (activity) => activity.owner_profile_id === profile?.id
   ).length;
 
@@ -1012,7 +1087,7 @@ const AktivitasUniversalPage: React.FC = () => {
       )
   ).length;
 
-  const unseenActivityCount = activities.reduce(
+  const unseenActivityCount = periodFilteredActivities.reduce(
     (total, activity) =>
       total +
       (unseenCountByActivityId[activity.id] > 0 ? 1 : 0),
@@ -1290,12 +1365,13 @@ const AktivitasUniversalPage: React.FC = () => {
       if (
         transitionActivity.status ===
           "PENDING_VALIDATION" &&
-        transitionTarget ===
-          "ON_PROGRESS" &&
+        ["DONE", "ON_PROGRESS", "CANCELLED"].includes(
+          transitionTarget
+        ) &&
         !payload.note
       ) {
         window.alert(
-          "Alasan Return wajib diisi."
+          "Remark wajib diisi untuk Done, Revisi, maupun Reject."
         );
         return;
       }
@@ -1305,11 +1381,32 @@ const AktivitasUniversalPage: React.FC = () => {
           transitionActivity.id
         );
 
-        await transitionUniversalActivity(
-          transitionActivity.id,
-          transitionTarget,
-          payload
-        );
+        if (
+          transitionActivity.status ===
+          "PENDING_VALIDATION" &&
+          ["DONE", "ON_PROGRESS", "CANCELLED"].includes(
+            transitionTarget
+          )
+        ) {
+          const decision: ActivityValidationDecision =
+            transitionTarget === "DONE"
+              ? "DONE"
+              : transitionTarget === "ON_PROGRESS"
+              ? "REVISE"
+              : "REJECT";
+
+          await reviewUniversalActivityValidationV2(
+            transitionActivity.id,
+            decision,
+            payload.note || ""
+          );
+        } else {
+          await transitionUniversalActivity(
+            transitionActivity.id,
+            transitionTarget,
+            payload
+          );
+        }
 
         const transitionedId =
           transitionActivity.id;
@@ -1741,6 +1838,101 @@ const AktivitasUniversalPage: React.FC = () => {
             Monitoring & Alerts
           </Button>
         </div>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <CalendarDays className="h-4 w-4 text-blue-700" />
+                  Periode Aktivitas
+                </div>
+
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Filter memakai Activity Date dan berlaku sekaligus untuk Activity Workspace serta Monitoring & Alerts.
+                </div>
+              </div>
+
+              <div className="grid w-full gap-2 sm:grid-cols-[170px_190px_auto] lg:w-auto">
+                <Select
+                  value={periodYear}
+                  onValueChange={(value) => {
+                    setPeriodYear(value);
+
+                    if (value === "ALL") {
+                      setPeriodMonth("ALL");
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Tahun" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="ALL">
+                      Semua Tahun
+                    </SelectItem>
+
+                    {periodYearOptions.map((year) => (
+                      <SelectItem
+                        key={year}
+                        value={year}
+                      >
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={periodMonth}
+                  onValueChange={setPeriodMonth}
+                  disabled={periodYear === "ALL"}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        periodYear === "ALL"
+                          ? "Pilih Tahun dulu"
+                          : "Pilih Bulan"
+                      }
+                    />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="ALL">
+                      Semua Bulan
+                    </SelectItem>
+
+                    {MONTH_OPTIONS.map((month) => (
+                      <SelectItem
+                        key={month.value}
+                        value={month.value}
+                      >
+                        {month.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setPeriodYear("ALL");
+                    setPeriodMonth("ALL");
+                  }}
+                  disabled={
+                    periodYear === "ALL" &&
+                    periodMonth === "ALL"
+                  }
+                >
+                  Reset Periode
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {workspaceSection === "WORKSPACE" ? (
           <>
@@ -2864,7 +3056,7 @@ const AktivitasUniversalPage: React.FC = () => {
           profile && (
             <ActivityMonitoringPanel
               currentProfile={profile}
-              activities={activities}
+              activities={periodFilteredActivities}
               directory={directory}
               onOpenActivity={openActivityDetail}
             />
@@ -3339,9 +3531,10 @@ const AktivitasUniversalPage: React.FC = () => {
                         value={status}
                       >
                         {
-                          TRANSITION_ACTION_LABELS[
+                          getTransitionActionLabel(
+                            transitionActivity,
                             status
-                          ]
+                          )
                         }
                       </SelectItem>
                     ))}
@@ -3487,7 +3680,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   "ON_PROGRESS" && (
                   <div>
                     <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                      Alasan Return
+                      Remark Revisi *
                     </label>
 
                     <Textarea
@@ -3497,7 +3690,7 @@ const AktivitasUniversalPage: React.FC = () => {
                           event.target.value
                         )
                       }
-                      placeholder="Jelaskan apa yang perlu diperbaiki..."
+                      placeholder="Jelaskan revisi/perbaikan yang wajib dilakukan..."
                     />
                   </div>
                 )}
@@ -3508,7 +3701,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   "DONE" && (
                   <div>
                     <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                      Catatan Approval
+                      Remark Done *
                     </label>
 
                     <Textarea
@@ -3518,7 +3711,7 @@ const AktivitasUniversalPage: React.FC = () => {
                           event.target.value
                         )
                       }
-                      placeholder="Opsional"
+                      placeholder="Tuliskan catatan/remark penyelesaian..."
                     />
                   </div>
                 )}
@@ -3527,7 +3720,10 @@ const AktivitasUniversalPage: React.FC = () => {
                 "CANCELLED" && (
                 <div>
                   <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                    Alasan Pembatalan
+                    {transitionActivity.status ===
+                    "PENDING_VALIDATION"
+                      ? "Remark Reject *"
+                      : "Alasan Pembatalan"}
                   </label>
 
                   <Textarea
@@ -3537,7 +3733,12 @@ const AktivitasUniversalPage: React.FC = () => {
                         event.target.value
                       )
                     }
-                    placeholder="Alasan aktivitas dibatalkan..."
+                    placeholder={
+                      transitionActivity.status ===
+                      "PENDING_VALIDATION"
+                        ? "Jelaskan alasan task ditolak dan dibatalkan..."
+                        : "Alasan aktivitas dibatalkan..."
+                    }
                   />
                 </div>
               )}
