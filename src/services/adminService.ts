@@ -240,49 +240,121 @@ const removeCentralBusinessFilesForReset =
     }
   };
 
-export const globalResetAllBusinessData =
-  async () => {
-    // Existing admin Edge Function resets the established central modules
-    // and advances the global data epoch.
-    const result =
-      await invokeAdminControl({
-        action:
-          "global_reset",
-      });
+const resetErrorMessage = (
+  error: unknown
+) => {
+  if (
+    error instanceof Error &&
+    error.message
+  ) {
+    return error.message;
+  }
 
-    // Final centralization additions:
-    // remove physical private objects first, then reset their metadata,
-    // Target/RKAP, Broker/Agent and the generic central business entities.
-    await removeCentralBusinessFilesForReset();
+  if (
+    error &&
+    typeof error ===
+      "object" &&
+    "message" in error
+  ) {
+    return String(
+      (
+        error as {
+          message?: unknown;
+        }
+      ).message ||
+        "Unknown error"
+    );
+  }
 
-    const {
-      error,
-    } =
-      await supabase.rpc(
-        "reset_central_business_data"
-      );
+  return String(
+    error ||
+      "Unknown error"
+  );
+};
 
-    if (
+const runGlobalResetStage =
+  async <T>(
+    stage:
+      string,
+    action:
+      () =>
+        Promise<T>
+  ): Promise<T> => {
+    try {
+      return await action();
+    } catch (
       error
     ) {
-      throw error;
+      throw new Error(
+        `Global Reset gagal pada tahap "${stage}": ${resetErrorMessage(
+          error
+        )}`
+      );
     }
+  };
 
-    clearLegacyCentralBusinessRawStorage();
+export const globalResetAllBusinessData =
+  async () => {
+    // 1) Reset established central modules + advance data epoch.
+    const result =
+      await runGlobalResetStage(
+        "Core business reset",
+        () =>
+          invokeAdminControl({
+            action:
+              "global_reset",
+          })
+      );
 
-    // Global Reset must also clear transient in-app attention state.
-    // Run this LAST so no notification created by earlier reset steps survives.
-    const {
-      error: notificationResetError,
-    } = await supabase.rpc(
-      "admin_clear_notification_state_for_global_reset"
+    // 2) Clear in-app notification state immediately after the core reset.
+    // This is intentionally early: even if a later storage/metadata step fails,
+    // old UAT notifications must not survive the Global Reset.
+    await runGlobalResetStage(
+      "Notification cleanup",
+      async () => {
+        const {
+          error,
+        } =
+          await supabase.rpc(
+            "admin_clear_notification_state_for_global_reset"
+          );
+
+        if (
+          error
+        ) {
+          throw error;
+        }
+      }
     );
 
-    if (
-      notificationResetError
-    ) {
-      throw notificationResetError;
-    }
+    // 3) Remove private business-file objects.
+    await runGlobalResetStage(
+      "Business file cleanup",
+      () =>
+        removeCentralBusinessFilesForReset()
+    );
+
+    // 4) Reset centralized metadata / Target-RKAP / Broker-Agent / entities.
+    await runGlobalResetStage(
+      "Central business metadata reset",
+      async () => {
+        const {
+          error,
+        } =
+          await supabase.rpc(
+            "reset_central_business_data"
+          );
+
+        if (
+          error
+        ) {
+          throw error;
+        }
+      }
+    );
+
+    // 5) Clear browser-side legacy business remnants.
+    clearLegacyCentralBusinessRawStorage();
 
     return result;
   };
