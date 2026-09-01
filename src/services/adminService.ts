@@ -270,5 +270,19 @@ export const globalResetAllBusinessData =
 
     clearLegacyCentralBusinessRawStorage();
 
+    // Global Reset must also clear transient in-app attention state.
+    // Run this LAST so no notification created by earlier reset steps survives.
+    const {
+      error: notificationResetError,
+    } = await supabase.rpc(
+      "admin_clear_notification_state_for_global_reset"
+    );
+
+    if (
+      notificationResetError
+    ) {
+      throw notificationResetError;
+    }
+
     return result;
   };
