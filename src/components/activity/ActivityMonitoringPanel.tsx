@@ -606,6 +606,11 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
               item.status ===
               "DONE"
           ).length,
+          cancelled: owned.filter(
+            (item) =>
+              item.status ===
+              "CANCELLED"
+          ).length,
           onProgress: owned.filter(
             (item) =>
               item.status ===
@@ -1108,7 +1113,7 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
 
           <CardContent>
             <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[760px] text-left text-xs">
+              <table className="w-full min-w-[840px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-[9px] uppercase text-slate-500">
                   <tr>
                     <th className="p-3">
@@ -1122,6 +1127,9 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
                     </th>
                     <th className="p-3 text-center">
                       Done
+                    </th>
+                    <th className="p-3 text-center">
+                      Cancelled
                     </th>
                     <th className="p-3 text-center">
                       On Prog
@@ -1179,6 +1187,10 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
 
                         <td className="p-3 text-center font-semibold text-emerald-700">
                           {row.done}
+                        </td>
+
+                        <td className="p-3 text-center font-semibold text-slate-600">
+                          {row.cancelled}
                         </td>
 
                         <td className="p-3 text-center">

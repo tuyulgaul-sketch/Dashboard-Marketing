@@ -346,6 +346,9 @@ const MARCOMM_STOCK_POOLS:
     },
   ];
 
+// Pilot scope: Marcomm request tidak bergantung pada policy directory.
+const ENABLE_MARCOMM_POLICY_LOOKUP = false;
+
 const MARKETING_ACTION_ROLES = [
   'ADVISOR_MARKETING_DIRECTOR',
   'VP_CAPTIVE_MARKETING',
@@ -2200,6 +2203,7 @@ export const DokumenPendukungPage:
         }
 
         const clientName =
+          ENABLE_MARCOMM_POLICY_LOOKUP &&
           clientType ===
             'EXISTING'
             ? selectedPolicy?.customerName
@@ -2209,10 +2213,11 @@ export const DokumenPendukungPage:
           !clientName
         ) {
           alert(
+            ENABLE_MARCOMM_POLICY_LOOKUP &&
             clientType ===
               'EXISTING'
               ? 'Pilih nomor polis existing.'
-              : 'Nama calon klien wajib diisi.'
+              : 'Nama perusahaan / klien wajib diisi.'
           );
 
           return;
@@ -2405,6 +2410,7 @@ export const DokumenPendukungPage:
               currentUser.position,
             clientType,
             policyNumber:
+              ENABLE_MARCOMM_POLICY_LOOKUP &&
               clientType ===
                 'EXISTING'
                 ? selectedPolicy?.policyNumber
@@ -2414,7 +2420,11 @@ export const DokumenPendukungPage:
                 string,
             productName:
               requestProduct ||
-              selectedPolicy?.productName ||
+              (
+                ENABLE_MARCOMM_POLICY_LOOKUP
+                  ? selectedPolicy?.productName
+                  : undefined
+              ) ||
               undefined,
             requestedAt:
               now,
@@ -6354,7 +6364,7 @@ export const DokumenPendukungPage:
                         className="z-[140]"
                       >
                         <SelectItem value="EXISTING">
-                          Existing Client — pilih nomor polis
+                          Existing Client
                         </SelectItem>
 
                         <SelectItem value="PROSPECT">
@@ -6364,7 +6374,8 @@ export const DokumenPendukungPage:
                     </Select>
                   </div>
 
-                  {clientType ===
+                  {ENABLE_MARCOMM_POLICY_LOOKUP &&
+                  clientType ===
                   'EXISTING' ? (
                     <div className="relative">
                       <label className="mb-1 block text-xs font-bold text-gray-700">
@@ -6469,7 +6480,7 @@ export const DokumenPendukungPage:
                   ) : (
                     <div>
                       <label className="mb-1 block text-xs font-bold text-gray-700">
-                        Nama Calon Klien *
+                        Nama Perusahaan / Klien *
                       </label>
 
                       <Input
@@ -6482,7 +6493,12 @@ export const DokumenPendukungPage:
                               event.target.value
                             )
                         }
-                        placeholder="PT / instansi / individu calon klien"
+                        placeholder={
+                          clientType ===
+                            'EXISTING'
+                            ? 'Nama perusahaan existing client'
+                            : 'PT / instansi / individu calon klien'
+                        }
                         className="text-xs"
                       />
                     </div>

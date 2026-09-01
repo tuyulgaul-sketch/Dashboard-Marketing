@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { supabase } from "@/lib/supabase";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import ActivityPeoplePicker from "@/components/activity/ActivityPeoplePicker";
 import ActivityDiscussionV2 from "@/components/activity/ActivityDiscussionV2";
@@ -176,9 +177,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   ACTIVITY_CANCELLED: "Aktivitas dibatalkan",
 };
 
-const KANBAN_STATUSES: Array<
-  Exclude<UniversalActivityStatus, "CANCELLED">
-> = [
+const KANBAN_STATUSES: UniversalActivityStatus[] = [
   "DRAFT",
   "TO_DO",
   "ON_PROGRESS",
@@ -186,6 +185,7 @@ const KANBAN_STATUSES: Array<
   "NEED_SUPPORT",
   "PENDING_VALIDATION",
   "DONE",
+  "CANCELLED",
 ];
 
 const TRANSITION_ACTION_LABELS: Record<
@@ -815,9 +815,32 @@ const AktivitasUniversalPage: React.FC = () => {
 
     void refresh();
 
-    // Live-readiness fallback: data Activity is central in Supabase.
-    // Refresh silently so changes from another laptop/browser appear
-    // without forcing the user to reload the page.
+    // Primary live path: refresh Activity + action roles immediately when
+    // another user changes a task (e.g. submit validation / approve / revise).
+    let realtimeRefreshTimer: number | null = null;
+
+    const activityRealtimeChannel = supabase
+      .channel(`activities-live-${profile.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "activities",
+        },
+        () => {
+          if (realtimeRefreshTimer !== null) {
+            window.clearTimeout(realtimeRefreshTimer);
+          }
+
+          realtimeRefreshTimer = window.setTimeout(() => {
+            void refresh({ silent: true });
+          }, 150);
+        }
+      )
+      .subscribe();
+
+    // Fallback: keep polling in case a Realtime connection is interrupted.
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void refresh({ silent: true });
@@ -839,6 +862,13 @@ const AktivitasUniversalPage: React.FC = () => {
 
     return () => {
       window.clearInterval(intervalId);
+
+      if (realtimeRefreshTimer !== null) {
+        window.clearTimeout(realtimeRefreshTimer);
+      }
+
+      void supabase.removeChannel(activityRealtimeChannel);
+
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
