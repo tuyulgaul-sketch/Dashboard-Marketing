@@ -28,6 +28,8 @@ import {
 } from "@/services/activityService";
 import {
   getMyActivityAttention,
+  getMyActivityDiscussionAttention,
+  markActivityDiscussionSeen,
   markActivitySeen,
 } from "@/services/activityAttentionService";
 import {
@@ -380,6 +382,10 @@ const AktivitasUniversalPage: React.FC = () => {
   const deepLinkHandledRef = useRef<string | null>(null);
   const [unseenCountByActivityId, setUnseenCountByActivityId] =
     useState<Record<string, number>>({});
+  const [
+    discussionUnreadCountByActivityId,
+    setDiscussionUnreadCountByActivityId,
+  ] = useState<Record<string, number>>({});
 
   const [activities, setActivities] = useState<UniversalActivity[]>([]);
   const [directory, setDirectory] = useState<DirectoryProfile[]>([]);
@@ -686,11 +692,13 @@ const AktivitasUniversalPage: React.FC = () => {
         directoryRows,
         actionRoleRows,
         attentionRows,
+        discussionAttentionRows,
       ] = await Promise.all([
         getUniversalActivities(),
         getActivityDirectory(),
         getMyActivityActionRoles(),
         getMyActivityAttention(profile?.id || ""),
+        getMyActivityDiscussionAttention(profile?.id || ""),
       ]);
 
       setActivities(activityRows);
@@ -699,6 +707,15 @@ const AktivitasUniversalPage: React.FC = () => {
         attentionRows.reduce<Record<string, number>>(
           (result, row) => {
             result[row.activity_id] = row.unseen_count;
+            return result;
+          },
+          {}
+        )
+      );
+      setDiscussionUnreadCountByActivityId(
+        discussionAttentionRows.reduce<Record<string, number>>(
+          (result, row) => {
+            result[row.activity_id] = row.unread_count;
             return result;
           },
           {}
@@ -1001,6 +1018,30 @@ const AktivitasUniversalPage: React.FC = () => {
       (unseenCountByActivityId[activity.id] > 0 ? 1 : 0),
     0
   );
+
+  const focusActivitySummary = (
+    nextScope: ScopeFilter,
+    nextStatus: string = "ALL"
+  ) => {
+    setWorkspaceSection("WORKSPACE");
+    setScope(nextScope);
+    setStatusFilter(nextStatus);
+    setCategoryFilter("ALL");
+    setQuery("");
+
+    if (nextScope === "OVERDUE" || nextScope === "ACTION") {
+      changeViewMode("LIST");
+    }
+
+    window.setTimeout(() => {
+      document
+        .getElementById("activity-results")
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 80);
+  };
 
   const resetForm = () => {
     setActivityMode("PERSONAL");
@@ -1452,6 +1493,57 @@ const AktivitasUniversalPage: React.FC = () => {
     searchParams.get("comment");
 
 
+  useEffect(() => {
+    if (
+      detailTab !== "discussion" ||
+      !detail?.activity.id ||
+      !profile?.id
+    ) {
+      return;
+    }
+
+    const detailActivityId = detail.activity.id;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const refreshed =
+          await getUniversalActivityDetail(
+            detailActivityId
+          );
+
+        if (!cancelled) {
+          setDetail(refreshed);
+        }
+
+        await markActivityDiscussionSeen(detailActivityId);
+
+        if (!cancelled) {
+          setDiscussionUnreadCountByActivityId(
+            (current) => ({
+              ...current,
+              [detailActivityId]: 0,
+            })
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Gagal memperbarui status read Discussion:",
+          error
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    detailTab,
+    detail?.activity.id,
+    profile?.id,
+  ]);
+
+
   const handleUpdateProgress = async () => {
     if (!detail) return;
 
@@ -1653,7 +1745,13 @@ const AktivitasUniversalPage: React.FC = () => {
         {workspaceSection === "WORKSPACE" ? (
           <>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            onClick={() => focusActivitySummary("MY")}
+          >
             <CardContent className="flex items-center gap-3 p-5">
               <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
                 <ListTodo className="h-5 w-5" />
@@ -1671,7 +1769,13 @@ const AktivitasUniversalPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            onClick={() => focusActivitySummary("ALL", "ON_PROGRESS")}
+          >
             <CardContent className="flex items-center gap-3 p-5">
               <div className="rounded-lg bg-amber-50 p-2 text-amber-700">
                 <Clock3 className="h-5 w-5" />
@@ -1689,7 +1793,13 @@ const AktivitasUniversalPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task overdue"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            onClick={() => focusActivitySummary("OVERDUE")}
+          >
             <CardContent className="flex items-center gap-3 p-5">
               <div className="rounded-lg bg-red-50 p-2 text-red-700">
                 <AlertTriangle className="h-5 w-5" />
@@ -1707,7 +1817,13 @@ const AktivitasUniversalPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk proses task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            onClick={() => focusActivitySummary("ACTION")}
+          >
             <CardContent className="flex items-center gap-3 p-5">
               <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
                 <ShieldCheck className="h-5 w-5" />
@@ -1726,7 +1842,7 @@ const AktivitasUniversalPage: React.FC = () => {
           </Card>
         </div>
 
-        <Card>
+        <Card id="activity-results">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -2077,6 +2193,11 @@ const AktivitasUniversalPage: React.FC = () => {
                                     activity.id
                                   ] || 0;
 
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
                                 const actionRole =
                                   actionRoleByActivityId[
                                     activity.id
@@ -2176,6 +2297,15 @@ const AktivitasUniversalPage: React.FC = () => {
                                         <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
                                           <span className="mr-1 h-1.5 w-1.5 rounded-full bg-blue-600" />
                                           {unseenCount} update baru
+                                        </Badge>
+                                      </div>
+                                    )}
+
+                                    {discussionUnreadCount > 0 && (
+                                      <div className="mt-2">
+                                        <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
+                                          <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
+                                          {discussionUnreadCount} komentar unread
                                         </Badge>
                                       </div>
                                     )}
@@ -2328,6 +2458,11 @@ const AktivitasUniversalPage: React.FC = () => {
                             activity.id
                           ] || 0;
 
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
                         const awaitingMyApproval =
                           activity.status === "PENDING_VALIDATION" &&
                           activity.validation_approver_profile_id === profile?.id;
@@ -2382,6 +2517,13 @@ const AktivitasUniversalPage: React.FC = () => {
                                 {unseenCount > 0 && (
                                   <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
                                     {unseenCount} baru
+                                  </Badge>
+                                )}
+
+                                {discussionUnreadCount > 0 && (
+                                  <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
+                                    <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
+                                    {discussionUnreadCount} unread
                                   </Badge>
                                 )}
                               </div>
@@ -2647,6 +2789,11 @@ const AktivitasUniversalPage: React.FC = () => {
                                     activity.id
                                   ] || 0;
 
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
                                 return (
                                   <button
                                     key={activity.id}
@@ -2685,6 +2832,13 @@ const AktivitasUniversalPage: React.FC = () => {
                                         ? ` • ${unseenCount} baru`
                                         : ""}
                                     </div>
+
+                                    {discussionUnreadCount > 0 && (
+                                      <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-red-700">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" />
+                                        {discussionUnreadCount} unread
+                                      </div>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -3527,6 +3681,18 @@ const AktivitasUniversalPage: React.FC = () => {
                   <TabsTrigger value="discussion">
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Discussion ({detail.comments.length})
+                    {(discussionUnreadCountByActivityId[
+                      detail.activity.id
+                    ] || 0) > 0 && (
+                      <span className="ml-2 inline-flex min-w-5 items-center justify-center gap-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black text-white">
+                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                        {
+                          discussionUnreadCountByActivityId[
+                            detail.activity.id
+                          ]
+                        }
+                      </span>
+                    )}
                   </TabsTrigger>
 
                   <TabsTrigger value="attachments">

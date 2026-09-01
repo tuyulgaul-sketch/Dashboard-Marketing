@@ -228,6 +228,63 @@ export async function getMyActivityAttention(
   return Array.from(attention.values());
 }
 
+
+export type ActivityDiscussionAttentionRow = {
+  activity_id: string;
+  unread_count: number;
+  latest_comment_at: string | null;
+  last_discussion_seen_at: string | null;
+};
+
+export async function getMyActivityDiscussionAttention(
+  profileId: string
+): Promise<ActivityDiscussionAttentionRow[]> {
+  if (!profileId) return [];
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "get_my_activity_discussion_attention_v3"
+    );
+
+    if (error) {
+      console.warn(
+        "Discussion attention V3 belum tersedia:",
+        error
+      );
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      activity_id: row.activity_id,
+      unread_count: Number(row.unread_count || 0),
+      latest_comment_at: row.latest_comment_at || null,
+      last_discussion_seen_at:
+        row.last_discussion_seen_at || null,
+    }));
+  } catch (error) {
+    console.warn(
+      "Discussion attention V3 gagal dibaca:",
+      error
+    );
+    return [];
+  }
+}
+
+export async function markActivityDiscussionSeen(
+  activityId: string
+) {
+  if (!activityId) return;
+
+  const { error } = await supabase.rpc(
+    "mark_activity_discussion_seen_v3",
+    {
+      p_activity_id: activityId,
+    }
+  );
+
+  if (error) throw error;
+}
+
 export async function markActivitySeen(
   activityId: string,
   profileId: string
