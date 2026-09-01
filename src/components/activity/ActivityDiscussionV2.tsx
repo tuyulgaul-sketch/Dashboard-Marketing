@@ -8,6 +8,7 @@ import {
   ActivityDetailPayload,
   DirectoryProfile,
   addUniversalActivityCommentV2,
+  getActivityMentionCandidatesV2,
   getUniversalActivityDetail,
 } from "@/services/activityService";
 
@@ -36,7 +37,6 @@ const escapeRegExp = (value: string) =>
 const ActivityDiscussionV2: React.FC<Props> = ({
   detail,
   directory,
-  currentProfileId,
   highlightCommentId,
   onDetailChange,
 }) => {
@@ -45,62 +45,41 @@ const ActivityDiscussionV2: React.FC<Props> = ({
   const [replyTo, setReplyTo] = useState<ActivityCommentDetail | null>(null);
   const [mentionProfileIds, setMentionProfileIds] = useState<string[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionableProfiles, setMentionableProfiles] = useState<DirectoryProfile[]>([]);
+  const [mentionScopeBusy, setMentionScopeBusy] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const profileMap = useMemo(
-    () => new Map(directory.map((item) => [item.id, item])),
-    [directory]
+    () =>
+      new Map(
+        [...directory, ...mentionableProfiles].map((item) => [item.id, item])
+      ),
+    [directory, mentionableProfiles]
   );
 
-  const childrenMap = useMemo(() => {
-    const result = new Map<string, string[]>();
-    directory.forEach((item) => {
-      if (!item.manager_id) return;
-      const children = result.get(item.manager_id) || [];
-      children.push(item.id);
-      result.set(item.manager_id, children);
-    });
-    return result;
-  }, [directory]);
+  useEffect(() => {
+    let alive = true;
 
-  const mentionableProfiles = useMemo(() => {
-    if (!currentProfileId) return [];
-    const allowed = new Set<string>();
-    const stack = [...(childrenMap.get(currentProfileId) || [])];
+    setMentionScopeBusy(true);
+    setMentionQuery(null);
+    setMentionProfileIds([]);
 
-    while (stack.length > 0) {
-      const id = stack.pop()!;
-      if (allowed.has(id)) continue;
-      allowed.add(id);
-      (childrenMap.get(id) || []).forEach((childId) => stack.push(childId));
-    }
+    getActivityMentionCandidatesV2(detail.activity.id)
+      .then((items) => {
+        if (alive) setMentionableProfiles(items);
+      })
+      .catch((error) => {
+        console.error("Gagal memuat scope mention aktivitas:", error);
+        if (alive) setMentionableProfiles([]);
+      })
+      .finally(() => {
+        if (alive) setMentionScopeBusy(false);
+      });
 
-    let cursor = profileMap.get(currentProfileId)?.manager_id || null;
-    while (cursor) {
-      if (allowed.has(cursor)) break;
-      allowed.add(cursor);
-      cursor = profileMap.get(cursor)?.manager_id || null;
-    }
-
-    allowed.add(detail.owner.id);
-    allowed.add(detail.created_by.id);
-    if (detail.validation_approver?.id) allowed.add(detail.validation_approver.id);
-    if (replyTo?.created_by_profile_id) allowed.add(replyTo.created_by_profile_id);
-    allowed.delete(currentProfileId);
-
-    return directory
-      .filter((item) => allowed.has(item.id))
-      .sort((a, b) => a.full_name.localeCompare(b.full_name, "id"));
-  }, [
-    childrenMap,
-    currentProfileId,
-    detail.created_by.id,
-    detail.owner.id,
-    detail.validation_approver?.id,
-    directory,
-    profileMap,
-    replyTo?.created_by_profile_id,
-  ]);
+    return () => {
+      alive = false;
+    };
+  }, [detail.activity.id]);
 
   const selectedMentionProfiles = useMemo(
     () =>
@@ -310,7 +289,10 @@ const ActivityDiscussionV2: React.FC<Props> = ({
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="text-xs font-bold text-slate-700">Discussion</div>
           <div className="flex items-center gap-1 text-[10px] text-slate-500">
-            <AtSign className="h-3.5 w-3.5" /> Ketik @ untuk mention
+            <AtSign className="h-3.5 w-3.5" />
+            {mentionScopeBusy
+              ? "Memuat scope mention..."
+              : "Mention mengikuti tim pemilik task"}
           </div>
         </div>
 
@@ -372,6 +354,14 @@ const ActivityDiscussionV2: React.FC<Props> = ({
             ))}
           </div>
         )}
+
+        {mentionQuery !== null &&
+          !mentionScopeBusy &&
+          mentionSuggestions.length === 0 && (
+            <div className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] text-slate-500">
+              Tidak ada user dalam scope mention task ini.
+            </div>
+          )}
 
         <div className="mt-3 flex items-center justify-between">
           <div className="text-[10px] text-slate-400">{commentText.length}/4000</div>

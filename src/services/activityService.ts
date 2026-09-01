@@ -330,6 +330,21 @@ export async function getActivityDirectory() {
   return (data || []) as DirectoryProfile[];
 }
 
+export async function getActivityMentionCandidatesV2(
+  activityId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "get_activity_mention_candidates_v2",
+    {
+      p_activity_id: activityId,
+    }
+  );
+
+  if (error) throw error;
+
+  return (data || []) as DirectoryProfile[];
+}
+
 export async function getUniversalActivities() {
   void generateDueNotificationsBestEffort();
 
@@ -485,7 +500,7 @@ export async function addUniversalActivityCommentV2(
     );
 
   const { error } = await supabase.rpc(
-    "decorate_activity_comment_v2",
+    "decorate_activity_comment_v21",
     {
       p_comment_id: comment.id,
       p_parent_comment_id:
