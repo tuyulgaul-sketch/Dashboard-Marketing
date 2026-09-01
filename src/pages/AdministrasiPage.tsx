@@ -393,13 +393,48 @@ export const AdministrasiPage:
           const result =
             await globalResetAllBusinessData();
 
-          await syncGlobalResetState();
+          let browserSyncWarning =
+            "";
+
+          try {
+            await syncGlobalResetState();
+          } catch (
+            syncError
+          ) {
+            console.error(
+              "Global reset server berhasil, tetapi browser sync gagal:",
+              syncError
+            );
+
+            const syncMessage =
+              syncError instanceof Error
+                ? syncError.message
+                : syncError &&
+                    typeof syncError ===
+                      "object" &&
+                    "message" in syncError
+                  ? String(
+                      (
+                        syncError as {
+                          message?: unknown;
+                        }
+                      ).message ||
+                        "Unknown sync error"
+                    )
+                  : String(
+                      syncError ||
+                        "Unknown sync error"
+                    );
+
+            browserSyncWarning =
+              `\n\nCatatan: reset server berhasil, tetapi sinkronisasi browser mengalami kendala: ${syncMessage}. Halaman akan dimuat ulang untuk mengambil state terbaru.`;
+          }
 
           alert(
             `Global reset berhasil.\n\nFile attachment terhapus: ${
               result?.deleted_storage_files ??
               0
-            }\n\nSeluruh akun tetap tersedia. Browser user lain akan ikut mengosongkan data UAT maksimal 60 detik / saat refresh berikutnya.`
+            }\n\nSeluruh akun tetap tersedia. Browser user lain akan ikut mengosongkan data UAT maksimal 60 detik / saat refresh berikutnya.${browserSyncWarning}`
           );
 
           window.location.reload();
