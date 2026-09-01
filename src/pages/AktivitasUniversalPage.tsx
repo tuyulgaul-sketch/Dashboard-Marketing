@@ -1188,6 +1188,16 @@ const AktivitasUniversalPage: React.FC = () => {
       return;
     }
 
+    if (!description.trim()) {
+      window.alert("Description / Agenda wajib diisi.");
+      return;
+    }
+
+    if (!nextAction.trim()) {
+      window.alert("Next Action wajib diisi.");
+      return;
+    }
+
     if (
       activityMode === "ASSIGNMENT" &&
       !ownerProfileId
@@ -1221,8 +1231,8 @@ const AktivitasUniversalPage: React.FC = () => {
             : profile.id,
         activity_date: activityDate,
         due_date: dueDate || undefined,
-        description,
-        next_action: nextAction,
+        description: description.trim(),
+        next_action: nextAction.trim(),
         collaborator_ids: collaboratorIds,
         company_name: companyName,
         person_met: personMet,
@@ -3338,7 +3348,7 @@ const AktivitasUniversalPage: React.FC = () => {
 
             <div className="md:col-span-2">
               <label className="mb-1.5 block text-xs font-bold">
-                Description / Agenda
+                Description / Agenda *
               </label>
 
               <Textarea
@@ -3350,7 +3360,7 @@ const AktivitasUniversalPage: React.FC = () => {
 
             <div className="md:col-span-2">
               <label className="mb-1.5 block text-xs font-bold">
-                Next Action
+                Next Action *
               </label>
 
               <Textarea
