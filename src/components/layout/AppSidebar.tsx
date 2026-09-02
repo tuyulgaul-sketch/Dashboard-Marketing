@@ -27,8 +27,16 @@ interface FlyoutItem {
   }>;
 }
 
+interface AppSidebarProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
 export const AppSidebar:
-  React.FC = () => {
+  React.FC<AppSidebarProps> = ({
+    mobile = false,
+    onNavigate,
+  }) => {
     const { profile } =
       useAuth();
 
@@ -194,6 +202,57 @@ export const AppSidebar:
             )
         );
 
+      if (mobile) {
+        return (
+          <div className="space-y-1">
+            <div
+              className={`flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold ${
+                groupActive
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-400"
+              }`}
+            >
+              <GroupIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1">
+                {label}
+              </span>
+            </div>
+
+            <div className="space-y-1 pl-3">
+              {items.map(
+                item => {
+                  const ItemIcon =
+                    item.icon;
+
+                  const active =
+                    isExactActive(
+                      item.path
+                    );
+
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={onNavigate}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-3 text-xs font-semibold transition ${
+                        active
+                          ? "bg-blue-600 text-white"
+                          : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      }`}
+                    >
+                      <ItemIcon className="h-4 w-4 shrink-0" />
+                      <span>
+                        {item.label}
+                      </span>
+                    </Link>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div
           className="group relative"
@@ -255,7 +314,13 @@ export const AppSidebar:
     };
 
     return (
-      <aside className="flex min-h-[calc(100vh-64px)] w-60 shrink-0 flex-col border-r border-slate-800/80 bg-slate-950">
+      <aside
+        className={
+          mobile
+            ? "flex h-full min-h-screen w-full flex-col bg-slate-950"
+            : "hidden min-h-[calc(100vh-64px)] w-60 shrink-0 flex-col border-r border-slate-800/80 bg-slate-950 md:flex"
+        }
+      >
         <div className="px-4 pb-2 pt-5">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
             Menu Utama
@@ -270,6 +335,7 @@ export const AppSidebar:
             ) && (
               <NavLink
                 to="/aktivitas"
+                onClick={onNavigate}
                 className={({
                   isActive,
                 }) =>
@@ -319,6 +385,7 @@ export const AppSidebar:
             <div className="pt-3">
               <NavLink
                 to="/administrasi"
+                onClick={onNavigate}
                 className={({
                   isActive,
                 }) =>

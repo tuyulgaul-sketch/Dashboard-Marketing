@@ -1,12 +1,18 @@
 import React, { useState } from "react";
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import NotificationBell from "@/components/layout/NotificationBell";
 import PasswordControlDialog from "@/components/layout/PasswordControlDialog";
 
-export const AppHeader: React.FC = () => {
+interface AppHeaderProps {
+  onMenuClick?: () => void;
+}
+
+export const AppHeader: React.FC<AppHeaderProps> = ({
+  onMenuClick,
+}) => {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -21,27 +27,39 @@ export const AppHeader: React.FC = () => {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-3 shadow-sm sm:px-6">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0 md:hidden"
+            onClick={onMenuClick}
+            aria-label="Buka menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+
           <img
-  src="/pertalife.png"
-  alt="PertaLife Insurance"
-  className="h-10 w-auto object-contain"
-/>
-          <div>
-            <h1 className="text-sm font-bold text-gray-900 leading-none">
+            src="/pertalife.png"
+            alt="PertaLife Insurance"
+            className="h-8 w-auto shrink-0 object-contain sm:h-10"
+          />
+
+          <div className="min-w-0">
+            <h1 className="truncate text-xs font-bold leading-none text-gray-900 sm:text-sm">
               PT PERTA LIFE INSURANCE
             </h1>
-            <p className="text-[11px] text-gray-500 font-medium leading-none mt-1">
+            <p className="mt-1 hidden text-[11px] font-medium leading-none text-gray-500 sm:block">
               Created by Digital Affinity
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {profile && !isSystemAdmin && <NotificationBell />}
 
-          <div className="hidden sm:block text-right">
+          <div className="hidden text-right lg:block">
             <div className="text-xs font-bold text-slate-900">
               {profile?.full_name || "User"}
             </div>
@@ -56,20 +74,24 @@ export const AppHeader: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
+              className="h-9 w-9 px-0 sm:w-auto sm:px-3"
               onClick={() => setPasswordOpen(true)}
+              aria-label="Ubah password"
             >
-              <KeyRound className="mr-2 h-4 w-4" />
-              Password
+              <KeyRound className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Password</span>
             </Button>
           )}
 
           <Button
             variant="outline"
             size="sm"
+            className="h-9 w-9 px-0 sm:w-auto sm:px-3"
             onClick={handleLogout}
+            aria-label="Logout"
           >
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
+            <LogOut className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Logout</span>
           </Button>
         </div>
       </header>
