@@ -219,7 +219,7 @@ export const NotificationBell: React.FC = () => {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-[300] w-[380px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed left-3 right-3 top-[68px] z-[300] w-auto max-w-none overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-[380px] sm:max-w-[calc(100vw-24px)]">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
               <div className="text-sm font-bold text-slate-900">Notifikasi</div>
@@ -237,7 +237,7 @@ export const NotificationBell: React.FC = () => {
             </Button>
           </div>
 
-          <div className="max-h-[480px] overflow-y-auto">
+          <div className="max-h-[calc(100dvh-150px)] overflow-y-auto overscroll-contain sm:max-h-[480px]">
             {items.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 Belum ada notifikasi.
@@ -259,8 +259,8 @@ export const NotificationBell: React.FC = () => {
                       }`}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-slate-900">{item.title}</div>
-                      <div className="mt-1 text-[11px] leading-5 text-slate-600">{item.message}</div>
+                      <div className="break-words text-xs font-bold text-slate-900">{item.title}</div>
+                      <div className="mt-1 break-words text-[11px] leading-5 text-slate-600">{item.message}</div>
                       <div className="mt-1.5 text-[10px] text-slate-400">{relativeTime(item.createdAt)}</div>
                     </div>
                   </div>

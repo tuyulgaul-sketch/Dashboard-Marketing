@@ -938,8 +938,8 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
         })}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <Card className="min-w-0">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -1099,7 +1099,7 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <UsersRound className="h-4 w-4" />
@@ -1112,8 +1112,8 @@ const ActivityMonitoringPanel: React.FC<Props> = ({
           </CardHeader>
 
           <CardContent>
-            <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[840px] text-left text-xs">
+            <div className="max-h-[520px] w-full max-w-full overflow-x-auto overflow-y-auto overscroll-x-contain rounded-xl border border-slate-200">
+              <table className="min-w-[840px] text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-[9px] uppercase text-slate-500">
                   <tr>
                     <th className="p-3">
