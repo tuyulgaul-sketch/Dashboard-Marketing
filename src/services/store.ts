@@ -7363,8 +7363,10 @@ class StoreService {
       throw new Error('Penerima harus berasal dari fungsi lawan: Marketing ↔ Marketing Administration.');
     }
 
-    if (input.handoverType === 'PENGEMBALIAN DOKUMEN' && !input.relatedReceiptId) {
-      throw new Error('Pengembalian dokumen wajib ditautkan ke Nomor Tanda Terima sebelumnya.');
+    if (input.handoverType === 'PENGEMBALIAN DOKUMEN') {
+      throw new Error(
+        'Pengembalian dokumen harus dicatat sebagai riwayat pada Tanda Terima sebelumnya.'
+      );
     }
 
     if (input.items.length < 1) throw new Error('Minimal terdapat 1 dokumen pada Tanda Terima.');
@@ -7429,6 +7431,96 @@ class StoreService {
     });
 
     this.notify();
+    return receipt;
+  }
+
+  public returnDocumentHandover(
+    receiptId: string,
+    input: {
+      handoverDate: string;
+      items: Array<{
+        description: string;
+        quantity: number;
+        notes?: string;
+      }>;
+    }
+  ): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const receipt = this.getDocumentHandovers().find(
+      item => item.id === receiptId
+    );
+
+    if (!receipt) {
+      throw new Error('Tanda Terima sebelumnya tidak ditemukan.');
+    }
+
+    if (receipt.receiverUserId !== currentUser.id) {
+      throw new Error(
+        'Hanya penerima dokumen sebelumnya yang dapat mencatat pengembalian.'
+      );
+    }
+
+    if (
+      receipt.status !== 'DITERIMA' &&
+      receipt.status !== 'SELISIH DOKUMEN'
+    ) {
+      throw new Error(
+        'Pengembalian hanya dapat dilakukan setelah dokumen diterima atau terdapat selisih.'
+      );
+    }
+
+    if (!input.handoverDate) {
+      throw new Error('Tanggal pengembalian wajib diisi.');
+    }
+
+    if (input.items.length < 1) {
+      throw new Error('Minimal terdapat 1 dokumen yang dikembalikan.');
+    }
+
+    if (
+      input.items.some(
+        item =>
+          !item.description.trim() ||
+          Number(item.quantity) < 1
+      )
+    ) {
+      throw new Error(
+        'Deskripsi dan jumlah dokumen pengembalian wajib diisi dengan benar.'
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const itemSummary = input.items
+      .map(
+        item =>
+          `${item.description.trim()} (Qty ${Number(item.quantity)})`
+      )
+      .join('; ');
+
+    this.addAuditLog(
+      'TANDA_TERIMA',
+      'RETURN_HANDOVER',
+      'DocumentHandover',
+      receipt.id,
+      receipt.status,
+      receipt.status,
+      `Pengembalian tanggal ${input.handoverDate} oleh ${currentUser.name} kepada ${receipt.senderName}.`,
+      itemSummary
+    );
+
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId: receipt.senderUserId,
+      title: 'Dokumen Dikembalikan',
+      message: `${currentUser.name} mengembalikan dokumen untuk ${receipt.id}.`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+
+    this.notify();
+
     return receipt;
   }
 

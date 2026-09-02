@@ -190,6 +190,20 @@ const TandaTerimaPage: React.FC = () => {
     [currentUser, receipts]
   );
 
+  const returnedReceiptIds = useMemo(
+    () =>
+      new Set(
+        auditLogs
+          .filter(
+            log =>
+              log.module === 'TANDA_TERIMA' &&
+              log.action === 'RETURN_HANDOVER'
+          )
+          .map(log => log.recordId)
+      ),
+    [auditLogs]
+  );
+
   const returnableReceipts = useMemo(
     () =>
       receipts.filter(
@@ -251,6 +265,35 @@ const TandaTerimaPage: React.FC = () => {
 
   const submitCreate = () => {
     try {
+      if (handoverType === 'PENGEMBALIAN DOKUMEN') {
+        if (!relatedReceiptId) {
+          throw new Error(
+            'Pilih Tanda Terima sebelumnya yang akan dikembalikan.'
+          );
+        }
+
+        const receipt = store.returnDocumentHandover(
+          relatedReceiptId,
+          {
+            handoverDate,
+            items: draftItems.map(item => ({
+              description: item.description.trim(),
+              quantity: Number(item.quantity),
+              notes: item.notes.trim() || undefined,
+            })),
+          }
+        );
+
+        setCreateOpen(false);
+        resetCreate();
+
+        alert(
+          `Pengembalian ${receipt.id} berhasil dicatat pada Riwayat Aksi tanpa membuat nomor Tanda Terima baru.`
+        );
+
+        return;
+      }
+
       const receipt = store.createDocumentHandover({
         handoverType,
         handoverDate,
@@ -270,9 +313,16 @@ const TandaTerimaPage: React.FC = () => {
 
       setCreateOpen(false);
       resetCreate();
-      alert(`${receipt.id} berhasil dibuat dan dikirim ke ${receipt.receiverName}.`);
+
+      alert(
+        `${receipt.id} berhasil dibuat dan dikirim ke ${receipt.receiverName}.`
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal membuat Tanda Terima.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal memproses Tanda Terima.'
+      );
     }
   };
 
@@ -548,6 +598,13 @@ const TandaTerimaPage: React.FC = () => {
                           <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(receipt.status)}`}>
                             {receipt.status}
                           </span>
+
+                          {returnedReceiptIds.has(receipt.id) && (
+                            <span className="ml-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
+                              DIKEMBALIKAN
+                            </span>
+                          )}
+
                           <div className="mt-2">
                             <SlaBadge receipt={receipt} />
                           </div>
@@ -592,7 +649,11 @@ const TandaTerimaPage: React.FC = () => {
                     <Send className="h-5 w-5 text-blue-600" />
                     <h2 className="text-lg font-black text-gray-900">Buat Tanda Terima Dokumen</h2>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Nomor TRM dibuat otomatis saat Submit.</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {handoverType === 'PENGEMBALIAN DOKUMEN'
+                      ? 'Pengembalian dicatat pada registry sebelumnya dan tidak membuat nomor TRM baru.'
+                      : 'Nomor TRM dibuat otomatis saat Submit.'}
+                  </p>
                 </div>
                 <button type="button" onClick={() => setCreateOpen(false)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
                   <X className="h-4 w-4" />
@@ -612,7 +673,11 @@ const TandaTerimaPage: React.FC = () => {
                     </Select>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-bold text-gray-700">Tanggal Penyerahan *</label>
+                    <label className="mb-1.5 block text-xs font-bold text-gray-700">
+                      {handoverType === 'PENGEMBALIAN DOKUMEN'
+                        ? 'Tanggal Pengembalian *'
+                        : 'Tanggal Penyerahan *'}
+                    </label>
                     <Input type="date" value={handoverDate} onChange={event => setHandoverDate(event.target.value)} />
                   </div>
                   <div>
@@ -643,7 +708,11 @@ const TandaTerimaPage: React.FC = () => {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold text-gray-700">Penerima *</label>
-                    <Select value={receiverId} onValueChange={setReceiverId}>
+                    <Select
+                      value={receiverId}
+                      onValueChange={setReceiverId}
+                      disabled={handoverType === 'PENGEMBALIAN DOKUMEN'}
+                    >
                       <SelectTrigger><SelectValue placeholder="Pilih penerima..." /></SelectTrigger>
                       <SelectContent position="popper" className="z-[300] max-h-72">
                         {eligibleReceivers.map(user => (
@@ -826,7 +895,10 @@ const TandaTerimaPage: React.FC = () => {
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-gray-200 bg-white px-6 py-4">
                 <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
                 <Button type="button" onClick={submitCreate} className="gap-2 bg-blue-600 text-white hover:bg-blue-700">
-                  <Send className="h-4 w-4" /> Kirim Tanda Terima
+                  <Send className="h-4 w-4" />
+                  {handoverType === 'PENGEMBALIAN DOKUMEN'
+                    ? 'Catat Pengembalian'
+                    : 'Kirim Tanda Terima'}
                 </Button>
               </div>
             </div>
@@ -1061,8 +1133,18 @@ const TandaTerimaPage: React.FC = () => {
                             <div className="text-[10px] text-gray-400">{formatDateTime(log.timestamp)}</div>
                           </div>
                           <div className="mt-1 text-[11px] text-gray-600">{log.userName} · {log.userRole}</div>
-                          {(log.reason || log.fileReference) && (
-                            <div className="mt-1 text-[10px] text-gray-500">{log.reason || log.fileReference}</div>
+                          {log.reason && (
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              {log.reason}
+                            </div>
+                          )}
+
+                          {log.fileReference && (
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              {log.action === 'RETURN_HANDOVER'
+                                ? `Dokumen dikembalikan: ${log.fileReference}`
+                                : log.fileReference}
+                            </div>
                           )}
                         </div>
                       ))
