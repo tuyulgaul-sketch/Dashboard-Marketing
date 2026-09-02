@@ -72,6 +72,8 @@ export type DirectoryProfile = {
 export type UniversalActivity = {
   id: string;
   activity_mode: ActivityMode;
+  assignment_source?: string | null;
+  assignment_requester_profile_id?: string | null;
   title: string;
   category: ActivityCategory;
   description: string | null;
@@ -316,6 +318,87 @@ export async function transitionUniversalActivity(
           new Set(payload.collaborator_ids || [])
         ),
       },
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
+export async function completePersonalActivityV6(
+  activityId: string,
+  outcome: string
+) {
+  const { data, error } = await supabase.rpc(
+    "complete_personal_activity_v6",
+    {
+      p_activity_id: activityId,
+      p_outcome: outcome,
+    }
+  );
+
+  if (error) throw error;
+
+  return data as UniversalActivity;
+}
+
+export async function createSelfDeclaredAssignmentV6(
+  input: CreateActivityInput,
+  requesterProfileId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "create_self_declared_assignment_v6",
+    {
+      p_payload: {
+        ...input,
+        collaborator_ids: Array.from(
+          new Set(input.collaborator_ids || [])
+        ),
+      },
+      p_requester_profile_id: requesterProfileId,
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
+export async function submitSelfDeclaredAssignmentV6(
+  activityId: string,
+  result: string
+) {
+  const { data, error } = await supabase.rpc(
+    "submit_self_declared_assignment_v6",
+    {
+      p_activity_id: activityId,
+      p_result: result,
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
+export async function reviewSelfDeclaredAssignmentV6(
+  activityId: string,
+  decision: ActivityValidationDecision,
+  remark: string
+) {
+  const { data, error } = await supabase.rpc(
+    "review_self_declared_assignment_v6",
+    {
+      p_activity_id: activityId,
+      p_decision: decision,
+      p_remark: remark,
     }
   );
 

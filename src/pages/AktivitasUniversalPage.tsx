@@ -17,6 +17,8 @@ import {
   DirectoryProfile,
   UniversalActivity,
   UniversalActivityStatus,
+  completePersonalActivityV6,
+  createSelfDeclaredAssignmentV6,
   createUniversalActivity,
   deleteUniversalActivityAttachment,
   getActivityDirectory,
@@ -24,7 +26,9 @@ import {
   getUniversalActivities,
   getUniversalActivityAttachmentUrl,
   getUniversalActivityDetail,
+  reviewSelfDeclaredAssignmentV6,
   reviewUniversalActivityValidationV2,
+  submitSelfDeclaredAssignmentV6,
   transitionUniversalActivity,
   updateUniversalActivityProgress,
   uploadUniversalActivityAttachment,
@@ -152,7 +156,7 @@ const PRIORITY_CARD_CLASSES: Record<ActivityPriority, string> = {
 
 const MODE_LABELS: Record<ActivityMode, string> = {
   PERSONAL: "Task Pribadi",
-  ASSIGNMENT: "Assignment ke Bawahan",
+  ASSIGNMENT: "Assignment",
   COLLABORATION: "Kolaborasi",
 };
 
@@ -175,6 +179,9 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   WAITING_FOLLOW_UP: "Menunggu follow up",
   NEED_SUPPORT_REQUESTED: "Meminta dukungan",
   ACTIVITY_CANCELLED: "Aktivitas dibatalkan",
+  PERSONAL_COMPLETED: "Task pribadi diselesaikan oleh pemilik",
+  CREATED_SELF_DECLARED_ASSIGNMENT: "Assignment dari instruksi atasan dicatat",
+  VALIDATION_STEP_APPROVED: "Tahap approval disetujui",
 };
 
 const KANBAN_STATUSES: UniversalActivityStatus[] = [
@@ -255,6 +262,9 @@ const getAllowedTransitionTargets = (
     return [];
   }
 
+  const personal =
+    activity.activity_mode === "PERSONAL";
+
   switch (activity.status) {
     case "DRAFT":
       return ["TO_DO", "CANCELLED"];
@@ -263,25 +273,30 @@ const getAllowedTransitionTargets = (
         "ON_PROGRESS",
         "WAITING_FOLLOW_UP",
         "NEED_SUPPORT",
+        ...(personal ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     case "ON_PROGRESS":
       return [
         "WAITING_FOLLOW_UP",
         "NEED_SUPPORT",
-        "PENDING_VALIDATION",
+        personal
+          ? "DONE"
+          : "PENDING_VALIDATION",
         "CANCELLED",
       ];
     case "WAITING_FOLLOW_UP":
       return [
         "ON_PROGRESS",
         "NEED_SUPPORT",
+        ...(personal ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     case "NEED_SUPPORT":
       return [
         "ON_PROGRESS",
         "WAITING_FOLLOW_UP",
+        ...(personal ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     default:
@@ -300,6 +315,10 @@ type ScopeFilter =
   | "ACTION"
   | "OVERDUE"
   | "ALL";
+
+type AssignmentSourceMode =
+  | "DELEGATE"
+  | "RECEIVED";
 
 const todayKey = () =>
   new Date().toISOString().slice(0, 10);
@@ -327,6 +346,13 @@ const getTransitionActionLabel = (
     if (targetStatus === "DONE") return "Done";
     if (targetStatus === "ON_PROGRESS") return "Revisi";
     if (targetStatus === "CANCELLED") return "Reject";
+  }
+
+  if (
+    activity.activity_mode === "PERSONAL" &&
+    targetStatus === "DONE"
+  ) {
+    return "Tandai Done";
   }
 
   return TRANSITION_ACTION_LABELS[targetStatus];
@@ -448,6 +474,12 @@ const AktivitasUniversalPage: React.FC = () => {
   const [priority, setPriority] =
     useState<ActivityPriority>("MEDIUM");
   const [ownerProfileId, setOwnerProfileId] = useState("");
+  const [assignmentSource, setAssignmentSource] =
+    useState<AssignmentSourceMode>("DELEGATE");
+  const [
+    assignmentRequesterProfileId,
+    setAssignmentRequesterProfileId,
+  ] = useState("");
   const [activityDate, setActivityDate] = useState(todayKey());
   const [dueDate, setDueDate] = useState(todayKey());
   const [description, setDescription] = useState("");
@@ -590,6 +622,45 @@ const AktivitasUniversalPage: React.FC = () => {
       ),
     [directory, subordinateIds]
   );
+
+  const assignmentRequesterOptions = useMemo(() => {
+    if (!profile?.id) return [];
+
+    const result: DirectoryProfile[] = [];
+    const visited = new Set<string>();
+    let managerId =
+      profileMap.get(profile.id)?.manager_id || null;
+
+    while (
+      managerId &&
+      !visited.has(managerId)
+    ) {
+      visited.add(managerId);
+
+      const manager =
+        profileMap.get(managerId);
+
+      if (!manager) break;
+
+      const role =
+        manager.role_level
+          ?.trim()
+          .toUpperCase() || "";
+
+      const isSupervisor =
+        role.includes("SUPERVISOR") ||
+        role.includes("SPV");
+
+      if (!isSupervisor) {
+        result.push(manager);
+      }
+
+      managerId =
+        manager.manager_id || null;
+    }
+
+    return result;
+  }, [profile?.id, profileMap]);
 
   const workspaceDivisionOptions = useMemo(
     () =>
@@ -1154,6 +1225,8 @@ const AktivitasUniversalPage: React.FC = () => {
     setCategory("INTERNAL_COORDINATION");
     setPriority("MEDIUM");
     setOwnerProfileId(profile?.id || "");
+    setAssignmentSource("DELEGATE");
+    setAssignmentRequesterProfileId("");
     setActivityDate(todayKey());
     setDueDate(todayKey());
     setDescription("");
@@ -1170,8 +1243,10 @@ const AktivitasUniversalPage: React.FC = () => {
   const changeMode = (mode: ActivityMode) => {
     setActivityMode(mode);
     setCollaboratorIds([]);
+    setAssignmentRequesterProfileId("");
 
     if (mode === "ASSIGNMENT") {
+      setAssignmentSource("DELEGATE");
       setOwnerProfileId("");
     } else {
       setOwnerProfileId(profile?.id || "");
@@ -1200,9 +1275,21 @@ const AktivitasUniversalPage: React.FC = () => {
 
     if (
       activityMode === "ASSIGNMENT" &&
+      assignmentSource === "DELEGATE" &&
       !ownerProfileId
     ) {
       window.alert("Pilih bawahan yang menjadi PIC.");
+      return;
+    }
+
+    if (
+      activityMode === "ASSIGNMENT" &&
+      assignmentSource === "RECEIVED" &&
+      !assignmentRequesterProfileId
+    ) {
+      window.alert(
+        "Pilih atasan pemberi tugas / final approver."
+      );
       return;
     }
 
@@ -1219,7 +1306,7 @@ const AktivitasUniversalPage: React.FC = () => {
     try {
       setBusyId("CREATE");
 
-      await createUniversalActivity({
+      const activityPayload = {
         activity_mode: activityMode,
         initial_status: initialStatus,
         title,
@@ -1227,7 +1314,11 @@ const AktivitasUniversalPage: React.FC = () => {
         priority,
         owner_profile_id:
           activityMode === "ASSIGNMENT"
-            ? ownerProfileId
+            ? (
+                assignmentSource === "RECEIVED"
+                  ? profile.id
+                  : ownerProfileId
+              )
             : profile.id,
         activity_date: activityDate,
         due_date: dueDate || undefined,
@@ -1242,7 +1333,21 @@ const AktivitasUniversalPage: React.FC = () => {
         potential_premium: potentialPremium
           ? Number(potentialPremium)
           : null,
-      });
+      };
+
+      if (
+        activityMode === "ASSIGNMENT" &&
+        assignmentSource === "RECEIVED"
+      ) {
+        await createSelfDeclaredAssignmentV6(
+          activityPayload,
+          assignmentRequesterProfileId
+        );
+      } else {
+        await createUniversalActivity(
+          activityPayload
+        );
+      }
 
       setFormOpen(false);
       resetForm();
@@ -1403,6 +1508,23 @@ const AktivitasUniversalPage: React.FC = () => {
       }
 
       if (
+        transitionActivity.activity_mode ===
+          "PERSONAL" &&
+        transitionTarget === "DONE" &&
+        transitionActivity.status !==
+          "PENDING_VALIDATION" &&
+        (
+          !payload.result ||
+          payload.result.length < 3
+        )
+      ) {
+        window.alert(
+          "Hasil / Outcome wajib diisi sebelum Task Pribadi ditandai Done."
+        );
+        return;
+      }
+
+      if (
         transitionActivity.status ===
           "PENDING_VALIDATION" &&
         ["DONE", "ON_PROGRESS", "CANCELLED"].includes(
@@ -1423,7 +1545,7 @@ const AktivitasUniversalPage: React.FC = () => {
 
         if (
           transitionActivity.status ===
-          "PENDING_VALIDATION" &&
+            "PENDING_VALIDATION" &&
           ["DONE", "ON_PROGRESS", "CANCELLED"].includes(
             transitionTarget
           )
@@ -1435,10 +1557,40 @@ const AktivitasUniversalPage: React.FC = () => {
               ? "REVISE"
               : "REJECT";
 
-          await reviewUniversalActivityValidationV2(
+          if (
+            transitionActivity.assignment_source ===
+              "SELF_DECLARED"
+          ) {
+            await reviewSelfDeclaredAssignmentV6(
+              transitionActivity.id,
+              decision,
+              payload.note || ""
+            );
+          } else {
+            await reviewUniversalActivityValidationV2(
+              transitionActivity.id,
+              decision,
+              payload.note || ""
+            );
+          }
+        } else if (
+          transitionActivity.activity_mode ===
+            "PERSONAL" &&
+          transitionTarget === "DONE"
+        ) {
+          await completePersonalActivityV6(
             transitionActivity.id,
-            decision,
-            payload.note || ""
+            payload.result || ""
+          );
+        } else if (
+          transitionActivity.assignment_source ===
+            "SELF_DECLARED" &&
+          transitionTarget ===
+            "PENDING_VALIDATION"
+        ) {
+          await submitSelfDeclaredAssignmentV6(
+            transitionActivity.id,
+            payload.result || ""
           );
         } else {
           await transitionUniversalActivity(
@@ -3163,7 +3315,7 @@ const AktivitasUniversalPage: React.FC = () => {
                   </span>
 
                   <span className="block text-[10px] font-normal opacity-75">
-                    Assign ke bawahan
+                    Delegasi / tugas dari atasan
                   </span>
                 </span>
               </Button>
@@ -3261,34 +3413,123 @@ const AktivitasUniversalPage: React.FC = () => {
             </div>
 
             {activityMode === "ASSIGNMENT" ? (
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-xs font-bold">
-                  Assign ke *
-                </label>
+              <>
+                <div className="md:col-span-2">
+                  <label className="mb-1.5 block text-xs font-bold">
+                    Sumber Assignment *
+                  </label>
 
-                <Select
-                  value={ownerProfileId}
-                  onValueChange={setOwnerProfileId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih bawahan" />
-                  </SelectTrigger>
+                  <Select
+                    value={assignmentSource}
+                    onValueChange={(value) => {
+                      const next =
+                        value as AssignmentSourceMode;
 
-                  <SelectContent>
-                    {subordinateProfiles.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.full_name} — {getOrgLabel(item)}
+                      setAssignmentSource(next);
+                      setAssignmentRequesterProfileId("");
+                      setOwnerProfileId(
+                        next === "RECEIVED"
+                          ? profile?.id || ""
+                          : ""
+                      );
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="DELEGATE">
+                        Saya menugaskan bawahan
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
 
-                {subordinateProfiles.length === 0 && (
-                  <p className="mt-1 text-[10px] text-amber-700">
-                    Tidak ada subordinate aktif pada hierarchy akun ini.
-                  </p>
+                      <SelectItem value="RECEIVED">
+                        Saya menerima tugas dari atasan
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {assignmentSource === "DELEGATE" ? (
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-bold">
+                      Assign ke *
+                    </label>
+
+                    <Select
+                      value={ownerProfileId}
+                      onValueChange={setOwnerProfileId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih bawahan" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        {subordinateProfiles.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.full_name} — {getOrgLabel(item)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {subordinateProfiles.length === 0 && (
+                      <p className="mt-1 text-[10px] text-amber-700">
+                        Tidak ada subordinate aktif pada hierarchy akun ini.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold">
+                        PIC / Owner
+                      </label>
+
+                      <Input
+                        disabled
+                        value={profile?.full_name || ""}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold">
+                        Pemberi Tugas / Final Approver *
+                      </label>
+
+                      <Select
+                        value={assignmentRequesterProfileId}
+                        onValueChange={
+                          setAssignmentRequesterProfileId
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih atasan pemberi tugas" />
+                        </SelectTrigger>
+
+                        <SelectContent>
+                          {assignmentRequesterOptions.map(
+                            (item) => (
+                              <SelectItem
+                                key={item.id}
+                                value={item.id}
+                              >
+                                {item.full_name} — {item.role_level}
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+
+                      <p className="mt-1 text-[10px] leading-4 text-blue-700">
+                        Approval mengikuti hierarchy sampai pemberi tugas.
+                        SPV dilewati. Contoh Staff menerima tugas dari VP:
+                        DH review terlebih dahulu, lalu VP final approval.
+                      </p>
+                    </div>
+                  </>
                 )}
-              </div>
+              </>
             ) : (
               <div className="md:col-span-2">
                 <label className="mb-1.5 block text-xs font-bold">
@@ -3709,10 +3950,37 @@ const AktivitasUniversalPage: React.FC = () => {
                   />
 
                   <div className="mt-1.5 text-[10px] leading-4 text-slate-500">
-                    Jika aktivitas memerlukan evidence file, upload dari Detail sebelum submit. Progress otomatis menjadi 100% dan direct manager akan menerima notifikasi validasi.
+                    Jika aktivitas memerlukan evidence file, upload dari Detail sebelum submit. Progress otomatis menjadi 100% dan approver akan menerima notifikasi validasi.
                   </div>
                 </div>
               )}
+
+              {transitionActivity.activity_mode ===
+                "PERSONAL" &&
+                transitionTarget ===
+                  "DONE" &&
+                transitionActivity.status !==
+                  "PENDING_VALIDATION" && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Hasil / Outcome *
+                    </label>
+
+                    <Textarea
+                      value={transitionResult}
+                      onChange={(event) =>
+                        setTransitionResult(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Tuliskan hasil akhir task pribadi..."
+                    />
+
+                    <div className="mt-1.5 text-[10px] leading-4 text-slate-500">
+                      Task Pribadi tidak memerlukan review atasan. Setelah dikonfirmasi, status menjadi Done dan progress 100%.
+                    </div>
+                  </div>
+                )}
 
               {transitionActivity.status ===
                 "PENDING_VALIDATION" &&
