@@ -755,10 +755,199 @@ const TandaTerimaPage: React.FC = () => {
     });
   }, [receipts, currentUser.id, filter, search]);
 
-  const receiptHistory = (receiptId: string) =>
-    auditLogs
-      .filter(log => log.module === 'TANDA_TERIMA' && log.recordId === receiptId)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const receiptHistory = (
+    receipt: DocumentHandover
+  ): AuditLog[] => {
+    const history: AuditLog[] = [];
+
+    // ========================================================
+    // 1. PENYERAHAN AWAL
+    // Authority utama berasal dari record TRM, bukan audit log.
+    // ========================================================
+
+    history.push({
+      id: `${receipt.id}-CUSTODY-SUBMISSION`,
+      timestamp: receipt.submittedAt,
+      userId:
+        receipt.submittedByUserId ||
+        receipt.senderUserId,
+      userName:
+        receipt.submittedByName ||
+        receipt.senderName,
+      userRole: receipt.senderRole,
+      module: 'TANDA_TERIMA',
+      action: 'PENYERAHAN_DOKUMEN',
+      recordType: 'DocumentHandover',
+      recordId: receipt.id,
+      newStatus: 'MENUNGGU PENERIMAAN',
+      reason:
+        `${receipt.senderName} menyerahkan dokumen kepada ${receipt.receiverName}.`,
+      evidenceFileId:
+        receipt.submissionPhotoFileId,
+      evidenceFileName:
+        receipt.submissionPhotoFileName,
+      evidenceFileSize:
+        receipt.submissionPhotoFileSize,
+    });
+
+    // ========================================================
+    // 2. PENERIMAAN AWAL
+    // ========================================================
+
+    if (receipt.receiverDecisionAt) {
+      const hasInitialDiscrepancy =
+        receipt.items.some(
+          item =>
+            item.receivedQuantity !== undefined &&
+            Number(item.receivedQuantity) !==
+              Number(item.quantity)
+        );
+
+      history.push({
+        id: `${receipt.id}-CUSTODY-RECEIPT`,
+        timestamp: receipt.receiverDecisionAt,
+        userId:
+          receipt.receiverDecisionByUserId ||
+          receipt.receiverUserId,
+        userName:
+          receipt.receiverDecisionByName ||
+          receipt.receiverName,
+        userRole: receipt.receiverRole,
+        module: 'TANDA_TERIMA',
+        action: hasInitialDiscrepancy
+          ? 'PENERIMAAN_DOKUMEN_DENGAN_SELISIH'
+          : 'PENERIMAAN_DOKUMEN',
+        recordType: 'DocumentHandover',
+        recordId: receipt.id,
+        previousStatus: 'MENUNGGU PENERIMAAN',
+        newStatus: hasInitialDiscrepancy
+          ? 'SELISIH DOKUMEN'
+          : 'DITERIMA',
+        reason:
+          receipt.receiverDecisionNotes ||
+          `${receipt.receiverName} mengonfirmasi penerimaan dokumen.`,
+        evidenceFileId:
+          receipt.receiptPhotoFileId,
+        evidenceFileName:
+          receipt.receiptPhotoFileName,
+        evidenceFileSize:
+          receipt.receiptPhotoFileSize,
+      });
+    }
+
+    // ========================================================
+    // 3. PENGEMBALIAN
+    // ========================================================
+
+    if (receipt.returnSubmittedAt) {
+      history.push({
+        id: `${receipt.id}-CUSTODY-RETURN`,
+        timestamp: receipt.returnSubmittedAt,
+        userId:
+          receipt.returnSubmittedByUserId ||
+          receipt.receiverUserId,
+        userName:
+          receipt.returnSubmittedByName ||
+          receipt.receiverName,
+        userRole: receipt.receiverRole,
+        module: 'TANDA_TERIMA',
+        action: 'PENGEMBALIAN_DOKUMEN',
+        recordType: 'DocumentHandover',
+        recordId: receipt.id,
+        newStatus:
+          'MENUNGGU KONFIRMASI PENGEMBALIAN',
+        reason:
+          `${receipt.returnSubmittedByName || receipt.receiverName} mengembalikan dokumen kepada ${receipt.senderName}.`,
+        evidenceFileId:
+          receipt.returnPhotoFileId,
+        evidenceFileName:
+          receipt.returnPhotoFileName,
+        evidenceFileSize:
+          receipt.returnPhotoFileSize,
+      });
+    }
+
+    // ========================================================
+    // 4. PENERIMAAN KEMBALI
+    // ========================================================
+
+    if (receipt.returnReceiverDecisionAt) {
+      const hasReturnDiscrepancy =
+        (receipt.returnItems || []).some(
+          item =>
+            item.receivedQuantity !== undefined &&
+            Number(item.receivedQuantity) !==
+              Number(item.quantity)
+        );
+
+      history.push({
+        id: `${receipt.id}-CUSTODY-RETURN-RECEIPT`,
+        timestamp:
+          receipt.returnReceiverDecisionAt,
+        userId:
+          receipt.returnReceiverDecisionByUserId ||
+          receipt.senderUserId,
+        userName:
+          receipt.returnReceiverDecisionByName ||
+          receipt.senderName,
+        userRole: receipt.senderRole,
+        module: 'TANDA_TERIMA',
+        action: hasReturnDiscrepancy
+          ? 'PENERIMAAN_KEMBALI_DENGAN_SELISIH'
+          : 'PENERIMAAN_KEMBALI',
+        recordType: 'DocumentHandover',
+        recordId: receipt.id,
+        previousStatus:
+          'MENUNGGU KONFIRMASI PENGEMBALIAN',
+        newStatus: hasReturnDiscrepancy
+          ? 'SELISIH PENGEMBALIAN'
+          : 'DIKEMBALIKAN',
+        reason:
+          receipt.returnReceiverDecisionNotes ||
+          `${receipt.returnReceiverDecisionByName || receipt.senderName} mengonfirmasi penerimaan kembali dokumen.`,
+        evidenceFileId:
+          receipt.returnReceiptPhotoFileId,
+        evidenceFileName:
+          receipt.returnReceiptPhotoFileName,
+        evidenceFileSize:
+          receipt.returnReceiptPhotoFileSize,
+      });
+    }
+
+    // ========================================================
+    // 5. EVENT TAMBAHAN
+    // Tolak / batal tetap berasal dari audit trail.
+    // ========================================================
+
+    const supplementalLogs =
+      auditLogs.filter(log => {
+        if (
+          log.module !== 'TANDA_TERIMA' ||
+          log.recordId !== receipt.id
+        ) {
+          return false;
+        }
+
+        const action =
+          log.action.toUpperCase();
+
+        return (
+          action.includes('REJECT') ||
+          action.includes('TOLAK') ||
+          action.includes('CANCEL') ||
+          action.includes('BATAL')
+        );
+      });
+
+    return [
+      ...history,
+      ...supplementalLogs,
+    ].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() -
+        new Date(b.timestamp).getTime()
+    );
+  };
 
   if (!canAccess) {
     return (
@@ -1524,10 +1713,10 @@ const TandaTerimaPage: React.FC = () => {
                 <div>
                   <div className="mb-3 text-sm font-black text-gray-900">Riwayat Aksi</div>
                   <div className="space-y-2">
-                    {receiptHistory(detailReceipt.id).length === 0 ? (
+                    {receiptHistory(detailReceipt).length === 0 ? (
                       <div className="text-xs text-gray-400">Belum ada riwayat.</div>
                     ) : (
-                      receiptHistory(detailReceipt.id).map(log => (
+                      receiptHistory(detailReceipt).map(log => (
                         <div key={log.id} className="rounded-xl border border-gray-200 bg-slate-50 p-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
