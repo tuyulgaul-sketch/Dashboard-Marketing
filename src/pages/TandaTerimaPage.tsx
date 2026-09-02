@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { store } from '@/services/store';
 import {
+  waitForCentralBusinessStorageSync,
+} from '@/services/centralBusinessStorageRuntime';
+import {
   AuditLog,
   DocumentHandover,
   DocumentHandoverItem,
@@ -413,6 +416,10 @@ const TandaTerimaPage: React.FC = () => {
           }
         );
 
+        await waitForCentralBusinessStorageSync(
+          'pertalife_document_handovers'
+        );
+
         setCreateOpen(false);
         resetCreate();
 
@@ -468,6 +475,10 @@ const TandaTerimaPage: React.FC = () => {
           notes: item.notes.trim() || undefined,
         })),
       });
+
+      await waitForCentralBusinessStorageSync(
+        'pertalife_document_handovers'
+      );
 
       setCreateOpen(false);
       resetCreate();
@@ -574,6 +585,10 @@ const TandaTerimaPage: React.FC = () => {
         );
       }
 
+      await waitForCentralBusinessStorageSync(
+        'pertalife_document_handovers'
+      );
+
       const isReturn =
         receiveReceipt.status ===
         'MENUNGGU KONFIRMASI PENGEMBALIAN';
@@ -601,23 +616,41 @@ const TandaTerimaPage: React.FC = () => {
     }
   };
 
-  const rejectReceipt = (receipt: DocumentHandover) => {
+  const rejectReceipt = async (receipt: DocumentHandover) => {
     const reason = window.prompt('Masukkan alasan penolakan penerimaan:');
     if (!reason) return;
+
     try {
       store.rejectDocumentHandover(receipt.id, reason);
+
+      await waitForCentralBusinessStorageSync(
+        'pertalife_document_handovers'
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal menolak Tanda Terima.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal menolak Tanda Terima.'
+      );
     }
   };
 
-  const cancelReceipt = (receipt: DocumentHandover) => {
+  const cancelReceipt = async (receipt: DocumentHandover) => {
     const reason = window.prompt('Masukkan alasan pembatalan Tanda Terima:');
     if (!reason) return;
+
     try {
       store.cancelDocumentHandover(receipt.id, reason);
+
+      await waitForCentralBusinessStorageSync(
+        'pertalife_document_handovers'
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal membatalkan Tanda Terima.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal membatalkan Tanda Terima.'
+      );
     }
   };
 

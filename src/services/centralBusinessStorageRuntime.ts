@@ -49,6 +49,12 @@ const desiredByKey =
     EntityPayload[]
   >();
 
+const syncErrorByKey =
+  new Map<
+    CentralBusinessStorageKey,
+    Error
+  >();
+
 const flushTimerByKey =
   new Map<
     CentralBusinessStorageKey,
@@ -204,6 +210,42 @@ const samePayload = (
   JSON.stringify(
     second
   );
+
+const normalizeSyncError = (
+  error:
+    unknown
+): Error => {
+  if (
+    error instanceof Error
+  ) {
+    return error;
+  }
+
+  if (
+    error &&
+    typeof error ===
+      "object" &&
+    "message" in error &&
+    typeof (
+      error as {
+        message?: unknown;
+      }
+    ).message ===
+      "string"
+  ) {
+    return new Error(
+      (
+        error as {
+          message: string;
+        }
+      ).message
+    );
+  }
+
+  return new Error(
+    "Perubahan ditolak database pusat."
+  );
+};
 
 const buildChanges = (
   storageKey:
@@ -510,6 +552,16 @@ const flushCollectionSync =
         )
         .catch(
           async error => {
+            const normalizedError =
+              normalizeSyncError(
+                error
+              );
+
+            syncErrorByKey.set(
+              storageKey,
+              normalizedError
+            );
+
             console.error(
               `[Central Business] ${storageKey} gagal tersimpan`,
               error
@@ -526,11 +578,16 @@ const flushCollectionSync =
               );
             }
 
-            window.alert(
-              error instanceof Error
-                ? `Perubahan ditolak database pusat: ${error.message}`
-                : "Perubahan ditolak database pusat."
-            );
+            // Tanda Terima memakai explicit persistence waiter
+            // sehingga error ditampilkan satu kali oleh UI pemanggil.
+            if (
+              storageKey !==
+              "pertalife_document_handovers"
+            ) {
+              window.alert(
+                `Perubahan ditolak database pusat: ${normalizedError.message}`
+              );
+            }
           }
         )
         .finally(
@@ -588,6 +645,10 @@ const enqueueCollectionSync =
     // Keep only the latest desired snapshot. Bulk importers may call
     // localStorage.setItem hundreds of times while building one collection;
     // debouncing collapses that burst into one RPC / one DB transaction.
+    syncErrorByKey.delete(
+      storageKey
+    );
+
     desiredByKey.set(
       storageKey,
       cloneRows(
@@ -629,6 +690,111 @@ const enqueueCollectionSync =
     );
   };
 
+
+export const waitForCentralBusinessStorageSync =
+  async (
+    storageKey:
+      CentralBusinessStorageKey
+  ): Promise<void> => {
+    // Paksa debounce berjalan sekarang agar caller dapat
+    // menunggu hasil commit database secara deterministik.
+    const timer =
+      flushTimerByKey.get(
+        storageKey
+      );
+
+    if (
+      timer !== undefined
+    ) {
+      window.clearTimeout(
+        timer
+      );
+
+      flushTimerByKey.delete(
+        storageKey
+      );
+
+      flushCollectionSync(
+        storageKey
+      );
+    }
+
+    // Bisa ada mutasi lanjutan yang antre saat request sebelumnya
+    // sedang berlangsung. Tunggu sampai collection benar-benar idle.
+    while (
+      pendingByKey.has(
+        storageKey
+      ) ||
+      desiredByKey.has(
+        storageKey
+      ) ||
+      flushTimerByKey.has(
+        storageKey
+      )
+    ) {
+      const pending =
+        pendingByKey.get(
+          storageKey
+        );
+
+      if (
+        pending
+      ) {
+        await pending;
+      }
+
+      const nextTimer =
+        flushTimerByKey.get(
+          storageKey
+        );
+
+      if (
+        nextTimer !== undefined
+      ) {
+        window.clearTimeout(
+          nextTimer
+        );
+
+        flushTimerByKey.delete(
+          storageKey
+        );
+
+        flushCollectionSync(
+          storageKey
+        );
+
+        continue;
+      }
+
+      if (
+        desiredByKey.has(
+          storageKey
+        ) &&
+        !pendingByKey.has(
+          storageKey
+        )
+      ) {
+        flushCollectionSync(
+          storageKey
+        );
+      }
+    }
+
+    const syncError =
+      syncErrorByKey.get(
+        storageKey
+      );
+
+    if (
+      syncError
+    ) {
+      syncErrorByKey.delete(
+        storageKey
+      );
+
+      throw syncError;
+    }
+  };
 
 export const installCentralBusinessStorageInterceptor =
   () => {
