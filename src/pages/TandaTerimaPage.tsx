@@ -204,16 +204,6 @@ const TandaTerimaPage: React.FC = () => {
     [auditLogs]
   );
 
-  const returnableReceipts = useMemo(
-    () =>
-      receipts.filter(
-        receipt =>
-          receipt.receiverUserId === currentUser.id &&
-          (receipt.status === 'DITERIMA' || receipt.status === 'SELISIH DOKUMEN')
-      ),
-    [receipts, currentUser.id]
-  );
-
   const relationOptions = useMemo(() => {
     if (relatedModule === 'PIPELINE') {
       return store.getPipelines().map(p => ({ id: p.id, label: `${p.id} · ${p.customerName} · ${p.productName}` }));
@@ -261,6 +251,13 @@ const TandaTerimaPage: React.FC = () => {
         notes: `Pengembalian dari ${original.id}`,
       }))
     );
+  };
+
+  const openReturn = (receipt: DocumentHandover) => {
+    resetCreate();
+    setHandoverType('PENGEMBALIAN DOKUMEN');
+    applyReturnReceipt(receipt.id);
+    setCreateOpen(true);
   };
 
   const submitCreate = () => {
@@ -611,6 +608,20 @@ const TandaTerimaPage: React.FC = () => {
                         </td>
                         <td className="p-3">
                           <div className="flex flex-wrap justify-end gap-2">
+                            {receipt.receiverUserId === currentUser.id &&
+                              (receipt.status === 'DITERIMA' ||
+                                receipt.status === 'SELISIH DOKUMEN') && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openReturn(receipt)}
+                                  className="h-8 border-violet-200 text-[11px] font-bold text-violet-700 hover:bg-violet-50"
+                                >
+                                  Kembalikan
+                                </Button>
+                              )}
+
                             <Button type="button" variant="outline" size="sm" onClick={() => setDetailReceipt(receipt)} className="h-8 text-[11px]">
                               Detail
                             </Button>
@@ -647,7 +658,11 @@ const TandaTerimaPage: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <Send className="h-5 w-5 text-blue-600" />
-                    <h2 className="text-lg font-black text-gray-900">Buat Tanda Terima Dokumen</h2>
+                    <h2 className="text-lg font-black text-gray-900">
+                      {handoverType === 'PENGEMBALIAN DOKUMEN'
+                        ? 'Kembalikan Dokumen'
+                        : 'Buat Tanda Terima Dokumen'}
+                    </h2>
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
                     {handoverType === 'PENGEMBALIAN DOKUMEN'
@@ -661,17 +676,7 @@ const TandaTerimaPage: React.FC = () => {
               </div>
 
               <div className="space-y-6 p-6">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-bold text-gray-700">Jenis Penyerahan *</label>
-                    <Select value={handoverType} onValueChange={value => setHandoverType(value as DocumentHandoverType)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent position="popper" className="z-[300]">
-                        <SelectItem value="PENYERAHAN DOKUMEN">Penyerahan Dokumen</SelectItem>
-                        <SelectItem value="PENGEMBALIAN DOKUMEN">Pengembalian Dokumen</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1.5 block text-xs font-bold text-gray-700">
                       {handoverType === 'PENGEMBALIAN DOKUMEN'
@@ -690,18 +695,16 @@ const TandaTerimaPage: React.FC = () => {
                 </div>
 
                 {handoverType === 'PENGEMBALIAN DOKUMEN' && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <label className="mb-1.5 block text-xs font-bold text-amber-900">Tautkan Tanda Terima Sebelumnya *</label>
-                    <Select value={relatedReceiptId} onValueChange={applyReturnReceipt}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Pilih receipt yang pernah Anda terima..." /></SelectTrigger>
-                      <SelectContent position="popper" className="z-[300] max-h-72">
-                        {returnableReceipts.map(receipt => (
-                          <SelectItem key={receipt.id} value={receipt.id}>
-                            {receipt.id} · dari {receipt.senderName} · {receipt.items.length} item
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-violet-600">
+                      Registry Tanda Terima
+                    </div>
+                    <div className="mt-1 font-mono text-sm font-black text-violet-900">
+                      {relatedReceiptId}
+                    </div>
+                    <div className="mt-1 text-xs text-violet-700">
+                      Pengembalian akan dicatat pada riwayat registry ini dan tidak membuat nomor TRM baru.
+                    </div>
                   </div>
                 )}
 
@@ -723,28 +726,31 @@ const TandaTerimaPage: React.FC = () => {
                     <p className="mt-1 text-[10px] text-gray-400">Hanya fungsi lawan: Marketing ↔ Marketing Administration.</p>
                   </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-xs font-bold text-gray-700">Terkait Proses</label>
-                    <Select
-                      value={relatedModule}
-                      onValueChange={value => {
-                        setRelatedModule(value as DocumentHandoverRelatedModule);
-                        setRelatedTransactionId('');
-                      }}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent position="popper" className="z-[300]">
-                        <SelectItem value="NONE">Tidak terkait transaksi</SelectItem>
-                        <SelectItem value="PIPELINE">Pipeline</SelectItem>
-                        <SelectItem value="BOOKING">Booking Case</SelectItem>
-                        <SelectItem value="REIMBURSEMENT">Reimbursement</SelectItem>
-                        <SelectItem value="LAINNYA">Lainnya</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {handoverType !== 'PENGEMBALIAN DOKUMEN' && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-700">Terkait Proses</label>
+                      <Select
+                        value={relatedModule}
+                        onValueChange={value => {
+                          setRelatedModule(value as DocumentHandoverRelatedModule);
+                          setRelatedTransactionId('');
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent position="popper" className="z-[300]">
+                          <SelectItem value="NONE">Tidak terkait transaksi</SelectItem>
+                          <SelectItem value="PIPELINE">Pipeline</SelectItem>
+                          <SelectItem value="BOOKING">Booking Case</SelectItem>
+                          <SelectItem value="REIMBURSEMENT">Reimbursement</SelectItem>
+                          <SelectItem value="LAINNYA">Lainnya</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
 
-                {['PIPELINE', 'BOOKING', 'REIMBURSEMENT'].includes(relatedModule) && (
+                {handoverType !== 'PENGEMBALIAN DOKUMEN' &&
+                  ['PIPELINE', 'BOOKING', 'REIMBURSEMENT'].includes(relatedModule) && (
                   <div>
                     <label className="mb-1.5 block text-xs font-bold text-gray-700">Related Transaction ID</label>
                     <Select value={relatedTransactionId} onValueChange={setRelatedTransactionId}>
@@ -758,7 +764,8 @@ const TandaTerimaPage: React.FC = () => {
                   </div>
                 )}
 
-                {relatedModule === 'LAINNYA' && (
+                {handoverType !== 'PENGEMBALIAN DOKUMEN' &&
+                  relatedModule === 'LAINNYA' && (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Related ID</label>
@@ -777,9 +784,11 @@ const TandaTerimaPage: React.FC = () => {
                       <div className="text-sm font-black text-gray-900">Daftar Dokumen Fisik</div>
                       <div className="text-[11px] text-gray-500">Satu Tanda Terima dapat memuat lebih dari satu dokumen.</div>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setDraftItems(current => [...current, emptyItem()])} className="gap-2">
-                      <Plus className="h-4 w-4" /> Tambah Dokumen
-                    </Button>
+                    {handoverType !== 'PENGEMBALIAN DOKUMEN' && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setDraftItems(current => [...current, emptyItem()])} className="gap-2">
+                        <Plus className="h-4 w-4" /> Tambah Dokumen
+                      </Button>
+                    )}
                   </div>
 
                   <div className="space-y-3">
