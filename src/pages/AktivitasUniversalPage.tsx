@@ -218,6 +218,12 @@ const ACTION_ROLE_LABELS: Record<ActivityActionRole, string> = {
   CREATOR: "Draft Owner",
 };
 
+const isPersonalActivity = (
+  activity: UniversalActivity
+) =>
+  (activity.activity_mode || "PERSONAL") ===
+  "PERSONAL";
+
 const getAllowedTransitionTargets = (
   activity: UniversalActivity,
   actionRole?: ActivityActionRole
@@ -263,7 +269,7 @@ const getAllowedTransitionTargets = (
   }
 
   const personal =
-    activity.activity_mode === "PERSONAL";
+    isPersonalActivity(activity);
 
   switch (activity.status) {
     case "DRAFT":
@@ -1377,6 +1383,14 @@ const AktivitasUniversalPage: React.FC = () => {
         actionRole
       );
 
+    // Personal task is a self-managed diary.
+    // Never route it into managerial validation.
+    const resolvedTargetStatus =
+      isPersonalActivity(activity) &&
+      targetStatus === "PENDING_VALIDATION"
+        ? "DONE"
+        : targetStatus;
+
     if (allowedTargets.length === 0) {
       window.alert(
         "Anda hanya memiliki akses observer pada aktivitas ini."
@@ -1385,9 +1399,9 @@ const AktivitasUniversalPage: React.FC = () => {
     }
 
     if (
-      targetStatus &&
+      resolvedTargetStatus &&
       !allowedTargets.includes(
-        targetStatus
+        resolvedTargetStatus
       )
     ) {
       window.alert(
@@ -1400,7 +1414,7 @@ const AktivitasUniversalPage: React.FC = () => {
       activity
     );
     setTransitionTarget(
-      targetStatus ||
+      resolvedTargetStatus ||
         (
           allowedTargets.length === 1
             ? allowedTargets[0]
@@ -1508,8 +1522,9 @@ const AktivitasUniversalPage: React.FC = () => {
       }
 
       if (
-        transitionActivity.activity_mode ===
-          "PERSONAL" &&
+        isPersonalActivity(
+          transitionActivity
+        ) &&
         transitionTarget === "DONE" &&
         transitionActivity.status !==
           "PENDING_VALIDATION" &&
@@ -1574,8 +1589,9 @@ const AktivitasUniversalPage: React.FC = () => {
             );
           }
         } else if (
-          transitionActivity.activity_mode ===
-            "PERSONAL" &&
+          isPersonalActivity(
+            transitionActivity
+          ) &&
           transitionTarget === "DONE"
         ) {
           await completePersonalActivityV6(
@@ -1672,7 +1688,9 @@ const AktivitasUniversalPage: React.FC = () => {
 
     requestTransition(
       activity,
-      "PENDING_VALIDATION"
+      isPersonalActivity(activity)
+        ? "DONE"
+        : "PENDING_VALIDATION"
     );
   };
 
@@ -3739,11 +3757,23 @@ const AktivitasUniversalPage: React.FC = () => {
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
-              Validasi Perubahan Status
+              {transitionActivity &&
+              isPersonalActivity(
+                transitionActivity
+              ) &&
+              transitionTarget === "DONE"
+                ? "Selesaikan Task Pribadi"
+                : "Validasi Perubahan Status"}
             </DialogTitle>
 
             <DialogDescription>
-              {transitionActivity
+              {transitionActivity &&
+              isPersonalActivity(
+                transitionActivity
+              ) &&
+              transitionTarget === "DONE"
+                ? `${transitionActivity.title} — isi Hasil / Outcome lalu konfirmasi Done. Tidak memerlukan approval atasan.`
+                : transitionActivity
                 ? transitionActivity.title
                 : "Pilih aksi status yang akan dilakukan."}
             </DialogDescription>
@@ -3955,8 +3985,9 @@ const AktivitasUniversalPage: React.FC = () => {
                 </div>
               )}
 
-              {transitionActivity.activity_mode ===
-                "PERSONAL" &&
+              {isPersonalActivity(
+                transitionActivity
+              ) &&
                 transitionTarget ===
                   "DONE" &&
                 transitionActivity.status !==
