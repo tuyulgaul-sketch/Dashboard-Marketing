@@ -672,6 +672,13 @@ export interface DocumentHandoverReturnItem {
   receiverNotes?: string;
 }
 
+export interface DocumentHandoverDiscrepancySnapshotItem {
+  itemId: string;
+  expectedQuantity: number;
+  receivedQuantity: number;
+  receiverNotes?: string;
+}
+
 export interface DocumentHandover {
   id: string; // TRM-YYYY-MM-00001
   handoverType: DocumentHandoverType;
@@ -716,6 +723,13 @@ export interface DocumentHandover {
   receiptPhotoFileName?: string;
   receiptPhotoFileSize?: number;
 
+  // Snapshot selisih awal dipertahankan walaupun selisih sudah diselesaikan.
+  initialDiscrepancyItems?: DocumentHandoverDiscrepancySnapshotItem[];
+  initialDiscrepancyResolvedAt?: string;
+  initialDiscrepancyResolvedByUserId?: string;
+  initialDiscrepancyResolvedByName?: string;
+  initialDiscrepancyResolutionNotes?: string;
+
   // Pengembalian tetap memakai registry TRM yang sama.
   returnItems?: DocumentHandoverReturnItem[];
   returnSubmittedAt?: string;
@@ -737,6 +751,13 @@ export interface DocumentHandover {
   returnReceiptPhotoFileId?: string;
   returnReceiptPhotoFileName?: string;
   returnReceiptPhotoFileSize?: number;
+
+  // Snapshot selisih pengembalian dipertahankan setelah diselesaikan.
+  returnDiscrepancyItems?: DocumentHandoverDiscrepancySnapshotItem[];
+  returnDiscrepancyResolvedAt?: string;
+  returnDiscrepancyResolvedByUserId?: string;
+  returnDiscrepancyResolvedByName?: string;
+  returnDiscrepancyResolutionNotes?: string;
 
   cancelledAt?: string;
   cancelledByUserId?: string;

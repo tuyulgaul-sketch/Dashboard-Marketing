@@ -616,6 +616,48 @@ const TandaTerimaPage: React.FC = () => {
     }
   };
 
+  const resolveDiscrepancy = async (
+    receipt: DocumentHandover
+  ) => {
+    const isReturn =
+      receipt.status === 'SELISIH PENGEMBALIAN';
+
+    const notes = window.prompt(
+      isReturn
+        ? 'Jelaskan penyelesaian selisih pengembalian (wajib):'
+        : 'Jelaskan penyelesaian selisih dokumen (wajib):'
+    );
+
+    if (!notes?.trim()) return;
+
+    try {
+      setSubmitting(true);
+
+      store.resolveDocumentHandoverDiscrepancy(
+        receipt.id,
+        notes
+      );
+
+      await waitForCentralBusinessStorageSync(
+        'pertalife_document_handovers'
+      );
+
+      alert(
+        isReturn
+          ? 'Selisih pengembalian selesai. Status menjadi DIKEMBALIKAN.'
+          : 'Selisih dokumen selesai. Status menjadi DITERIMA.'
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal menyelesaikan selisih.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const rejectReceipt = async (receipt: DocumentHandover) => {
     const reason = window.prompt('Masukkan alasan penolakan penerimaan:');
     if (!reason) return;
@@ -829,6 +871,9 @@ const TandaTerimaPage: React.FC = () => {
 
     if (receipt.receiverDecisionAt) {
       const hasInitialDiscrepancy =
+        Boolean(
+          receipt.initialDiscrepancyItems?.length
+        ) ||
         receipt.items.some(
           item =>
             item.receivedQuantity !== undefined &&
@@ -865,6 +910,30 @@ const TandaTerimaPage: React.FC = () => {
           receipt.receiptPhotoFileName,
         evidenceFileSize:
           receipt.receiptPhotoFileSize,
+      });
+    }
+
+    if (receipt.initialDiscrepancyResolvedAt) {
+      history.push({
+        id: `${receipt.id}-CUSTODY-DISCREPANCY-RESOLVED`,
+        timestamp:
+          receipt.initialDiscrepancyResolvedAt,
+        userId:
+          receipt.initialDiscrepancyResolvedByUserId ||
+          receipt.receiverUserId,
+        userName:
+          receipt.initialDiscrepancyResolvedByName ||
+          receipt.receiverName,
+        userRole: receipt.receiverRole,
+        module: 'TANDA_TERIMA',
+        action: 'SELISIH_DOKUMEN_DISELESAIKAN',
+        recordType: 'DocumentHandover',
+        recordId: receipt.id,
+        previousStatus: 'SELISIH DOKUMEN',
+        newStatus: 'DITERIMA',
+        reason:
+          receipt.initialDiscrepancyResolutionNotes ||
+          'Selisih dokumen telah diselesaikan.',
       });
     }
 
@@ -906,6 +975,9 @@ const TandaTerimaPage: React.FC = () => {
 
     if (receipt.returnReceiverDecisionAt) {
       const hasReturnDiscrepancy =
+        Boolean(
+          receipt.returnDiscrepancyItems?.length
+        ) ||
         (receipt.returnItems || []).some(
           item =>
             item.receivedQuantity !== undefined &&
@@ -944,6 +1016,30 @@ const TandaTerimaPage: React.FC = () => {
           receipt.returnReceiptPhotoFileName,
         evidenceFileSize:
           receipt.returnReceiptPhotoFileSize,
+      });
+    }
+
+    if (receipt.returnDiscrepancyResolvedAt) {
+      history.push({
+        id: `${receipt.id}-CUSTODY-RETURN-DISCREPANCY-RESOLVED`,
+        timestamp:
+          receipt.returnDiscrepancyResolvedAt,
+        userId:
+          receipt.returnDiscrepancyResolvedByUserId ||
+          receipt.senderUserId,
+        userName:
+          receipt.returnDiscrepancyResolvedByName ||
+          receipt.senderName,
+        userRole: receipt.senderRole,
+        module: 'TANDA_TERIMA',
+        action: 'SELISIH_PENGEMBALIAN_DISELESAIKAN',
+        recordType: 'DocumentHandover',
+        recordId: receipt.id,
+        previousStatus: 'SELISIH PENGEMBALIAN',
+        newStatus: 'DIKEMBALIKAN',
+        reason:
+          receipt.returnDiscrepancyResolutionNotes ||
+          'Selisih pengembalian telah diselesaikan.',
       });
     }
 
@@ -1128,10 +1224,7 @@ const TandaTerimaPage: React.FC = () => {
                         <td className="p-3">
                           <div className="flex flex-wrap justify-end gap-2">
                             {receipt.receiverUserId === currentUser.id &&
-                              (
-                                getEffectiveStatus(receipt) === 'DITERIMA' ||
-                                getEffectiveStatus(receipt) === 'SELISIH DOKUMEN'
-                              ) && (
+                              getEffectiveStatus(receipt) === 'DITERIMA' && (
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -1152,6 +1245,38 @@ const TandaTerimaPage: React.FC = () => {
                                   className="h-8 bg-violet-600 text-[11px] text-white hover:bg-violet-700"
                                 >
                                   Terima Kembali
+                                </Button>
+                              )}
+
+                            {receipt.receiverUserId === currentUser.id &&
+                              receipt.status === 'SELISIH DOKUMEN' && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={submitting}
+                                  onClick={() =>
+                                    resolveDiscrepancy(receipt)
+                                  }
+                                  className="h-8 border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100"
+                                >
+                                  Selesaikan Selisih
+                                </Button>
+                              )}
+
+                            {receipt.senderUserId === currentUser.id &&
+                              receipt.status === 'SELISIH PENGEMBALIAN' && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={submitting}
+                                  onClick={() =>
+                                    resolveDiscrepancy(receipt)
+                                  }
+                                  className="h-8 border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100"
+                                >
+                                  Selesaikan Selisih
                                 </Button>
                               )}
 

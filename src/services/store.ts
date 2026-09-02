@@ -7751,6 +7751,188 @@ class StoreService {
     return updated;
   }
 
+  public resolveDocumentHandoverDiscrepancy(
+    receiptId: string,
+    notes: string
+  ): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(
+      item => item.id === receiptId
+    );
+
+    if (index < 0) {
+      throw new Error('Tanda Terima tidak ditemukan.');
+    }
+
+    const receipt = records[index];
+    const resolutionNotes = notes.trim();
+
+    if (!resolutionNotes) {
+      throw new Error(
+        'Catatan penyelesaian selisih wajib diisi.'
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    if (receipt.status === 'SELISIH DOKUMEN') {
+      if (receipt.receiverUserId !== currentUser.id) {
+        throw new Error(
+          'Hanya penerima dokumen yang dapat menyelesaikan selisih penerimaan.'
+        );
+      }
+
+      const snapshot =
+        receipt.initialDiscrepancyItems?.length
+          ? receipt.initialDiscrepancyItems
+          : receipt.items.map(item => ({
+              itemId: item.id,
+              expectedQuantity: Number(item.quantity),
+              receivedQuantity: Number(
+                item.receivedQuantity ?? 0
+              ),
+              receiverNotes:
+                item.receiverNotes || undefined,
+            }));
+
+      const updated: DocumentHandover = {
+        ...receipt,
+        status: 'DITERIMA',
+        initialDiscrepancyItems: snapshot,
+        initialDiscrepancyResolvedAt: now,
+        initialDiscrepancyResolvedByUserId:
+          currentUser.id,
+        initialDiscrepancyResolvedByName:
+          currentUser.name,
+        initialDiscrepancyResolutionNotes:
+          resolutionNotes,
+        items: receipt.items.map(item => ({
+          ...item,
+          receivedQuantity: Number(item.quantity),
+        })),
+      };
+
+      records[index] = updated;
+
+      localStorage.setItem(
+        STORAGE_KEYS.DOCUMENT_HANDOVERS,
+        JSON.stringify(records)
+      );
+
+      this.addAuditLog(
+        'TANDA_TERIMA',
+        'RESOLVE_DOCUMENT_DISCREPANCY',
+        'DocumentHandover',
+        updated.id,
+        receipt.status,
+        updated.status,
+        resolutionNotes
+      );
+
+      this.addNotification({
+        id: `NTF-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        recipientUserId: receipt.senderUserId,
+        title: 'Selisih Dokumen Diselesaikan',
+        message:
+          `${currentUser.name} menyelesaikan selisih pada ${updated.id}. ` +
+          `Status dokumen kini DITERIMA.`,
+        linkPath: '/tanda-terima',
+        isRead: false,
+        createdAt: now,
+      });
+
+      this.notify();
+      return updated;
+    }
+
+    if (receipt.status === 'SELISIH PENGEMBALIAN') {
+      if (receipt.senderUserId !== currentUser.id) {
+        throw new Error(
+          'Hanya penerima kembali / pengirim awal yang dapat menyelesaikan selisih pengembalian.'
+        );
+      }
+
+      if (!receipt.returnItems?.length) {
+        throw new Error(
+          'Daftar dokumen pengembalian tidak ditemukan.'
+        );
+      }
+
+      const snapshot =
+        receipt.returnDiscrepancyItems?.length
+          ? receipt.returnDiscrepancyItems
+          : receipt.returnItems.map(item => ({
+              itemId: item.id,
+              expectedQuantity: Number(item.quantity),
+              receivedQuantity: Number(
+                item.receivedQuantity ?? 0
+              ),
+              receiverNotes:
+                item.receiverNotes || undefined,
+            }));
+
+      const updated: DocumentHandover = {
+        ...receipt,
+        status: 'DIKEMBALIKAN',
+        returnDiscrepancyItems: snapshot,
+        returnDiscrepancyResolvedAt: now,
+        returnDiscrepancyResolvedByUserId:
+          currentUser.id,
+        returnDiscrepancyResolvedByName:
+          currentUser.name,
+        returnDiscrepancyResolutionNotes:
+          resolutionNotes,
+        returnItems: receipt.returnItems.map(item => ({
+          ...item,
+          receivedQuantity: Number(item.quantity),
+        })),
+      };
+
+      records[index] = updated;
+
+      localStorage.setItem(
+        STORAGE_KEYS.DOCUMENT_HANDOVERS,
+        JSON.stringify(records)
+      );
+
+      this.addAuditLog(
+        'TANDA_TERIMA',
+        'RESOLVE_RETURN_DISCREPANCY',
+        'DocumentHandover',
+        updated.id,
+        receipt.status,
+        updated.status,
+        resolutionNotes
+      );
+
+      this.addNotification({
+        id: `NTF-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        recipientUserId:
+          receipt.returnSubmittedByUserId ||
+          receipt.receiverUserId,
+        title: 'Selisih Pengembalian Diselesaikan',
+        message:
+          `${currentUser.name} menyelesaikan selisih pengembalian pada ${updated.id}. ` +
+          `Status dokumen kini DIKEMBALIKAN.`,
+        linkPath: '/tanda-terima',
+        isRead: false,
+        createdAt: now,
+      });
+
+      this.notify();
+      return updated;
+    }
+
+    throw new Error(
+      'Tanda Terima ini tidak memiliki selisih yang perlu diselesaikan.'
+    );
+  }
+
   public confirmDocumentHandover(
     receiptId: string,
     input: {
