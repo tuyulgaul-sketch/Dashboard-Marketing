@@ -192,6 +192,12 @@ const TandaTerimaPage: React.FC = () => {
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
   const [receiverNotes, setReceiverNotes] = useState('');
 
+  const [resolutionReceipt, setResolutionReceipt] =
+    useState<DocumentHandover | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState('');
+  const [resolutionPhoto, setResolutionPhoto] =
+    useState<File | null>(null);
+
   useEffect(() => {
     const refresh = () => {
       const user = store.getCurrentUser();
@@ -616,36 +622,82 @@ const TandaTerimaPage: React.FC = () => {
     }
   };
 
-  const resolveDiscrepancy = async (
+  const openResolution = (
     receipt: DocumentHandover
   ) => {
+    setResolutionReceipt(receipt);
+    setResolutionNotes('');
+    setResolutionPhoto(null);
+  };
+
+  const submitResolution = async () => {
+    if (!resolutionReceipt) return;
+
     const isReturn =
-      receipt.status === 'SELISIH PENGEMBALIAN';
+      resolutionReceipt.status ===
+      'SELISIH PENGEMBALIAN';
 
-    const notes = window.prompt(
-      isReturn
-        ? 'Jelaskan penyelesaian selisih pengembalian (wajib):'
-        : 'Jelaskan penyelesaian selisih dokumen (wajib):'
-    );
+    if (!resolutionNotes.trim()) {
+      alert(
+        'Catatan penyelesaian selisih wajib diisi.'
+      );
+      return;
+    }
 
-    if (!notes?.trim()) return;
+    if (!resolutionPhoto) {
+      alert(
+        'Foto bukti penyelesaian selisih wajib diupload.'
+      );
+      return;
+    }
 
     try {
       setSubmitting(true);
 
+      const fileId =
+        `TRM-RESOLVE-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`;
+
+      await saveDocumentHandoverFile({
+        id: fileId,
+        transactionId: resolutionReceipt.id,
+        fileName: resolutionPhoto.name,
+        fileType:
+          resolutionPhoto.type || 'image/*',
+        fileSize: resolutionPhoto.size,
+        uploadedByUserId: currentUser.id,
+        uploadedByName: currentUser.name,
+        uploadedAt: new Date().toISOString(),
+        senderUserId:
+          resolutionReceipt.senderUserId,
+        receiverUserId:
+          resolutionReceipt.receiverUserId,
+        blob: resolutionPhoto,
+      });
+
       store.resolveDocumentHandoverDiscrepancy(
-        receipt.id,
-        notes
+        resolutionReceipt.id,
+        {
+          notes: resolutionNotes,
+          photoFileId: fileId,
+          photoFileName: resolutionPhoto.name,
+          photoFileSize: resolutionPhoto.size,
+        }
       );
 
       await waitForCentralBusinessStorageSync(
         'pertalife_document_handovers'
       );
 
+      setResolutionReceipt(null);
+      setResolutionNotes('');
+      setResolutionPhoto(null);
+
       alert(
         isReturn
-          ? 'Selisih pengembalian selesai. Status menjadi DIKEMBALIKAN.'
-          : 'Selisih dokumen selesai. Status menjadi DITERIMA.'
+          ? 'Selisih pengembalian selesai. Dokumen telah diterima kembali lengkap.'
+          : 'Selisih dokumen selesai. Dokumen telah diterima lengkap.'
       );
     } catch (error) {
       alert(
@@ -934,6 +986,12 @@ const TandaTerimaPage: React.FC = () => {
         reason:
           receipt.initialDiscrepancyResolutionNotes ||
           'Selisih dokumen telah diselesaikan.',
+        evidenceFileId:
+          receipt.initialDiscrepancyResolutionPhotoFileId,
+        evidenceFileName:
+          receipt.initialDiscrepancyResolutionPhotoFileName,
+        evidenceFileSize:
+          receipt.initialDiscrepancyResolutionPhotoFileSize,
       });
     }
 
@@ -1040,6 +1098,12 @@ const TandaTerimaPage: React.FC = () => {
         reason:
           receipt.returnDiscrepancyResolutionNotes ||
           'Selisih pengembalian telah diselesaikan.',
+        evidenceFileId:
+          receipt.returnDiscrepancyResolutionPhotoFileId,
+        evidenceFileName:
+          receipt.returnDiscrepancyResolutionPhotoFileName,
+        evidenceFileSize:
+          receipt.returnDiscrepancyResolutionPhotoFileSize,
       });
     }
 
@@ -1256,7 +1320,7 @@ const TandaTerimaPage: React.FC = () => {
                                   size="sm"
                                   disabled={submitting}
                                   onClick={() =>
-                                    resolveDiscrepancy(receipt)
+                                    openResolution(receipt)
                                   }
                                   className="h-8 border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100"
                                 >
@@ -1272,7 +1336,7 @@ const TandaTerimaPage: React.FC = () => {
                                   size="sm"
                                   disabled={submitting}
                                   onClick={() =>
-                                    resolveDiscrepancy(receipt)
+                                    openResolution(receipt)
                                   }
                                   className="h-8 border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100"
                                 >
@@ -1765,6 +1829,122 @@ const TandaTerimaPage: React.FC = () => {
                   {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
                     ? 'Konfirmasi Diterima Kembali'
                     : 'Konfirmasi Diterima'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {resolutionReceipt && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/45 p-4">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                    <h2 className="text-base font-black text-gray-900">
+                      Selesaikan Selisih
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {resolutionReceipt.id} · evidence wajib untuk menandakan dokumen telah diterima lengkap.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    setResolutionReceipt(null);
+                    setResolutionNotes('');
+                    setResolutionPhoto(null);
+                  }}
+                  className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4 p-5">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="text-xs font-black text-amber-900">
+                    Konfirmasi Dokumen Lengkap
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                    Pastikan kekurangan/selisih sudah diterima secara fisik sebelum menyelesaikan proses ini.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-gray-700">
+                    Catatan Penyelesaian *
+                  </label>
+                  <Textarea
+                    value={resolutionNotes}
+                    onChange={event =>
+                      setResolutionNotes(event.target.value)
+                    }
+                    placeholder="Contoh: Kekurangan 1 polis telah diterima lengkap pada 2 September 2026."
+                  />
+                </div>
+
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-center gap-2 text-xs font-black text-emerald-900">
+                    <Camera className="h-4 w-4" />
+                    Foto Bukti Penyelesaian Selisih *
+                  </div>
+
+                  <p className="mt-1 text-[10px] leading-5 text-emerald-800">
+                    Foto wajib menjadi evidence bahwa dokumen yang sebelumnya selisih sudah diterima lengkap.
+                  </p>
+
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={event =>
+                      setResolutionPhoto(
+                        event.target.files?.[0] || null
+                      )
+                    }
+                    className="mt-3 bg-white"
+                  />
+
+                  {resolutionPhoto && (
+                    <div className="mt-2 text-[10px] font-semibold text-emerald-800">
+                      {resolutionPhoto.name} ·{' '}
+                      {(resolutionPhoto.size / 1024).toFixed(1)} KB
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => {
+                    setResolutionReceipt(null);
+                    setResolutionNotes('');
+                    setResolutionPhoto(null);
+                  }}
+                >
+                  Batal
+                </Button>
+
+                <Button
+                  type="button"
+                  disabled={
+                    submitting ||
+                    !resolutionNotes.trim() ||
+                    !resolutionPhoto
+                  }
+                  onClick={submitResolution}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Konfirmasi Sudah Lengkap
                 </Button>
               </div>
             </div>

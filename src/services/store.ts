@@ -7753,7 +7753,12 @@ class StoreService {
 
   public resolveDocumentHandoverDiscrepancy(
     receiptId: string,
-    notes: string
+    input: {
+      notes: string;
+      photoFileId: string;
+      photoFileName: string;
+      photoFileSize: number;
+    }
   ): DocumentHandover {
     const currentUser = this.getCurrentUser();
     const records = this.getDocumentHandovers();
@@ -7766,11 +7771,21 @@ class StoreService {
     }
 
     const receipt = records[index];
-    const resolutionNotes = notes.trim();
+    const resolutionNotes = input.notes.trim();
 
     if (!resolutionNotes) {
       throw new Error(
         'Catatan penyelesaian selisih wajib diisi.'
+      );
+    }
+
+    if (
+      !input.photoFileId ||
+      !input.photoFileName ||
+      !input.photoFileSize
+    ) {
+      throw new Error(
+        'Foto bukti penyelesaian selisih wajib diupload.'
       );
     }
 
@@ -7807,6 +7822,12 @@ class StoreService {
           currentUser.name,
         initialDiscrepancyResolutionNotes:
           resolutionNotes,
+        initialDiscrepancyResolutionPhotoFileId:
+          input.photoFileId,
+        initialDiscrepancyResolutionPhotoFileName:
+          input.photoFileName,
+        initialDiscrepancyResolutionPhotoFileSize:
+          input.photoFileSize,
         items: receipt.items.map(item => ({
           ...item,
           receivedQuantity: Number(item.quantity),
@@ -7827,7 +7848,13 @@ class StoreService {
         updated.id,
         receipt.status,
         updated.status,
-        resolutionNotes
+        resolutionNotes,
+        input.photoFileName,
+        {
+          fileId: input.photoFileId,
+          fileName: input.photoFileName,
+          fileSize: input.photoFileSize,
+        }
       );
 
       this.addNotification({
@@ -7838,7 +7865,7 @@ class StoreService {
         title: 'Selisih Dokumen Diselesaikan',
         message:
           `${currentUser.name} menyelesaikan selisih pada ${updated.id}. ` +
-          `Status dokumen kini DITERIMA.`,
+          `Dokumen telah diterima lengkap.`,
         linkPath: '/tanda-terima',
         isRead: false,
         createdAt: now,
@@ -7885,6 +7912,12 @@ class StoreService {
           currentUser.name,
         returnDiscrepancyResolutionNotes:
           resolutionNotes,
+        returnDiscrepancyResolutionPhotoFileId:
+          input.photoFileId,
+        returnDiscrepancyResolutionPhotoFileName:
+          input.photoFileName,
+        returnDiscrepancyResolutionPhotoFileSize:
+          input.photoFileSize,
         returnItems: receipt.returnItems.map(item => ({
           ...item,
           receivedQuantity: Number(item.quantity),
@@ -7905,7 +7938,13 @@ class StoreService {
         updated.id,
         receipt.status,
         updated.status,
-        resolutionNotes
+        resolutionNotes,
+        input.photoFileName,
+        {
+          fileId: input.photoFileId,
+          fileName: input.photoFileName,
+          fileSize: input.photoFileSize,
+        }
       );
 
       this.addNotification({
@@ -7918,7 +7957,7 @@ class StoreService {
         title: 'Selisih Pengembalian Diselesaikan',
         message:
           `${currentUser.name} menyelesaikan selisih pengembalian pada ${updated.id}. ` +
-          `Status dokumen kini DIKEMBALIKAN.`,
+          `Dokumen telah diterima kembali lengkap.`,
         linkPath: '/tanda-terima',
         isRead: false,
         createdAt: now,

@@ -729,6 +729,9 @@ export interface DocumentHandover {
   initialDiscrepancyResolvedByUserId?: string;
   initialDiscrepancyResolvedByName?: string;
   initialDiscrepancyResolutionNotes?: string;
+  initialDiscrepancyResolutionPhotoFileId?: string;
+  initialDiscrepancyResolutionPhotoFileName?: string;
+  initialDiscrepancyResolutionPhotoFileSize?: number;
 
   // Pengembalian tetap memakai registry TRM yang sama.
   returnItems?: DocumentHandoverReturnItem[];
@@ -758,6 +761,9 @@ export interface DocumentHandover {
   returnDiscrepancyResolvedByUserId?: string;
   returnDiscrepancyResolvedByName?: string;
   returnDiscrepancyResolutionNotes?: string;
+  returnDiscrepancyResolutionPhotoFileId?: string;
+  returnDiscrepancyResolutionPhotoFileName?: string;
+  returnDiscrepancyResolutionPhotoFileSize?: number;
 
   cancelledAt?: string;
   cancelledByUserId?: string;
