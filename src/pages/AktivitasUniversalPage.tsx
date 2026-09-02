@@ -24,6 +24,7 @@ import {
   getActivityDirectory,
   getMyActivityActionRoles,
   getUniversalActivities,
+  runActivityMaintenanceBestEffort,
   getUniversalActivityAttachmentUrl,
   getUniversalActivityDetail,
   reviewSelfDeclaredAssignmentV6,
@@ -443,6 +444,7 @@ const AktivitasUniversalPage: React.FC = () => {
   const { profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkHandledRef = useRef<string | null>(null);
+  const directoryFetchedAtRef = useRef(0);
   const [unseenCountByActivityId, setUnseenCountByActivityId] =
     useState<Record<string, number>>({});
   const [
@@ -805,14 +807,21 @@ const AktivitasUniversalPage: React.FC = () => {
         discussionAttentionRows,
       ] = await Promise.all([
         getUniversalActivities(),
-        getActivityDirectory(),
+        Date.now() - directoryFetchedAtRef.current > 5 * 60_000
+          ? getActivityDirectory()
+          : Promise.resolve<DirectoryProfile[] | null>(null),
         getMyActivityActionRoles(),
         getMyActivityAttention(profile?.id || ""),
         getMyActivityDiscussionAttention(profile?.id || ""),
       ]);
 
       setActivities(activityRows);
-      setDirectory(directoryRows);
+
+      if (directoryRows) {
+        setDirectory(directoryRows);
+        directoryFetchedAtRef.current = Date.now();
+      }
+
       setUnseenCountByActivityId(
         attentionRows.reduce<Record<string, number>>(
           (result, row) => {
@@ -891,6 +900,7 @@ const AktivitasUniversalPage: React.FC = () => {
     }
 
     void refresh();
+    void runActivityMaintenanceBestEffort();
 
     // Primary live path: refresh Activity + action roles immediately when
     // another user changes a task (e.g. submit validation / approve / revise).
@@ -912,17 +922,18 @@ const AktivitasUniversalPage: React.FC = () => {
 
           realtimeRefreshTimer = window.setTimeout(() => {
             void refresh({ silent: true });
-          }, 150);
+          }, 750);
         }
       )
       .subscribe();
 
-    // Fallback: keep polling in case a Realtime connection is interrupted.
+    // Realtime is the primary live path. This slow poll is only a
+    // resilience fallback if a websocket silently drops.
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void refresh({ silent: true });
       }
-    }, 10_000);
+    }, 90_000);
 
     const handleFocus = () => {
       void refresh({ silent: true });

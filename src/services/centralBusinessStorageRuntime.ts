@@ -424,7 +424,7 @@ const scheduleRealtimeRefresh =
               }
             );
         },
-        350
+        750
       );
   };
 

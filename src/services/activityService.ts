@@ -269,26 +269,33 @@ async function flushNotificationEmailOutboxBestEffort() {
   }
 }
 
-async function generateDueNotificationsBestEffort() {
+export async function runActivityMaintenanceBestEffort() {
   try {
-    const { error } = await supabase.rpc(
-      "generate_activity_due_notifications"
+    const { data, error } = await supabase.rpc(
+      "run_activity_due_maintenance_v8"
     );
 
     if (error) {
       console.warn(
-        "Generator due/overdue notification belum tersedia:",
+        "Activity maintenance V8 belum tersedia:",
         error
       );
-      return;
+      return false;
     }
 
-    void flushNotificationEmailOutboxBestEffort();
+    const didRun = Boolean(data);
+
+    if (didRun) {
+      void flushNotificationEmailOutboxBestEffort();
+    }
+
+    return didRun;
   } catch (error) {
     console.warn(
-      "Generator due/overdue notification gagal:",
+      "Activity maintenance V8 gagal:",
       error
     );
+    return false;
   }
 }
 
@@ -455,8 +462,6 @@ export async function getActivityMentionCandidatesV2(
 }
 
 export async function getUniversalActivities() {
-  void generateDueNotificationsBestEffort();
-
   const { data, error } = await supabase
     .from("activities")
     .select("*")

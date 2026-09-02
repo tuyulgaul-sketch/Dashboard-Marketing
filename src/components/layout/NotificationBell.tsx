@@ -63,7 +63,8 @@ export const NotificationBell: React.FC = () => {
       )
       .subscribe();
 
-    const timer = window.setInterval(refresh, 30000);
+    // Realtime is primary; polling is only a resilience fallback.
+    const timer = window.setInterval(refresh, 120000);
 
     return () => {
       window.clearInterval(timer);
