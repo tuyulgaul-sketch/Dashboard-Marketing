@@ -12,6 +12,7 @@ import {
 import {
   saveDocumentHandoverFile,
   openDocumentHandoverFile,
+  downloadDocumentHandoverFile,
 } from '@/services/documentHandoverFileStorage';
 import { formatSlaDueDate, getSlaState } from '@/utils/slaGovernance';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ import {
 type ReceiptFilter = 'ALL' | 'TO_RECEIVE' | 'SENT' | 'RECEIVED' | 'DISCREPANCY' | 'CLOSED';
 
 type DraftItem = {
+  sourceItemId?: string;
   documentType: DocumentHandoverItem['documentType'];
   description: string;
   physicalForm: DocumentHandoverItem['physicalForm'];
@@ -116,9 +118,29 @@ const formatDateTime = (value?: string) =>
     : '-';
 
 const statusClass = (status: DocumentHandover['status']) => {
-  if (status === 'DITERIMA') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (status === 'SELISIH DOKUMEN') return 'border-amber-200 bg-amber-50 text-amber-800';
-  if (status === 'DITOLAK' || status === 'DIBATALKAN') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (status === 'DITERIMA') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+
+  if (status === 'DIKEMBALIKAN') {
+    return 'border-violet-200 bg-violet-50 text-violet-700';
+  }
+
+  if (
+    status === 'SELISIH DOKUMEN' ||
+    status === 'SELISIH PENGEMBALIAN'
+  ) {
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  }
+
+  if (status === 'MENUNGGU KONFIRMASI PENGEMBALIAN') {
+    return 'border-violet-200 bg-violet-50 text-violet-700';
+  }
+
+  if (status === 'DITOLAK' || status === 'DIBATALKAN') {
+    return 'border-rose-200 bg-rose-50 text-rose-700';
+  }
+
   return 'border-blue-200 bg-blue-50 text-blue-700';
 };
 
@@ -161,6 +183,7 @@ const TandaTerimaPage: React.FC = () => {
   const [relatedDescription, setRelatedDescription] = useState('');
   const [relatedReceiptId, setRelatedReceiptId] = useState('');
   const [draftItems, setDraftItems] = useState<DraftItem[]>([emptyItem()]);
+  const [handoverPhoto, setHandoverPhoto] = useState<File | null>(null);
 
   const [decisionItems, setDecisionItems] = useState<DecisionItem[]>([]);
   const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
@@ -184,6 +207,66 @@ const TandaTerimaPage: React.FC = () => {
     currentUser.role === 'TEAM_LEADER_MARKETING_SUPPORT';
 
   const canCreate = store.canCreateDocumentHandover(currentUser);
+
+  const getEffectiveStatus = (receipt: DocumentHandover): DocumentHandover['status'] => {
+    if (
+      receipt.status === 'DITERIMA' &&
+      returnedReceiptIds.has(receipt.id)
+    ) {
+      return 'DIKEMBALIKAN';
+    }
+
+    return receipt.status;
+  };
+
+  const getDocumentPosition = (receipt: DocumentHandover) => {
+    const status = getEffectiveStatus(receipt);
+
+    if (status === 'MENUNGGU PENERIMAAN') {
+      return {
+        primary: receipt.receiverName,
+        secondary: 'Dalam proses penyerahan',
+      };
+    }
+
+    if (
+      status === 'DITERIMA' ||
+      status === 'SELISIH DOKUMEN'
+    ) {
+      return {
+        primary: receipt.receiverName,
+        secondary:
+          status === 'SELISIH DOKUMEN'
+            ? 'Perlu cek selisih dokumen'
+            : 'Dokumen berada di penerima',
+      };
+    }
+
+    if (status === 'MENUNGGU KONFIRMASI PENGEMBALIAN') {
+      return {
+        primary: receipt.senderName,
+        secondary: 'Dalam proses pengembalian',
+      };
+    }
+
+    if (
+      status === 'DIKEMBALIKAN' ||
+      status === 'SELISIH PENGEMBALIAN'
+    ) {
+      return {
+        primary: receipt.senderName,
+        secondary:
+          status === 'SELISIH PENGEMBALIAN'
+            ? 'Perlu cek selisih pengembalian'
+            : 'Dokumen sudah kembali',
+      };
+    }
+
+    return {
+      primary: receipt.senderName,
+      secondary: 'Dokumen pada pihak pengirim',
+    };
+  };
 
   const eligibleReceivers = useMemo(
     () => store.getEligibleDocumentHandoverReceivers(currentUser),
@@ -226,6 +309,7 @@ const TandaTerimaPage: React.FC = () => {
     setRelatedDescription('');
     setRelatedReceiptId('');
     setDraftItems([emptyItem()]);
+    setHandoverPhoto(null);
   };
 
   const openCreate = () => {
@@ -243,13 +327,22 @@ const TandaTerimaPage: React.FC = () => {
     setRelatedTransactionId(original.relatedTransactionId || '');
     setRelatedDescription(`Pengembalian dari ${original.id}`);
     setDraftItems(
-      original.items.map(item => ({
-        documentType: item.documentType,
-        description: item.description,
-        physicalForm: item.physicalForm,
-        quantity: Math.max(1, item.receivedQuantity || item.quantity),
-        notes: `Pengembalian dari ${original.id}`,
-      }))
+      original.items
+        .filter(
+          item =>
+            Number(item.receivedQuantity ?? item.quantity) > 0
+        )
+        .map(item => ({
+          sourceItemId: item.id,
+          documentType: item.documentType,
+          description: item.description,
+          physicalForm: item.physicalForm,
+          quantity: Math.max(
+            1,
+            Number(item.receivedQuantity ?? item.quantity)
+          ),
+          notes: `Pengembalian dari ${original.id}`,
+        }))
     );
   };
 
@@ -260,24 +353,63 @@ const TandaTerimaPage: React.FC = () => {
     setCreateOpen(true);
   };
 
-  const submitCreate = () => {
+  const submitCreate = async () => {
+    if (!handoverPhoto) {
+      alert(
+        handoverType === 'PENGEMBALIAN DOKUMEN'
+          ? 'Foto bukti pengembalian wajib diupload.'
+          : 'Foto bukti penyerahan wajib diupload.'
+      );
+      return;
+    }
+
+    if (!receiverId) {
+      alert('Penerima wajib dipilih.');
+      return;
+    }
+
     try {
+      setSubmitting(true);
+
       if (handoverType === 'PENGEMBALIAN DOKUMEN') {
         if (!relatedReceiptId) {
           throw new Error(
-            'Pilih Tanda Terima sebelumnya yang akan dikembalikan.'
+            'Tanda Terima yang akan dikembalikan tidak ditemukan.'
           );
         }
+
+        const fileId =
+          `TRM-RETURN-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 6)}`;
+
+        await saveDocumentHandoverFile({
+          id: fileId,
+          transactionId: relatedReceiptId,
+          fileName: handoverPhoto.name,
+          fileType: handoverPhoto.type || 'image/*',
+          fileSize: handoverPhoto.size,
+          uploadedByUserId: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString(),
+          senderUserId: currentUser.id,
+          receiverUserId: receiverId,
+          blob: handoverPhoto,
+        });
 
         const receipt = store.returnDocumentHandover(
           relatedReceiptId,
           {
             handoverDate,
             items: draftItems.map(item => ({
+              sourceItemId: item.sourceItemId,
               description: item.description.trim(),
               quantity: Number(item.quantity),
               notes: item.notes.trim() || undefined,
             })),
+            photoFileId: fileId,
+            photoFileName: handoverPhoto.name,
+            photoFileSize: handoverPhoto.size,
           }
         );
 
@@ -285,20 +417,49 @@ const TandaTerimaPage: React.FC = () => {
         resetCreate();
 
         alert(
-          `Pengembalian ${receipt.id} berhasil dicatat pada Riwayat Aksi tanpa membuat nomor Tanda Terima baru.`
+          `Pengembalian ${receipt.id} dikirim dan menunggu konfirmasi penerimaan kembali.`
         );
 
         return;
       }
 
+      const receiptId =
+        store.getNextDocumentHandoverId(handoverDate);
+
+      const fileId =
+        `TRM-SUBMIT-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`;
+
+      await saveDocumentHandoverFile({
+        id: fileId,
+        transactionId: receiptId,
+        fileName: handoverPhoto.name,
+        fileType: handoverPhoto.type || 'image/*',
+        fileSize: handoverPhoto.size,
+        uploadedByUserId: currentUser.id,
+        uploadedByName: currentUser.name,
+        uploadedAt: new Date().toISOString(),
+        senderUserId: currentUser.id,
+        receiverUserId: receiverId,
+        blob: handoverPhoto,
+      });
+
       const receipt = store.createDocumentHandover({
+        receiptId,
         handoverType,
         handoverDate,
         receiverUserId: receiverId,
         relatedModule,
-        relatedTransactionId: relatedTransactionId || undefined,
-        relatedDescription: relatedDescription.trim() || undefined,
-        relatedReceiptId: relatedReceiptId || undefined,
+        relatedTransactionId:
+          relatedTransactionId || undefined,
+        relatedDescription:
+          relatedDescription.trim() || undefined,
+        relatedReceiptId:
+          relatedReceiptId || undefined,
+        submissionPhotoFileId: fileId,
+        submissionPhotoFileName: handoverPhoto.name,
+        submissionPhotoFileSize: handoverPhoto.size,
         items: draftItems.map(item => ({
           documentType: item.documentType,
           description: item.description.trim(),
@@ -320,59 +481,121 @@ const TandaTerimaPage: React.FC = () => {
           ? error.message
           : 'Gagal memproses Tanda Terima.'
       );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const openReceive = (receipt: DocumentHandover) => {
     setReceiveReceipt(receipt);
+
+    const sourceItems =
+      receipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+        ? receipt.returnItems || []
+        : receipt.items;
+
     setDecisionItems(
-      receipt.items.map(item => ({
+      sourceItems.map(item => ({
         itemId: item.id,
         receivedQuantity: item.quantity,
         receiverNotes: '',
       }))
     );
+
     setReceiptPhoto(null);
     setReceiverNotes('');
   };
 
-  const submitDecision = async (status: 'DITERIMA' | 'SELISIH DOKUMEN') => {
+  const submitDecision = async (
+    status:
+      | 'DITERIMA'
+      | 'SELISIH DOKUMEN'
+      | 'DIKEMBALIKAN'
+      | 'SELISIH PENGEMBALIAN'
+  ) => {
     if (!receiveReceipt) return;
-    if (!receiptPhoto) {
-      alert('Upload foto bukti penerimaan terlebih dahulu.');
-      return;
-    }
 
     try {
       setSubmitting(true);
-      const fileId = `TRM-FILE-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-      await saveDocumentHandoverFile({
-        id: fileId,
-        transactionId: receiveReceipt.id,
-        fileName: receiptPhoto.name,
-        fileType: receiptPhoto.type || 'image/*',
-        fileSize: receiptPhoto.size,
-        uploadedByUserId: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString(),
-        blob: receiptPhoto,
-      });
+      let fileId: string | undefined;
 
-      store.confirmDocumentHandover(receiveReceipt.id, {
-        status,
-        items: decisionItems,
-        photoFileId: fileId,
-        photoFileName: receiptPhoto.name,
-        photoFileSize: receiptPhoto.size,
-        notes: receiverNotes,
-      });
+      if (receiptPhoto) {
+        fileId =
+          `TRM-ACK-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 6)}`;
+
+        await saveDocumentHandoverFile({
+          id: fileId,
+          transactionId: receiveReceipt.id,
+          fileName: receiptPhoto.name,
+          fileType: receiptPhoto.type || 'image/*',
+          fileSize: receiptPhoto.size,
+          uploadedByUserId: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString(),
+          blob: receiptPhoto,
+        });
+      }
+
+      if (
+        receiveReceipt.status ===
+        'MENUNGGU KONFIRMASI PENGEMBALIAN'
+      ) {
+        store.confirmDocumentReturn(
+          receiveReceipt.id,
+          {
+            status:
+              status === 'SELISIH PENGEMBALIAN'
+                ? 'SELISIH PENGEMBALIAN'
+                : 'DIKEMBALIKAN',
+            items: decisionItems,
+            photoFileId: fileId,
+            photoFileName: receiptPhoto?.name,
+            photoFileSize: receiptPhoto?.size,
+            notes: receiverNotes,
+          }
+        );
+      } else {
+        store.confirmDocumentHandover(
+          receiveReceipt.id,
+          {
+            status:
+              status === 'SELISIH DOKUMEN'
+                ? 'SELISIH DOKUMEN'
+                : 'DITERIMA',
+            items: decisionItems,
+            photoFileId: fileId,
+            photoFileName: receiptPhoto?.name,
+            photoFileSize: receiptPhoto?.size,
+            notes: receiverNotes,
+          }
+        );
+      }
+
+      const isReturn =
+        receiveReceipt.status ===
+        'MENUNGGU KONFIRMASI PENGEMBALIAN';
 
       setReceiveReceipt(null);
       setReceiptPhoto(null);
-      alert(status === 'DITERIMA' ? 'Penerimaan berhasil dikonfirmasi.' : 'Selisih dokumen berhasil dilaporkan.');
+
+      alert(
+        isReturn
+          ? status === 'SELISIH PENGEMBALIAN'
+            ? 'Selisih pengembalian berhasil dilaporkan.'
+            : 'Penerimaan kembali berhasil dikonfirmasi.'
+          : status === 'SELISIH DOKUMEN'
+          ? 'Selisih dokumen berhasil dilaporkan.'
+          : 'Penerimaan berhasil dikonfirmasi.'
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal memproses penerimaan.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Gagal memproses penerimaan.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -403,17 +626,85 @@ const TandaTerimaPage: React.FC = () => {
     try {
       await openDocumentHandoverFile(receipt.receiptPhotoFileId);
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Foto tidak ditemukan pada browser ini.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Foto tidak ditemukan.'
+      );
+    }
+  };
+
+  const getHistoryEvidence = (
+    receipt: DocumentHandover,
+    log: AuditLog
+  ) => {
+    if (log.evidenceFileId) {
+      return {
+        fileId: log.evidenceFileId,
+        fileName: log.evidenceFileName,
+      };
+    }
+
+    // Backward compatibility evidence sebelum V10.
+    if (
+      log.action === 'CONFIRM_RECEIVED' &&
+      receipt.receiptPhotoFileId
+    ) {
+      return {
+        fileId: receipt.receiptPhotoFileId,
+        fileName: receipt.receiptPhotoFileName,
+      };
+    }
+
+    return null;
+  };
+
+  const downloadHistoryEvidence = async (
+    receipt: DocumentHandover,
+    log: AuditLog
+  ) => {
+    const evidence =
+      getHistoryEvidence(receipt, log);
+
+    if (!evidence) return;
+
+    try {
+      await downloadDocumentHandoverFile(
+        evidence.fileId,
+        evidence.fileName
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Foto bukti tidak dapat didownload.'
+      );
     }
   };
 
   const counts = useMemo(
     () => ({
       ALL: receipts.length,
-      TO_RECEIVE: receipts.filter(r => r.receiverUserId === currentUser.id && r.status === 'MENUNGGU PENERIMAAN').length,
+      TO_RECEIVE: receipts.filter(
+        r =>
+          (
+            r.receiverUserId === currentUser.id &&
+            r.status === 'MENUNGGU PENERIMAAN'
+          ) ||
+          (
+            r.senderUserId === currentUser.id &&
+            r.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+          )
+      ).length,
       SENT: receipts.filter(r => r.senderUserId === currentUser.id).length,
-      RECEIVED: receipts.filter(r => r.status === 'DITERIMA').length,
-      DISCREPANCY: receipts.filter(r => r.status === 'SELISIH DOKUMEN').length,
+      RECEIVED: receipts.filter(
+        r => getEffectiveStatus(r) === 'DITERIMA'
+      ).length,
+      DISCREPANCY: receipts.filter(
+        r =>
+          r.status === 'SELISIH DOKUMEN' ||
+          r.status === 'SELISIH PENGEMBALIAN'
+      ).length,
       CLOSED: receipts.filter(r => r.status === 'DITOLAK' || r.status === 'DIBATALKAN').length,
     }),
     [receipts, currentUser.id]
@@ -427,13 +718,23 @@ const TandaTerimaPage: React.FC = () => {
         filter === 'ALL'
           ? true
           : filter === 'TO_RECEIVE'
-          ? receipt.receiverUserId === currentUser.id && receipt.status === 'MENUNGGU PENERIMAAN'
+          ? (
+              receipt.receiverUserId === currentUser.id &&
+              receipt.status === 'MENUNGGU PENERIMAAN'
+            ) ||
+            (
+              receipt.senderUserId === currentUser.id &&
+              receipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+            )
           : filter === 'SENT'
           ? receipt.senderUserId === currentUser.id
           : filter === 'RECEIVED'
-          ? receipt.status === 'DITERIMA'
+          ? getEffectiveStatus(receipt) === 'DITERIMA'
           : filter === 'DISCREPANCY'
-          ? receipt.status === 'SELISIH DOKUMEN'
+          ? (
+              receipt.status === 'SELISIH DOKUMEN' ||
+              receipt.status === 'SELISIH PENGEMBALIAN'
+            )
           : receipt.status === 'DITOLAK' || receipt.status === 'DIBATALKAN';
 
       if (!pass) return false;
@@ -543,7 +844,7 @@ const TandaTerimaPage: React.FC = () => {
                     <th className="p-3">Pengirim</th>
                     <th className="p-3">Penerima</th>
                     <th className="p-3">Dokumen</th>
-                    <th className="p-3">Related</th>
+                    <th className="p-3">Posisi Dokumen</th>
                     <th className="p-3">Status / SLA</th>
                     <th className="p-3 text-right">Aksi</th>
                   </tr>
@@ -582,25 +883,21 @@ const TandaTerimaPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-3">
-                          {receipt.relatedTransactionId ? (
-                            <>
-                              <div className="font-mono font-semibold text-slate-700">{receipt.relatedTransactionId}</div>
-                              <div className="text-[10px] text-gray-400">{receipt.relatedModule}</div>
-                            </>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <div className="font-semibold text-gray-900">
+                            {getDocumentPosition(receipt).primary}
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-400">
+                            {getDocumentPosition(receipt).secondary}
+                          </div>
                         </td>
                         <td className="p-3">
-                          {returnedReceiptIds.has(receipt.id) ? (
-                            <span className="inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
-                              DIKEMBALIKAN
-                            </span>
-                          ) : (
-                            <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(receipt.status)}`}>
-                              {receipt.status}
-                            </span>
-                          )}
+                          <span
+                            className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(
+                              getEffectiveStatus(receipt)
+                            )}`}
+                          >
+                            {getEffectiveStatus(receipt)}
+                          </span>
 
                           <div className="mt-2">
                             <SlaBadge receipt={receipt} />
@@ -609,8 +906,10 @@ const TandaTerimaPage: React.FC = () => {
                         <td className="p-3">
                           <div className="flex flex-wrap justify-end gap-2">
                             {receipt.receiverUserId === currentUser.id &&
-                              (receipt.status === 'DITERIMA' ||
-                                receipt.status === 'SELISIH DOKUMEN') && (
+                              (
+                                getEffectiveStatus(receipt) === 'DITERIMA' ||
+                                getEffectiveStatus(receipt) === 'SELISIH DOKUMEN'
+                              ) && (
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -622,9 +921,22 @@ const TandaTerimaPage: React.FC = () => {
                                 </Button>
                               )}
 
+                            {receipt.senderUserId === currentUser.id &&
+                              receipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN' && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => openReceive(receipt)}
+                                  className="h-8 bg-violet-600 text-[11px] text-white hover:bg-violet-700"
+                                >
+                                  Terima Kembali
+                                </Button>
+                              )}
+
                             <Button type="button" variant="outline" size="sm" onClick={() => setDetailReceipt(receipt)} className="h-8 text-[11px]">
                               Detail
                             </Button>
+
                             {receipt.receiverUserId === currentUser.id && receipt.status === 'MENUNGGU PENERIMAAN' && (
                               <Button type="button" size="sm" onClick={() => openReceive(receipt)} className="h-8 bg-emerald-600 text-[11px] text-white hover:bg-emerald-700">
                                 Terima
@@ -899,11 +1211,44 @@ const TandaTerimaPage: React.FC = () => {
                     ))}
                   </div>
                 </div>
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center gap-2 text-xs font-black text-blue-900">
+                    <Camera className="h-4 w-4" />
+                    {handoverType === 'PENGEMBALIAN DOKUMEN'
+                      ? 'Foto Bukti Pengembalian *'
+                      : 'Foto Bukti Penyerahan *'}
+                  </div>
+                  <p className="mt-1 text-[10px] text-blue-700">
+                    Wajib diupload oleh pihak yang menyerahkan dokumen.
+                    Hindari menampilkan isi dokumen yang bersifat rahasia.
+                  </p>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={event =>
+                      setHandoverPhoto(
+                        event.target.files?.[0] || null
+                      )
+                    }
+                    className="mt-3 bg-white"
+                  />
+                  {handoverPhoto && (
+                    <div className="mt-2 text-[10px] font-semibold text-blue-800">
+                      {handoverPhoto.name} · {(handoverPhoto.size / 1024).toFixed(1)} KB
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-gray-200 bg-white px-6 py-4">
                 <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Batal</Button>
-                <Button type="button" onClick={submitCreate} className="gap-2 bg-blue-600 text-white hover:bg-blue-700">
+                <Button
+                  type="button"
+                  disabled={submitting}
+                  onClick={submitCreate}
+                  className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+                >
                   <Send className="h-4 w-4" />
                   {handoverType === 'PENGEMBALIAN DOKUMEN'
                     ? 'Catat Pengembalian'
@@ -919,8 +1264,17 @@ const TandaTerimaPage: React.FC = () => {
             <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl">
               <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-200 bg-white px-6 py-5">
                 <div>
-                  <h2 className="text-lg font-black text-gray-900">Konfirmasi Penerimaan Dokumen</h2>
-                  <p className="mt-1 text-xs text-gray-500">{receiveReceipt.id} · dari {receiveReceipt.senderName}</p>
+                  <h2 className="text-lg font-black text-gray-900">
+                    {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                      ? 'Konfirmasi Penerimaan Kembali'
+                      : 'Konfirmasi Penerimaan Dokumen'}
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {receiveReceipt.id} · dari{' '}
+                    {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                      ? receiveReceipt.returnSubmittedByName || receiveReceipt.receiverName
+                      : receiveReceipt.senderName}
+                  </p>
                 </div>
                 <button type="button" onClick={() => setReceiveReceipt(null)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
                   <X className="h-4 w-4" />
@@ -929,11 +1283,17 @@ const TandaTerimaPage: React.FC = () => {
 
               <div className="space-y-5 p-6">
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-800">
-                  Cocokkan dokumen fisik satu per satu. Jika jumlah berbeda, ubah Qty Diterima lalu pilih <strong>Laporkan Selisih</strong>.
+                  {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                    ? 'Cocokkan dokumen yang dikembalikan satu per satu. Jika jumlah berbeda, ubah Qty Diterima lalu laporkan selisih pengembalian.'
+                    : 'Cocokkan dokumen fisik satu per satu. Jika jumlah berbeda, ubah Qty Diterima lalu laporkan selisih.'}
                 </div>
 
                 <div className="space-y-3">
-                  {receiveReceipt.items.map(item => {
+                  {(
+                    receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                      ? receiveReceipt.returnItems || []
+                      : receiveReceipt.items
+                  ).map(item => {
                     const decision = decisionItems.find(current => current.itemId === item.id);
                     return (
                       <div key={item.id} className="rounded-xl border border-gray-200 p-4">
@@ -941,7 +1301,10 @@ const TandaTerimaPage: React.FC = () => {
                           <div className="md:col-span-6">
                             <div className="text-xs font-black text-gray-900">{item.description}</div>
                             <div className="mt-1 text-[10px] text-gray-500">
-                              {item.documentType} · {item.physicalForm} · Qty diserahkan {item.quantity}
+                              {'documentType' in item
+                                ? `${item.documentType} · ${item.physicalForm} · `
+                                : 'Dokumen Pengembalian · '}
+                              Qty diserahkan {item.quantity}
                             </div>
                           </div>
                           <div className="md:col-span-2">
@@ -987,7 +1350,10 @@ const TandaTerimaPage: React.FC = () => {
 
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                   <div className="flex items-center gap-2 text-xs font-black text-emerald-900">
-                    <Camera className="h-4 w-4" /> Foto Bukti Penerimaan *
+                    <Camera className="h-4 w-4" />
+                    {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                      ? 'Foto Bukti Penerimaan Kembali (Opsional)'
+                      : 'Foto Bukti Penerimaan (Opsional)'}
                   </div>
                   <p className="mt-1 text-[10px] text-emerald-800">
                     Foto disarankan memperlihatkan proses penerimaan berkas tanpa menampilkan isi dokumen rahasia.
@@ -1007,7 +1373,11 @@ const TandaTerimaPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold text-gray-700">Catatan Penerimaan</label>
+                  <label className="mb-1.5 block text-xs font-bold text-gray-700">
+                    {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                      ? 'Catatan Penerimaan Kembali'
+                      : 'Catatan Penerimaan'}
+                  </label>
                   <Textarea value={receiverNotes} onChange={event => setReceiverNotes(event.target.value)} placeholder="Opsional" />
                 </div>
               </div>
@@ -1018,18 +1388,36 @@ const TandaTerimaPage: React.FC = () => {
                   type="button"
                   variant="outline"
                   disabled={submitting}
-                  onClick={() => submitDecision('SELISIH DOKUMEN')}
+                  onClick={() =>
+                    submitDecision(
+                      receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                        ? 'SELISIH PENGEMBALIAN'
+                        : 'SELISIH DOKUMEN'
+                    )
+                  }
                   className="border-amber-300 text-amber-800 hover:bg-amber-50"
                 >
-                  <AlertTriangle className="mr-2 h-4 w-4" /> Laporkan Selisih
+                  <AlertTriangle className="mr-2 h-4 w-4" />
+                  {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                    ? 'Laporkan Selisih Pengembalian'
+                    : 'Laporkan Selisih'}
                 </Button>
                 <Button
                   type="button"
                   disabled={submitting}
-                  onClick={() => submitDecision('DITERIMA')}
+                  onClick={() =>
+                    submitDecision(
+                      receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                        ? 'DIKEMBALIKAN'
+                        : 'DITERIMA'
+                    )
+                  }
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Konfirmasi Diterima
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  {receiveReceipt.status === 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+                    ? 'Konfirmasi Diterima Kembali'
+                    : 'Konfirmasi Diterima'}
                 </Button>
               </div>
             </div>
@@ -1046,15 +1434,13 @@ const TandaTerimaPage: React.FC = () => {
                     <h2 className="text-lg font-black text-gray-900">{detailReceipt.id}</h2>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {returnedReceiptIds.has(detailReceipt.id) ? (
-                      <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
-                        DIKEMBALIKAN
-                      </span>
-                    ) : (
-                      <span className={`rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(detailReceipt.status)}`}>
-                        {detailReceipt.status}
-                      </span>
-                    )}
+                    <span
+                      className={`rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(
+                        getEffectiveStatus(detailReceipt)
+                      )}`}
+                    >
+                      {getEffectiveStatus(detailReceipt)}
+                    </span>
                     <SlaBadge receipt={detailReceipt} />
                   </div>
                 </div>
@@ -1069,7 +1455,7 @@ const TandaTerimaPage: React.FC = () => {
                     ['Tanggal', formatDateOnly(detailReceipt.handoverDate)],
                     ['Pengirim', detailReceipt.senderName],
                     ['Penerima', detailReceipt.receiverName],
-                    ['Terkait', detailReceipt.relatedTransactionId || '-'],
+                    ['Posisi Dokumen', getDocumentPosition(detailReceipt).primary],
                   ].map(item => (
                     <div key={item[0]} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                       <div className="text-[10px] font-bold uppercase text-gray-400">{item[0]}</div>
@@ -1143,9 +1529,33 @@ const TandaTerimaPage: React.FC = () => {
                     ) : (
                       receiptHistory(detailReceipt.id).map(log => (
                         <div key={log.id} className="rounded-xl border border-gray-200 bg-slate-50 p-3">
-                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="text-xs font-black text-gray-900">{log.action.replace(/_/g, ' ')}</div>
-                            <div className="text-[10px] text-gray-400">{formatDateTime(log.timestamp)}</div>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-xs font-black text-gray-900">
+                                {log.action.replace(/_/g, ' ')}
+                              </div>
+                              <div className="mt-1 text-[10px] text-gray-400">
+                                {formatDateTime(log.timestamp)}
+                              </div>
+                            </div>
+
+                            {getHistoryEvidence(detailReceipt, log) && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  downloadHistoryEvidence(
+                                    detailReceipt,
+                                    log
+                                  )
+                                }
+                                className="h-8 gap-2 bg-white text-[11px]"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Download Foto
+                              </Button>
+                            )}
                           </div>
                           <div className="mt-1 text-[11px] text-gray-600">{log.userName} · {log.userRole}</div>
                           {log.reason && (

@@ -7345,6 +7345,14 @@ class StoreService {
     relatedTransactionId?: string;
     relatedDescription?: string;
     relatedReceiptId?: string;
+
+    // Dipakai UI untuk reserve nomor TRM sebelum upload evidence.
+    receiptId?: string;
+
+    submissionPhotoFileId?: string;
+    submissionPhotoFileName?: string;
+    submissionPhotoFileSize?: number;
+
     items: Omit<DocumentHandoverItem, 'id' | 'receivedQuantity' | 'receiverNotes'>[];
   }): DocumentHandover {
     const sender = this.getCurrentUser();
@@ -7374,8 +7382,20 @@ class StoreService {
       throw new Error('Deskripsi dokumen dan jumlah wajib diisi dengan benar.');
     }
 
+    if (!input.submissionPhotoFileId || !input.submissionPhotoFileName) {
+      throw new Error('Foto bukti penyerahan wajib diupload oleh pengirim.');
+    }
+
     const now = new Date().toISOString();
-    const receiptId = this.getNextDocumentHandoverId(input.handoverDate);
+    const receiptId =
+      input.receiptId ||
+      this.getNextDocumentHandoverId(input.handoverDate);
+
+    if (this.getDocumentHandovers().some(item => item.id === receiptId)) {
+      throw new Error(
+        `Nomor ${receiptId} sudah digunakan. Muat ulang halaman lalu coba kembali.`
+      );
+    }
 
     const receipt: DocumentHandover = {
       id: receiptId,
@@ -7403,6 +7423,10 @@ class StoreService {
       submittedAt: now,
       submittedByUserId: sender.id,
       submittedByName: sender.name,
+
+      submissionPhotoFileId: input.submissionPhotoFileId,
+      submissionPhotoFileName: input.submissionPhotoFileName,
+      submissionPhotoFileSize: input.submissionPhotoFileSize,
     };
 
     const records = this.getDocumentHandovers();
@@ -7417,7 +7441,12 @@ class StoreService {
       undefined,
       receipt.status,
       undefined,
-      `${receipt.handoverType} dari ${sender.name} kepada ${receiver.name}; ${receipt.items.length} item dokumen`
+      `${receipt.handoverType} dari ${sender.name} kepada ${receiver.name}; ${receipt.items.length} item dokumen`,
+      {
+        fileId: receipt.submissionPhotoFileId,
+        fileName: receipt.submissionPhotoFileName,
+        fileSize: receipt.submissionPhotoFileSize,
+      }
     );
 
     this.addNotification({
@@ -7439,24 +7468,30 @@ class StoreService {
     input: {
       handoverDate: string;
       items: Array<{
+        sourceItemId?: string;
         description: string;
         quantity: number;
         notes?: string;
       }>;
+
+      photoFileId?: string;
+      photoFileName?: string;
+      photoFileSize?: number;
     }
   ): DocumentHandover {
     const currentUser = this.getCurrentUser();
-    const receipt = this.getDocumentHandovers().find(
-      item => item.id === receiptId
-    );
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(item => item.id === receiptId);
 
-    if (!receipt) {
+    if (index < 0) {
       throw new Error('Tanda Terima sebelumnya tidak ditemukan.');
     }
 
+    const receipt = records[index];
+
     if (receipt.receiverUserId !== currentUser.id) {
       throw new Error(
-        'Hanya penerima dokumen sebelumnya yang dapat mencatat pengembalian.'
+        'Hanya penerima dokumen sebelumnya yang dapat mengembalikan dokumen.'
       );
     }
 
@@ -7465,7 +7500,7 @@ class StoreService {
       receipt.status !== 'SELISIH DOKUMEN'
     ) {
       throw new Error(
-        'Pengembalian hanya dapat dilakukan setelah dokumen diterima atau terdapat selisih.'
+        'Pengembalian hanya dapat dilakukan setelah dokumen diterima.'
       );
     }
 
@@ -7489,31 +7524,85 @@ class StoreService {
       );
     }
 
+    if (!input.photoFileId || !input.photoFileName) {
+      throw new Error(
+        'Foto bukti pengembalian wajib diupload oleh pihak yang mengembalikan.'
+      );
+    }
+
     const now = new Date().toISOString();
 
-    const itemSummary = input.items
+    const returnItems = input.items.map(
+      (item, index) => ({
+        id: `${receipt.id}-RETURN-${Date.now()}-${String(index + 1).padStart(2, '0')}`,
+        sourceItemId: item.sourceItemId,
+        description: item.description.trim(),
+        quantity: Number(item.quantity),
+        notes: item.notes?.trim() || undefined,
+      })
+    );
+
+    const previousStatus = receipt.status;
+
+    const updated: DocumentHandover = {
+      ...receipt,
+      status: 'MENUNGGU KONFIRMASI PENGEMBALIAN',
+      returnItems,
+      returnSubmittedAt: now,
+      returnSubmittedByUserId: currentUser.id,
+      returnSubmittedByName: currentUser.name,
+      returnPhotoFileId: input.photoFileId,
+      returnPhotoFileName: input.photoFileName,
+      returnPhotoFileSize: input.photoFileSize,
+
+      // Reset acknowledgement lama bila suatu saat registry
+      // kembali menjalani siklus custody baru.
+      returnReceiverDecisionAt: undefined,
+      returnReceiverDecisionByUserId: undefined,
+      returnReceiverDecisionByName: undefined,
+      returnReceiverDecisionNotes: undefined,
+      returnReceiptPhotoFileId: undefined,
+      returnReceiptPhotoFileName: undefined,
+      returnReceiptPhotoFileSize: undefined,
+    };
+
+    records[index] = updated;
+
+    localStorage.setItem(
+      STORAGE_KEYS.DOCUMENT_HANDOVERS,
+      JSON.stringify(records)
+    );
+
+    const itemSummary = returnItems
       .map(
         item =>
-          `${item.description.trim()} (Qty ${Number(item.quantity)})`
+          `${item.description} (Qty ${item.quantity})`
       )
       .join('; ');
 
     this.addAuditLog(
       'TANDA_TERIMA',
-      'RETURN_HANDOVER',
+      'RETURN_HANDOVER_SUBMITTED',
       'DocumentHandover',
-      receipt.id,
-      receipt.status,
-      receipt.status,
+      updated.id,
+      previousStatus,
+      updated.status,
       `Pengembalian tanggal ${input.handoverDate} oleh ${currentUser.name} kepada ${receipt.senderName}.`,
-      itemSummary
+      itemSummary,
+      {
+        fileId: input.photoFileId,
+        fileName: input.photoFileName,
+        fileSize: input.photoFileSize,
+      }
     );
 
     this.addNotification({
       id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       recipientUserId: receipt.senderUserId,
-      title: 'Dokumen Dikembalikan',
-      message: `${currentUser.name} mengembalikan dokumen untuk ${receipt.id}.`,
+      title: 'Pengembalian Dokumen Menunggu Konfirmasi',
+      message:
+        `${currentUser.name} mengembalikan dokumen untuk ${receipt.id}. ` +
+        `Mohon konfirmasi penerimaan kembali.`,
       linkPath: '/tanda-terima',
       isRead: false,
       createdAt: now,
@@ -7521,7 +7610,145 @@ class StoreService {
 
     this.notify();
 
-    return receipt;
+    return updated;
+  }
+
+  public confirmDocumentReturn(
+    receiptId: string,
+    input: {
+      status: 'DIKEMBALIKAN' | 'SELISIH PENGEMBALIAN';
+      items: Array<{
+        itemId: string;
+        receivedQuantity: number;
+        receiverNotes?: string;
+      }>;
+
+      photoFileId?: string;
+      photoFileName?: string;
+      photoFileSize?: number;
+      notes?: string;
+    }
+  ): DocumentHandover {
+    const currentUser = this.getCurrentUser();
+    const records = this.getDocumentHandovers();
+    const index = records.findIndex(item => item.id === receiptId);
+
+    if (index < 0) {
+      throw new Error('Tanda Terima tidak ditemukan.');
+    }
+
+    const receipt = records[index];
+
+    if (receipt.status !== 'MENUNGGU KONFIRMASI PENGEMBALIAN') {
+      throw new Error(
+        'Tanda Terima ini tidak sedang menunggu konfirmasi pengembalian.'
+      );
+    }
+
+    if (receipt.senderUserId !== currentUser.id) {
+      throw new Error(
+        'Hanya pengirim awal yang dapat mengonfirmasi penerimaan kembali.'
+      );
+    }
+
+    if (!receipt.returnItems?.length) {
+      throw new Error('Daftar dokumen pengembalian tidak ditemukan.');
+    }
+
+    const decisionMap = new Map(
+      input.items.map(item => [item.itemId, item])
+    );
+
+    const updatedReturnItems = receipt.returnItems.map(item => {
+      const decision = decisionMap.get(item.id);
+
+      return {
+        ...item,
+        receivedQuantity: Math.max(
+          0,
+          Number(decision?.receivedQuantity ?? 0)
+        ),
+        receiverNotes:
+          decision?.receiverNotes?.trim() ||
+          undefined,
+      };
+    });
+
+    if (
+      input.status === 'DIKEMBALIKAN' &&
+      updatedReturnItems.some(
+        item =>
+          item.receivedQuantity !== item.quantity
+      )
+    ) {
+      throw new Error(
+        'Status DIKEMBALIKAN hanya dapat dipilih jika seluruh dokumen pengembalian diterima lengkap.'
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const updated: DocumentHandover = {
+      ...receipt,
+      status: input.status,
+      returnItems: updatedReturnItems,
+      returnReceiverDecisionAt: now,
+      returnReceiverDecisionByUserId: currentUser.id,
+      returnReceiverDecisionByName: currentUser.name,
+      returnReceiverDecisionNotes:
+        input.notes?.trim() || undefined,
+      returnReceiptPhotoFileId: input.photoFileId,
+      returnReceiptPhotoFileName: input.photoFileName,
+      returnReceiptPhotoFileSize: input.photoFileSize,
+    };
+
+    records[index] = updated;
+
+    localStorage.setItem(
+      STORAGE_KEYS.DOCUMENT_HANDOVERS,
+      JSON.stringify(records)
+    );
+
+    this.addAuditLog(
+      'TANDA_TERIMA',
+      input.status === 'DIKEMBALIKAN'
+        ? 'RETURN_HANDOVER_CONFIRMED'
+        : 'RETURN_HANDOVER_DISCREPANCY',
+      'DocumentHandover',
+      updated.id,
+      receipt.status,
+      updated.status,
+      input.notes,
+      input.photoFileName,
+      input.photoFileId
+        ? {
+            fileId: input.photoFileId,
+            fileName: input.photoFileName,
+            fileSize: input.photoFileSize,
+          }
+        : undefined
+    );
+
+    this.addNotification({
+      id: `NTF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientUserId:
+        receipt.returnSubmittedByUserId ||
+        receipt.receiverUserId,
+      title:
+        input.status === 'DIKEMBALIKAN'
+          ? 'Pengembalian Dokumen Dikonfirmasi'
+          : 'Selisih Pengembalian Dilaporkan',
+      message:
+        `${currentUser.name} memproses pengembalian ${updated.id} ` +
+        `dengan status ${updated.status}.`,
+      linkPath: '/tanda-terima',
+      isRead: false,
+      createdAt: now,
+    });
+
+    this.notify();
+
+    return updated;
   }
 
   public confirmDocumentHandover(
@@ -7529,9 +7756,9 @@ class StoreService {
     input: {
       status: 'DITERIMA' | 'SELISIH DOKUMEN';
       items: Array<{ itemId: string; receivedQuantity: number; receiverNotes?: string }>;
-      photoFileId: string;
-      photoFileName: string;
-      photoFileSize: number;
+      photoFileId?: string;
+      photoFileName?: string;
+      photoFileSize?: number;
       notes?: string;
     }
   ): DocumentHandover {
@@ -7547,10 +7774,6 @@ class StoreService {
     if (receipt.receiverUserId !== currentUser.id) {
       throw new Error('Hanya penerima yang ditunjuk yang dapat mengonfirmasi penerimaan.');
     }
-    if (!input.photoFileId || !input.photoFileName) {
-      throw new Error('Foto bukti penerimaan wajib diupload sebelum konfirmasi.');
-    }
-
     const decisionMap = new Map(input.items.map(item => [item.itemId, item]));
     const updatedItems = receipt.items.map(item => {
       const decision = decisionMap.get(item.id);
@@ -7590,7 +7813,14 @@ class StoreService {
       receipt.status,
       updated.status,
       input.notes,
-      input.photoFileName
+      input.photoFileName,
+      input.photoFileId
+        ? {
+            fileId: input.photoFileId,
+            fileName: input.photoFileName,
+            fileSize: input.photoFileSize,
+          }
+        : undefined
     );
 
     this.addNotification({
@@ -7699,7 +7929,12 @@ class StoreService {
     previousValue?: string,
     newValue?: string,
     reason?: string,
-    notes?: string
+    notes?: string,
+    evidence?: {
+      fileId?: string;
+      fileName?: string;
+      fileSize?: number;
+    }
   ) {
     const currentUser = this.getCurrentUser();
     const log: AuditLog = {
@@ -7715,7 +7950,10 @@ class StoreService {
       previousValue,
       newValue,
       reason,
-      fileReference: notes
+      fileReference: notes,
+      evidenceFileId: evidence?.fileId,
+      evidenceFileName: evidence?.fileName,
+      evidenceFileSize: evidence?.fileSize
     };
     const logs = this.getAuditLogs();
     logs.unshift(log);

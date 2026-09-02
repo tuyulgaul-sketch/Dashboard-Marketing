@@ -1,4 +1,5 @@
 import {
+  downloadCentralBusinessFile,
   getCentralBusinessFile,
   openCentralBusinessFile,
   uploadCentralBusinessFile,
@@ -13,6 +14,11 @@ export interface DocumentHandoverStoredFile {
   uploadedByUserId: string;
   uploadedByName: string;
   uploadedAt: string;
+
+  // Dapat diisi eksplisit ketika file diupload sebelum registry dibuat.
+  senderUserId?: string;
+  receiverUserId?: string;
+
   blob: Blob;
 }
 
@@ -105,8 +111,10 @@ export const saveDocumentHandoverFile =
       file,
       visibilityPayload: {
         senderUserId:
+          record.senderUserId ||
           context.senderUserId,
         receiverUserId:
+          record.receiverUserId ||
           context.receiverUserId,
         uploadedByUserId:
           record.uploadedByUserId,
@@ -191,6 +199,17 @@ export const getDocumentHandoverFile =
       blob:
         stored.blob,
     };
+  };
+
+export const downloadDocumentHandoverFile =
+  async (
+    fileId: string,
+    fallbackFileName?: string
+  ): Promise<void> => {
+    await downloadCentralBusinessFile(
+      fileId,
+      fallbackFileName
+    );
   };
 
 export const openDocumentHandoverFile =

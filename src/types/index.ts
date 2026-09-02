@@ -619,6 +619,9 @@ export type DocumentHandoverStatus =
   | 'MENUNGGU PENERIMAAN'
   | 'DITERIMA'
   | 'SELISIH DOKUMEN'
+  | 'MENUNGGU KONFIRMASI PENGEMBALIAN'
+  | 'DIKEMBALIKAN'
+  | 'SELISIH PENGEMBALIAN'
   | 'DITOLAK'
   | 'DIBATALKAN';
 
@@ -659,6 +662,16 @@ export interface DocumentHandoverItem {
   receiverNotes?: string;
 }
 
+export interface DocumentHandoverReturnItem {
+  id: string;
+  sourceItemId?: string;
+  description: string;
+  quantity: number;
+  notes?: string;
+  receivedQuantity?: number;
+  receiverNotes?: string;
+}
+
 export interface DocumentHandover {
   id: string; // TRM-YYYY-MM-00001
   handoverType: DocumentHandoverType;
@@ -693,9 +706,37 @@ export interface DocumentHandover {
   receiverDecisionByName?: string;
   receiverDecisionNotes?: string;
 
+  // Evidence wajib dari pihak yang menyerahkan dokumen.
+  submissionPhotoFileId?: string;
+  submissionPhotoFileName?: string;
+  submissionPhotoFileSize?: number;
+
+  // Evidence opsional dari pihak yang menerima penyerahan awal.
   receiptPhotoFileId?: string;
   receiptPhotoFileName?: string;
   receiptPhotoFileSize?: number;
+
+  // Pengembalian tetap memakai registry TRM yang sama.
+  returnItems?: DocumentHandoverReturnItem[];
+  returnSubmittedAt?: string;
+  returnSubmittedByUserId?: string;
+  returnSubmittedByName?: string;
+
+  // Evidence wajib dari pihak yang mengembalikan.
+  returnPhotoFileId?: string;
+  returnPhotoFileName?: string;
+  returnPhotoFileSize?: number;
+
+  // Acknowledgement penerimaan kembali.
+  returnReceiverDecisionAt?: string;
+  returnReceiverDecisionByUserId?: string;
+  returnReceiverDecisionByName?: string;
+  returnReceiverDecisionNotes?: string;
+
+  // Evidence opsional dari penerima pengembalian.
+  returnReceiptPhotoFileId?: string;
+  returnReceiptPhotoFileName?: string;
+  returnReceiptPhotoFileSize?: number;
 
   cancelledAt?: string;
   cancelledByUserId?: string;
@@ -735,6 +776,11 @@ export interface AuditLog {
   newStatus?: string;
   reason?: string;
   fileReference?: string;
+
+  // Evidence spesifik event untuk chain of custody.
+  evidenceFileId?: string;
+  evidenceFileName?: string;
+  evidenceFileSize?: number;
 }
 
 export interface AppNotification {
