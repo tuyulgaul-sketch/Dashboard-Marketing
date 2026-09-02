@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  BellRing,
+  CheckCheck,
+  Loader2,
+  Smartphone,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -12,6 +19,13 @@ import {
   markNotificationRead,
   resolveNotificationTarget,
 } from "@/services/notificationService";
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushNotificationState,
+  PushNotificationState,
+  syncExistingPushSubscription,
+} from "@/services/pushNotificationService";
 import { store } from "@/services/store";
 import type { AppNotification as LegacyNotification } from "@/types";
 
@@ -34,6 +48,22 @@ const relativeTime = (value: string) => {
   return `${Math.floor(hours / 24)} hari lalu`;
 };
 
+const pushStateLabel = (
+  state: PushNotificationState | null
+) => {
+  if (!state) return "Memeriksa perangkat...";
+  if (state === "ENABLED") {
+    return "Push HP aktif";
+  }
+  if (state === "DENIED") {
+    return "Izin diblokir browser/HP";
+  }
+  if (state === "UNSUPPORTED") {
+    return "Perangkat/browser belum mendukung";
+  }
+  return "Belum aktif di perangkat ini";
+};
+
 export const NotificationBell: React.FC = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -42,6 +72,10 @@ export const NotificationBell: React.FC = () => {
   const [modernItems, setModernItems] = useState<ModernNotification[]>([]);
   const [modernUnread, setModernUnread] = useState(0);
   const [legacyItems, setLegacyItems] = useState<LegacyNotification[]>([]);
+  const [pushState, setPushState] =
+    useState<PushNotificationState | null>(null);
+  const [pushBusy, setPushBusy] =
+    useState(false);
 
   const legacyUserId = (profile?.legacy_user_id || "").trim();
 
@@ -71,6 +105,21 @@ export const NotificationBell: React.FC = () => {
       console.error("Notification legacy refresh gagal:", error);
     }
   }, [legacyUserId]);
+
+  const refreshPushState =
+    useCallback(async () => {
+      try {
+        const state =
+          await getPushNotificationState();
+        setPushState(state);
+      } catch (error) {
+        console.error(
+          "Push notification state gagal dibaca:",
+          error
+        );
+        setPushState("AVAILABLE");
+      }
+    }, []);
 
   useEffect(() => {
     if (!profile) return;
@@ -111,6 +160,36 @@ export const NotificationBell: React.FC = () => {
       unsubscribe();
     };
   }, [profile?.id, refreshLegacy]);
+
+  useEffect(() => {
+    if (!profile) {
+      setPushState(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        await syncExistingPushSubscription();
+      } catch (error) {
+        console.error(
+          "Sinkronisasi push subscription gagal:",
+          error
+        );
+      }
+
+      if (!cancelled) {
+        await refreshPushState();
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, refreshPushState]);
 
   const legacyUnread = legacyItems.filter((item) => !item.isRead).length;
   const unread = modernUnread + legacyUnread;
@@ -195,6 +274,43 @@ export const NotificationBell: React.FC = () => {
     }
   };
 
+  const togglePush = async () => {
+    if (
+      pushBusy ||
+      pushState === "UNSUPPORTED" ||
+      pushState === "DENIED"
+    ) {
+      return;
+    }
+
+    try {
+      setPushBusy(true);
+
+      if (pushState === "ENABLED") {
+        await disablePushNotifications();
+      } else {
+        await enablePushNotifications();
+      }
+
+      await refreshPushState();
+    } catch (error) {
+      console.error(
+        "Gagal mengubah push notification:",
+        error
+      );
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Gagal mengubah pengaturan push notification."
+      );
+
+      await refreshPushState();
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   if (!profile) return null;
 
   return (
@@ -208,6 +324,7 @@ export const NotificationBell: React.FC = () => {
           setOpen((value) => !value);
           refresh();
           refreshLegacy();
+          void refreshPushState();
         }}
       >
         <Bell className="h-4 w-4" />
@@ -237,7 +354,57 @@ export const NotificationBell: React.FC = () => {
             </Button>
           </div>
 
-          <div className="max-h-[calc(100dvh-150px)] overflow-y-auto overscroll-contain sm:max-h-[480px]">
+          <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                  <Smartphone className="h-4 w-4 text-blue-600" />
+                  Notifikasi HP
+                </div>
+                <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                  {pushStateLabel(pushState)}
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={
+                  pushState === "ENABLED"
+                    ? "outline"
+                    : "default"
+                }
+                disabled={
+                  pushBusy ||
+                  !pushState ||
+                  pushState === "UNSUPPORTED" ||
+                  pushState === "DENIED"
+                }
+                onClick={togglePush}
+                className="shrink-0"
+              >
+                {pushBusy ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : pushState === "ENABLED" ? (
+                  <BellOff className="mr-1.5 h-4 w-4" />
+                ) : (
+                  <BellRing className="mr-1.5 h-4 w-4" />
+                )}
+
+                {pushState === "ENABLED"
+                  ? "Nonaktifkan"
+                  : "Aktifkan"}
+              </Button>
+            </div>
+
+            {pushState === "DENIED" && (
+              <div className="mt-2 text-[10px] leading-4 text-amber-700">
+                Izin notifikasi sudah diblokir. Aktifkan kembali dari pengaturan browser/HP, lalu buka ulang Dashboard Marketing.
+              </div>
+            )}
+          </div>
+
+          <div className="max-h-[calc(100dvh-210px)] overflow-y-auto overscroll-contain sm:max-h-[430px]">
             {items.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 Belum ada notifikasi.
