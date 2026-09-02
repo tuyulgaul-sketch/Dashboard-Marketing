@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { supabase } from '@/lib/supabase';
 import { store } from '@/services/store';
 import {
   waitForCentralBusinessStorageSync,
@@ -436,8 +437,28 @@ const TandaTerimaPage: React.FC = () => {
         return;
       }
 
+      const {
+        data: reservedReceiptId,
+        error: reserveReceiptIdError,
+      } = await supabase.rpc(
+        'reserve_document_handover_id_v13_1',
+        {
+          p_handover_date: handoverDate,
+        }
+      );
+
+      if (
+        reserveReceiptIdError ||
+        !reservedReceiptId
+      ) {
+        throw new Error(
+          reserveReceiptIdError?.message ||
+            'Gagal mendapatkan nomor Tanda Terima dari server.'
+        );
+      }
+
       const receiptId =
-        store.getNextDocumentHandoverId(handoverDate);
+        String(reservedReceiptId);
 
       const fileId =
         `TRM-SUBMIT-${Date.now()}-${Math.random()
