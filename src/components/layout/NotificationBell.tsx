@@ -5,13 +5,25 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  AppNotification,
+  AppNotification as ModernNotification,
   getMyNotifications,
   getMyUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
   resolveNotificationTarget,
 } from "@/services/notificationService";
+import { store } from "@/services/store";
+import type { AppNotification as LegacyNotification } from "@/types";
+
+type BellItem = {
+  source: "MODERN" | "LEGACY";
+  id: string;
+  title: string;
+  message: string;
+  target: string;
+  read: boolean;
+  createdAt: string;
+};
 
 const relativeTime = (value: string) => {
   const mins = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000));
@@ -27,8 +39,11 @@ export const NotificationBell: React.FC = () => {
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [unread, setUnread] = useState(0);
+  const [modernItems, setModernItems] = useState<ModernNotification[]>([]);
+  const [modernUnread, setModernUnread] = useState(0);
+  const [legacyItems, setLegacyItems] = useState<LegacyNotification[]>([]);
+
+  const legacyUserId = (profile?.legacy_user_id || "").trim();
 
   const refresh = useCallback(async () => {
     if (!profile) return;
@@ -37,12 +52,25 @@ export const NotificationBell: React.FC = () => {
         getMyNotifications(30),
         getMyUnreadNotificationCount(),
       ]);
-      setItems(rows);
-      setUnread(count);
+      setModernItems(rows);
+      setModernUnread(count);
     } catch (error) {
       console.error("Notification refresh gagal:", error);
     }
   }, [profile?.id]);
+
+  const refreshLegacy = useCallback(() => {
+    if (!legacyUserId) {
+      setLegacyItems([]);
+      return;
+    }
+
+    try {
+      setLegacyItems(store.getNotifications(legacyUserId));
+    } catch (error) {
+      console.error("Notification legacy refresh gagal:", error);
+    }
+  }, [legacyUserId]);
 
   useEffect(() => {
     if (!profile) return;
@@ -73,6 +101,48 @@ export const NotificationBell: React.FC = () => {
   }, [profile?.id, refresh]);
 
   useEffect(() => {
+    if (!profile) return;
+
+    refreshLegacy();
+
+    const unsubscribe = store.subscribe(refreshLegacy);
+
+    return () => {
+      unsubscribe();
+    };
+  }, [profile?.id, refreshLegacy]);
+
+  const legacyUnread = legacyItems.filter((item) => !item.isRead).length;
+  const unread = modernUnread + legacyUnread;
+
+  const items: BellItem[] = [
+    ...modernItems.map((item) => ({
+      source: "MODERN" as const,
+      id: item.id,
+      title: item.title,
+      message: item.message,
+      target: resolveNotificationTarget(item),
+      read: Boolean(item.read_at),
+      createdAt: item.created_at,
+    })),
+    ...legacyItems.map((item) => ({
+      source: "LEGACY" as const,
+      id: item.id,
+      title: item.title,
+      message: item.message,
+      target: item.linkPath || "/aktivitas",
+      read: Boolean(item.isRead),
+      createdAt: item.createdAt,
+    })),
+  ]
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime()
+    )
+    .slice(0, 50);
+
+  useEffect(() => {
     const close = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) {
         setOpen(false);
@@ -82,17 +152,47 @@ export const NotificationBell: React.FC = () => {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const openItem = async (item: AppNotification) => {
-    if (!item.read_at) {
+  const openItem = async (item: BellItem) => {
+    if (!item.read) {
       try {
-        await markNotificationRead(item.id);
+        if (item.source === "MODERN") {
+          await markNotificationRead(item.id);
+        } else {
+          store.markNotificationAsRead(item.id);
+        }
       } catch (error) {
         console.error(error);
       }
     }
+
     setOpen(false);
-    await refresh();
-    navigate(resolveNotificationTarget(item));
+
+    if (item.source === "MODERN") {
+      await refresh();
+    } else {
+      refreshLegacy();
+    }
+
+    navigate(item.target || "/aktivitas");
+  };
+
+  const markAll = async () => {
+    try {
+      if (modernUnread > 0) {
+        await markAllNotificationsRead();
+      }
+
+      legacyItems
+        .filter((item) => !item.isRead)
+        .forEach((item) => {
+          store.markNotificationAsRead(item.id);
+        });
+
+      await refresh();
+      refreshLegacy();
+    } catch (error) {
+      console.error("Gagal menandai semua notifikasi:", error);
+    }
   };
 
   if (!profile) return null;
@@ -107,6 +207,7 @@ export const NotificationBell: React.FC = () => {
         onClick={() => {
           setOpen((value) => !value);
           refresh();
+          refreshLegacy();
         }}
       >
         <Bell className="h-4 w-4" />
@@ -129,10 +230,7 @@ export const NotificationBell: React.FC = () => {
               variant="ghost"
               size="sm"
               disabled={unread === 0}
-              onClick={async () => {
-                await markAllNotificationsRead();
-                await refresh();
-              }}
+              onClick={markAll}
             >
               <CheckCheck className="mr-1.5 h-4 w-4" />
               Tandai semua
@@ -148,22 +246,22 @@ export const NotificationBell: React.FC = () => {
               items.map((item) => (
                 <button
                   type="button"
-                  key={item.id}
+                  key={`${item.source}:${item.id}`}
                   onClick={() => openItem(item)}
                   className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50 ${
-                    !item.read_at ? "bg-blue-50/60" : "bg-white"
+                    !item.read ? "bg-blue-50/60" : "bg-white"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <span
                       className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                        !item.read_at ? "bg-blue-600" : "bg-slate-300"
+                        !item.read ? "bg-blue-600" : "bg-slate-300"
                       }`}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold text-slate-900">{item.title}</div>
                       <div className="mt-1 text-[11px] leading-5 text-slate-600">{item.message}</div>
-                      <div className="mt-1.5 text-[10px] text-slate-400">{relativeTime(item.created_at)}</div>
+                      <div className="mt-1.5 text-[10px] text-slate-400">{relativeTime(item.createdAt)}</div>
                     </div>
                   </div>
                 </button>
