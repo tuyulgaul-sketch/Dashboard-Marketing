@@ -18,6 +18,7 @@ import {
   useAuth,
 } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import NativeAlertBridge from "@/components/common/NativeAlertBridge";
 import {
   AppFeature,
   canAccessFeature,
@@ -211,6 +212,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <NativeAlertBridge />
 
       <AuthProvider>
         <BrowserRouter>
