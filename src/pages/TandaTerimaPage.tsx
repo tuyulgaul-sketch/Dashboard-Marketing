@@ -592,13 +592,13 @@ const TandaTerimaPage: React.FC = () => {
                           )}
                         </td>
                         <td className="p-3">
-                          <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(receipt.status)}`}>
-                            {receipt.status}
-                          </span>
-
-                          {returnedReceiptIds.has(receipt.id) && (
-                            <span className="ml-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
+                          {returnedReceiptIds.has(receipt.id) ? (
+                            <span className="inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
                               DIKEMBALIKAN
+                            </span>
+                          ) : (
+                            <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(receipt.status)}`}>
+                              {receipt.status}
                             </span>
                           )}
 
@@ -1046,9 +1046,15 @@ const TandaTerimaPage: React.FC = () => {
                     <h2 className="text-lg font-black text-gray-900">{detailReceipt.id}</h2>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <span className={`rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(detailReceipt.status)}`}>
-                      {detailReceipt.status}
-                    </span>
+                    {returnedReceiptIds.has(detailReceipt.id) ? (
+                      <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-700">
+                        DIKEMBALIKAN
+                      </span>
+                    ) : (
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(detailReceipt.status)}`}>
+                        {detailReceipt.status}
+                      </span>
+                    )}
                     <SlaBadge receipt={detailReceipt} />
                   </div>
                 </div>
