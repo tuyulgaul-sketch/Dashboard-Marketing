@@ -336,32 +336,7 @@ export const getVisibleDocumentHandoversV14 = (
     return [];
   }
 
-  const records = getRecords();
-
-  if (
-    user.role === "TEAM_LEADER_MARKETING_SUPPORT" ||
-    user.role === "DEPARTMENT_HEAD_MARKETING_ADMINISTRATION" ||
-    user.role === "SUPERVISOR_MARKETING_ADMINISTRATION"
-  ) {
-    return records;
-  }
-
-  const scopedIds =
-    new Set(
-      store.getSubordinateUserIds(
-        user.id
-      )
-    );
-
-  return records.filter(
-    receipt =>
-      scopedIds.has(
-        receipt.senderUserId
-      ) ||
-      scopedIds.has(
-        receipt.receiverUserId
-      )
-  );
+  return getRecords();
 };
 
 export const createDocumentHandoverV14 = (
