@@ -29,9 +29,6 @@ const match = selectSource.match(selectPattern);
 if (!match) {
   throw new Error("SelectContent position props: expected exactly 1 match, found 0");
 }
-if ((selectSource.match(selectPattern) || []).length === 0) {
-  throw new Error("SelectContent position props not found");
-}
 const eol = match[1];
 selectSource = selectSource.replace(
   selectPattern,
