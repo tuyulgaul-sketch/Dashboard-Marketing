@@ -3,6 +3,7 @@ import { AtSign, Reply, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { ACTIVITY_DETAIL_SYNC_EVENT } from "@/components/common/ReleaseSyncBridge";
 import {
   ActivityCommentDetail,
   ActivityDetailPayload,
@@ -48,6 +49,7 @@ const ActivityDiscussionV2: React.FC<Props> = ({
   const [mentionableProfiles, setMentionableProfiles] = useState<DirectoryProfile[]>([]);
   const [mentionScopeBusy, setMentionScopeBusy] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const liveRefreshTimerRef = useRef<number | null>(null);
 
   const profileMap = useMemo(
     () =>
@@ -80,6 +82,51 @@ const ActivityDiscussionV2: React.FC<Props> = ({
       alive = false;
     };
   }, [detail.activity.id]);
+
+  useEffect(() => {
+    const activityId = detail.activity.id;
+    let alive = true;
+
+    const handleLiveDetailChange = () => {
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+      }
+
+      liveRefreshTimerRef.current = window.setTimeout(() => {
+        void getUniversalActivityDetail(activityId)
+          .then((refreshed) => {
+            if (alive) {
+              onDetailChange(refreshed);
+            }
+          })
+          .catch((error) => {
+            console.warn(
+              "Gagal refresh Discussion setelah perubahan realtime:",
+              error
+            );
+          });
+      }, 250);
+    };
+
+    window.addEventListener(
+      ACTIVITY_DETAIL_SYNC_EVENT,
+      handleLiveDetailChange
+    );
+
+    return () => {
+      alive = false;
+
+      if (liveRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+
+      window.removeEventListener(
+        ACTIVITY_DETAIL_SYNC_EVENT,
+        handleLiveDetailChange
+      );
+    };
+  }, [detail.activity.id, onDetailChange]);
 
   const selectedMentionProfiles = useMemo(
     () =>
