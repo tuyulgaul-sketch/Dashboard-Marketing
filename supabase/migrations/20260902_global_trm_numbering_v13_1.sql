@@ -41,7 +41,7 @@ begin
   into v_profile
   from public.profiles
   where auth_user_id = auth.uid()
-    and is_active = true
+    and active = true
   limit 1;
 
   if v_profile.id is null then
