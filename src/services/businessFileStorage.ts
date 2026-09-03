@@ -46,6 +46,76 @@ const safeFileName = (
     .slice(0, 160) ||
   "file";
 
+const describeSupabaseError = (
+  error: unknown
+): string => {
+  if (
+    error instanceof Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object"
+  ) {
+    const candidate =
+      error as {
+        message?: unknown;
+        details?: unknown;
+        hint?: unknown;
+        code?: unknown;
+      };
+
+    const parts = [
+      typeof candidate.message === "string"
+        ? candidate.message
+        : "",
+      typeof candidate.details === "string" &&
+      candidate.details
+        ? `details: ${candidate.details}`
+        : "",
+      typeof candidate.hint === "string" &&
+      candidate.hint
+        ? `hint: ${candidate.hint}`
+        : "",
+      typeof candidate.code === "string" &&
+      candidate.code
+        ? `code: ${candidate.code}`
+        : "",
+    ].filter(Boolean);
+
+    if (
+      parts.length > 0
+    ) {
+      return parts.join(" | ");
+    }
+
+    try {
+      return JSON.stringify(
+        error
+      );
+    } catch {
+      return "Error Supabase tidak dapat dibaca.";
+    }
+  }
+
+  return String(
+    error ||
+      "Error tidak diketahui."
+  );
+};
+
+const stageError = (
+  stage: string,
+  error: unknown
+) =>
+  new Error(
+    `${stage}: ${describeSupabaseError(
+      error
+    )}`
+  );
+
 export async function uploadCentralBusinessFile(input: {
   fileId: string;
   module: BusinessFileModule;
@@ -118,7 +188,10 @@ export async function uploadCentralBusinessFile(input: {
   if (
     uploadError
   ) {
-    throw uploadError;
+    throw stageError(
+      "Gagal upload file evidence",
+      uploadError
+    );
   }
 
   const {
@@ -166,7 +239,10 @@ export async function uploadCentralBusinessFile(input: {
         storagePath,
       ]);
 
-    throw metadataError;
+    throw stageError(
+      "Gagal register metadata file evidence",
+      metadataError
+    );
   }
 
   if (
@@ -207,7 +283,10 @@ export async function getCentralBusinessFileMetadata(
   if (
     error
   ) {
-    throw error;
+    throw stageError(
+      "Gagal membaca metadata file evidence",
+      error
+    );
   }
 
   return data
@@ -252,7 +331,10 @@ export async function getCentralBusinessFile(
   if (
     error
   ) {
-    throw error;
+    throw stageError(
+      "Gagal download file evidence",
+      error
+    );
   }
 
   return {
@@ -379,7 +461,10 @@ export async function deleteCentralBusinessFile(
   if (
     removeError
   ) {
-    throw removeError;
+    throw stageError(
+      "Gagal menghapus file evidence",
+      removeError
+    );
   }
 
   const {
@@ -397,6 +482,9 @@ export async function deleteCentralBusinessFile(
   if (
     metadataError
   ) {
-    throw metadataError;
+    throw stageError(
+      "Gagal menghapus metadata file evidence",
+      metadataError
+    );
   }
 }
