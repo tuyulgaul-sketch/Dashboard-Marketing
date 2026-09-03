@@ -5,7 +5,8 @@ on:
     branches:
       - feat/tanda-terima-external-journey-v23
     paths:
-      - scripts/temporary-v23-external-journey-patch.mjs
+      - scripts/temporary-v23-service-patch.mjs
+      - scripts/temporary-v23-page-patch.mjs
       - .github/workflows/temporary-v23-external-journey-patch.yml
 
 permissions:
@@ -24,8 +25,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Apply targeted V23 patch
-        run: node scripts/temporary-v23-external-journey-patch.mjs
+      - name: Patch service
+        run: node scripts/temporary-v23-service-patch.mjs
+
+      - name: Patch page
+        run: node scripts/temporary-v23-page-patch.mjs
 
       - name: Commit patched source
         run: |
