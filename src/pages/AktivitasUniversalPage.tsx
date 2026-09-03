@@ -445,6 +445,7 @@ const AktivitasUniversalPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkHandledRef = useRef<string | null>(null);
   const directoryFetchedAtRef = useRef(0);
+  const detailRef = useRef<ActivityDetailPayload | null>(null);
   const [unseenCountByActivityId, setUnseenCountByActivityId] =
     useState<Record<string, number>>({});
   const [
@@ -547,6 +548,10 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const [workspaceSection, setWorkspaceSection] =
     useState<"WORKSPACE" | "MONITORING">("WORKSPACE");
+
+  useEffect(() => {
+    detailRef.current = detail;
+  }, [detail]);
 
   const profileMap = useMemo(
     () =>
@@ -792,6 +797,7 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const refresh = async (options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
+    const activeDetailId = detailRef.current?.activity.id || null;
 
     if (!silent) {
       setLoading(true);
@@ -805,6 +811,7 @@ const AktivitasUniversalPage: React.FC = () => {
         actionRoleRows,
         attentionRows,
         discussionAttentionRows,
+        liveDetailRows,
       ] = await Promise.all([
         getUniversalActivities(),
         Date.now() - directoryFetchedAtRef.current > 5 * 60_000
@@ -813,6 +820,15 @@ const AktivitasUniversalPage: React.FC = () => {
         getMyActivityActionRoles(),
         getMyActivityAttention(profile?.id || ""),
         getMyActivityDiscussionAttention(profile?.id || ""),
+        activeDetailId
+          ? getUniversalActivityDetail(activeDetailId).catch((detailError) => {
+              console.warn(
+                "Gagal menyinkronkan detail aktivitas aktif:",
+                detailError
+              );
+              return null;
+            })
+          : Promise.resolve<ActivityDetailPayload | null>(null),
       ]);
 
       setActivities(activityRows);
@@ -850,6 +866,15 @@ const AktivitasUniversalPage: React.FC = () => {
           return result;
         }, {})
       );
+
+      if (
+        liveDetailRows &&
+        detailRef.current?.activity.id === activeDetailId
+      ) {
+        detailRef.current = liveDetailRows;
+        setDetail(liveDetailRows);
+        setProgressValue(liveDetailRows.activity.progress);
+      }
 
       setError("");
     } catch (err) {
