@@ -115,13 +115,6 @@ export const canAccessFeature = (
     return !isSystemAdminProfile(profile);
   }
 
-  // Modules below are still backed by the legacy UAT/localStorage
-  // business store. A stable legacy_user_id is mandatory so the logged-in
-  // Supabase identity cannot accidentally fall back to another user.
-  if (!hasLegacyBusinessIdentity(profile)) {
-    return false;
-  }
-
   const business =
     isBusinessMarketingProfile(profile);
 
@@ -133,6 +126,28 @@ export const canAccessFeature = (
 
   const marketingComm =
     isMarketingCommunicationProfile(profile);
+
+  const digitalAffinity =
+    isDigitalAffinityProfile(profile);
+
+  // Tanda Terima V14 adalah collaborative module berbasis Supabase Lite.
+  // Digital & Affinity dapat tidak memiliki legacy_user_id, sehingga akses
+  // modul ini tidak boleh bergantung pada identitas legacy.
+  if (feature === "TANDA_TERIMA") {
+    return (
+      business ||
+      supportRoot ||
+      marketingAdmin ||
+      marketingComm ||
+      digitalAffinity
+    );
+  }
+
+  // Modules below masih memakai identity legacy untuk menjaga kompatibilitas
+  // business store lama. Jangan mengizinkan fallback identitas untuk modul ini.
+  if (!hasLegacyBusinessIdentity(profile)) {
+    return false;
+  }
 
   switch (feature) {
     case "TARGET_RKAP":
@@ -164,13 +179,6 @@ export const canAccessFeature = (
         business ||
         supportRoot ||
         marketingComm
-      );
-
-    case "TANDA_TERIMA":
-      return (
-        business ||
-        supportRoot ||
-        marketingAdmin
       );
 
     default:

@@ -29,7 +29,7 @@ import {
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
-import TandaTerimaPage from "./pages/TandaTerimaPage";
+import TandaTerimaV14Page from "./pages/TandaTerimaV14Page";
 import AdministrasiPage from "./pages/AdministrasiPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
 import LoginPage from "./pages/LoginPage";
@@ -174,7 +174,7 @@ const AppRoutes = () => (
       element={
         <Protected>
           <FeatureOnly feature="TANDA_TERIMA">
-            <TandaTerimaPage />
+            <TandaTerimaV14Page />
           </FeatureOnly>
         </Protected>
       }

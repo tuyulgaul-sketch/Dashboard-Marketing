@@ -37,7 +37,7 @@ let users:
 let installed =
   false;
 
-let currentLegacyId:
+let currentRuntimeId:
   string | null =
   null;
 
@@ -159,7 +159,6 @@ const normalizeOrg = (
     };
   }
 
-  // Conservative compatibility fallback.
   return {
     unit:
       unit as UnitType,
@@ -256,6 +255,30 @@ const mapRole = (
     return "STAFF_MARKETING_COMMUNICATION";
   }
 
+  // Digital & Affinity menggunakan role business-compatible yang sudah ada
+  // di legacy type agar fitur kolaboratif dapat memakai hierarchy runtime
+  // tanpa menambah ketergantungan ke modul komersial lama.
+  if (
+    department ===
+      "digital & affinity"
+  ) {
+    if (
+      role ===
+        "DH"
+    ) {
+      return "DEPARTMENT_HEAD_MARKETING";
+    }
+
+    if (
+      role ===
+        "SPV"
+    ) {
+      return "SUPERVISOR_MARKETING";
+    }
+
+    return "STAFF_MARKETING";
+  }
+
   if (
     role ===
       "DIRECTOR"
@@ -337,6 +360,44 @@ const toUser = (
   };
 };
 
+const profileRuntimeId = (
+  profile:
+    AuthProfile
+) =>
+  profile.legacy_user_id?.trim()
+    ? profile.legacy_user_id
+        .trim()
+        .toUpperCase()
+    : `PRF-${profile.id}`;
+
+const profileFallbackRow = (
+  profile:
+    AuthProfile
+): DirectoryRow => ({
+  profile_id:
+    profile.id,
+  legacy_user_id:
+    profileRuntimeId(
+      profile
+    ),
+  full_name:
+    profile.full_name,
+  email:
+    profile.email,
+  role_level:
+    profile.role_level,
+  unit:
+    profile.unit,
+  department:
+    profile.department,
+  manager_profile_id:
+    profile.manager_id,
+  manager_legacy_user_id:
+    null,
+  active:
+    profile.active,
+});
+
 const notify =
   () => {
     const candidate =
@@ -374,13 +435,13 @@ const patchStore =
     store.getCurrentUser =
       () => {
         if (
-          currentLegacyId
+          currentRuntimeId
         ) {
           const current =
             users.find(
               user =>
                 user.id ===
-                currentLegacyId
+                currentRuntimeId
             );
 
           if (
@@ -392,8 +453,6 @@ const patchStore =
           }
         }
 
-        // Non-legacy users (e.g. Digital & Affinity) do not use old
-        // commercial modules; preserve the existing compatibility fallback.
         return legacyGetCurrentUser();
       };
 
@@ -449,6 +508,40 @@ const patchStore =
       };
   };
 
+const loadDirectoryRows =
+  async (): Promise<DirectoryRow[]> => {
+    const v14 =
+      await supabase.rpc(
+        "get_business_user_directory_v14"
+      );
+
+    if (
+      !v14.error
+    ) {
+      return (
+        v14.data ||
+        []
+      ) as DirectoryRow[];
+    }
+
+    // Deployment-safe fallback sampai migration V14 dijalankan.
+    const legacy =
+      await supabase.rpc(
+        "get_legacy_user_directory"
+      );
+
+    if (
+      legacy.error
+    ) {
+      throw legacy.error;
+    }
+
+    return (
+      legacy.data ||
+      []
+    ) as DirectoryRow[];
+  };
+
 export const syncCentralUserRuntime =
   async (
     profile:
@@ -456,29 +549,15 @@ export const syncCentralUserRuntime =
   ) => {
     patchStore();
 
-    const {
-      data,
-      error,
-    } =
-      await supabase.rpc(
-        "get_legacy_user_directory"
-      );
-
-    if (
-      error
-    ) {
-      throw error;
-    }
+    const rows =
+      await loadDirectoryRows();
 
     users =
-      (
-        data ||
-        []
-      )
+      rows
         .map(
           row =>
             toUser(
-              row as DirectoryRow
+              row
             )
         )
         .filter(
@@ -487,12 +566,29 @@ export const syncCentralUserRuntime =
             "Active"
         );
 
-    currentLegacyId =
-      profile.legacy_user_id
-        ? profile.legacy_user_id
-            .trim()
-            .toUpperCase()
-        : null;
+    currentRuntimeId =
+      profileRuntimeId(
+        profile
+      );
+
+    // Profile tanpa legacy_user_id tetap mendapat runtime identity yang
+    // deterministik. Setelah RPC V14 tersedia, identity yang sama juga
+    // muncul pada directory penerima user lain.
+    if (
+      !users.some(
+        user =>
+          user.id ===
+          currentRuntimeId
+      )
+    ) {
+      users.push(
+        toUser(
+          profileFallbackRow(
+            profile
+          )
+        )
+      );
+    }
 
     notify();
   };
@@ -502,6 +598,6 @@ export const clearCentralUserRuntime =
     users =
       [];
 
-    currentLegacyId =
+    currentRuntimeId =
       null;
   };
