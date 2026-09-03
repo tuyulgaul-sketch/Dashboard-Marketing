@@ -171,6 +171,102 @@ const ensureSubmissionItems = (
   }
 };
 
+const ensureReturnItemsAgainstCustody = (
+  receipt: V14DocumentHandover,
+  items: ReturnItemInput[]
+) => {
+  if (items.length < 1) {
+    throw new Error(
+      "Minimal terdapat 1 dokumen yang dikembalikan."
+    );
+  }
+
+  const sourceItems =
+    new Map(
+      receipt.items.map(
+        item => [
+          item.id,
+          item,
+        ] as const
+      )
+    );
+
+  const seenSourceItemIds =
+    new Set<string>();
+
+  items.forEach(item => {
+    const sourceItemId =
+      item.sourceItemId?.trim() ||
+      "";
+
+    const quantity =
+      Number(item.quantity);
+
+    if (
+      !sourceItemId ||
+      !item.description.trim() ||
+      !Number.isFinite(quantity) ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new Error(
+        "Daftar dokumen pengembalian wajib diisi dengan benar."
+      );
+    }
+
+    if (
+      seenSourceItemIds.has(
+        sourceItemId
+      )
+    ) {
+      throw new Error(
+        "Dokumen sumber yang sama tidak boleh dicatat lebih dari satu kali pada satu pengembalian."
+      );
+    }
+
+    const sourceItem =
+      sourceItems.get(
+        sourceItemId
+      );
+
+    if (!sourceItem) {
+      throw new Error(
+        "Dokumen pengembalian harus berasal dari item yang tercatat pada registry aktif."
+      );
+    }
+
+    const heldQuantity =
+      Number(
+        sourceItem.receivedQuantity ??
+        sourceItem.quantity
+      );
+
+    if (
+      !Number.isFinite(
+        heldQuantity
+      ) ||
+      heldQuantity < 1
+    ) {
+      throw new Error(
+        `Dokumen "${sourceItem.description}" tidak memiliki quantity custody yang dapat dikembalikan.`
+      );
+    }
+
+    if (
+      quantity >
+      heldQuantity
+    ) {
+      throw new Error(
+        `Qty pengembalian "${sourceItem.description}" maksimal ${heldQuantity}.`
+      );
+    }
+
+    seenSourceItemIds.add(
+      sourceItemId
+    );
+  });
+};
+
 const findReceipt = (
   receiptId: string
 ) => {
@@ -751,18 +847,10 @@ export const returnDocumentHandoverV14 = (
     );
   }
 
-  if (
-    input.items.length < 1 ||
-    input.items.some(
-      item =>
-        !item.description.trim() ||
-        Number(item.quantity) < 1
-    )
-  ) {
-    throw new Error(
-      "Daftar dokumen pengembalian wajib diisi dengan benar."
-    );
-  }
+  ensureReturnItemsAgainstCustody(
+    receipt,
+    input.items
+  );
 
   const now =
     new Date().toISOString();
@@ -770,21 +858,30 @@ export const returnDocumentHandoverV14 = (
   const returnItems:
     DocumentHandoverReturnItem[] =
     input.items.map(
-      (item, itemIndex) => ({
-        id:
-          `${receipt.id}-C${receipt.cycleNumber || 1}-RETURN-${Date.now()}-${String(
-            itemIndex + 1
-          ).padStart(2, "0")}`,
-        sourceItemId:
-          item.sourceItemId,
-        description:
-          item.description.trim(),
-        quantity:
-          Number(item.quantity),
-        notes:
-          item.notes?.trim() ||
-          undefined,
-      })
+      (item, itemIndex) => {
+        const sourceItem =
+          receipt.items.find(
+            source =>
+              source.id ===
+              item.sourceItemId
+          )!;
+
+        return {
+          id:
+            `${receipt.id}-C${receipt.cycleNumber || 1}-RETURN-${Date.now()}-${String(
+              itemIndex + 1
+            ).padStart(2, "0")}`,
+          sourceItemId:
+            sourceItem.id,
+          description:
+            sourceItem.description,
+          quantity:
+            Number(item.quantity),
+          notes:
+            item.notes?.trim() ||
+            undefined,
+        };
+      }
     );
 
   const updated:
@@ -835,7 +932,7 @@ export const returnDocumentHandoverV14 = (
     updated.status,
     `${currentUser.name} mengembalikan dokumen kepada ${receipt.senderName}.`,
     returnItemSummary(
-      input.items
+      returnItems
     ),
     input.evidence
   );
