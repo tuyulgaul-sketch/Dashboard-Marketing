@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./globals.css";
+import { installMeetingRoomAutoDuration } from "@/lib/meetingRoomAutoDuration";
+
+installMeetingRoomAutoDuration();
 
 createRoot(document.getElementById("root")!).render(<App />);
 
