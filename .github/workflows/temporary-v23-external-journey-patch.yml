@@ -6,6 +6,7 @@ on:
       - feat/tanda-terima-external-journey-v23
     paths:
       - scripts/temporary-v23-external-journey-patch.mjs
+      - .github/workflows/temporary-v23-external-journey-patch.yml
 
 permissions:
   contents: write
