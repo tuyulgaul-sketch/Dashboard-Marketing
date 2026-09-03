@@ -19,6 +19,7 @@ import {
 } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import NativeAlertBridge from "@/components/common/NativeAlertBridge";
+import BrandedActionDialog from "@/components/common/BrandedActionDialog";
 import {
   AppFeature,
   canAccessFeature,
@@ -213,6 +214,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <NativeAlertBridge />
+      <BrandedActionDialog />
 
       <AuthProvider>
         <BrowserRouter>
