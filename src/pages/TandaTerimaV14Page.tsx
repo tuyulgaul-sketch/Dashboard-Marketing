@@ -16,11 +16,13 @@ import {
   createDocumentHandoverV14,
   getDocumentHandoverHistoryV14,
   getEligibleInternalHandoverReceiversV14,
+  getExternalJourneyStepsV23,
   getVisibleDocumentHandoversV14,
   rejectDocumentHandoverV14,
   resendDocumentHandoverV14,
   resolveDocumentHandoverDiscrepancyV14,
   returnDocumentHandoverV14,
+  updateExternalDocumentJourneyV23,
   waitForDocumentHandoverV14Sync,
 } from "@/services/documentHandoverV14Service";
 import {
@@ -233,6 +235,12 @@ const ACTION_LABELS:
     "Penerimaan Ditolak",
   CANCEL_HANDOVER:
     "Tanda Terima Dibatalkan",
+  EXTERNAL_RETURNED_FOR_REVISION:
+    "Dikembalikan untuk Revisi",
+  EXTERNAL_FORWARDED:
+    "Dilanjutkan ke Fungsi Berikutnya",
+  EXTERNAL_JOURNEY_DONE:
+    "Journey Fungsi Lainnya Selesai",
 };
 
 const SlaBadge:
@@ -417,6 +425,54 @@ const TandaTerimaV14Page:
     );
 
     const [
+      receiverPickerOpen,
+      setReceiverPickerOpen,
+    ] = useState(false);
+
+    const [
+      receiverSearch,
+      setReceiverSearch,
+    ] = useState("");
+
+    const [
+      externalJourneyReceipt,
+      setExternalJourneyReceipt,
+    ] = useState<
+      V14DocumentHandover | null
+    >(null);
+
+    const [
+      externalJourneyAction,
+      setExternalJourneyAction,
+    ] = useState<
+      | "RETURN_FOR_REVISION"
+      | "FORWARD"
+      | "DONE"
+    >("RETURN_FOR_REVISION");
+
+    const [
+      externalJourneyDate,
+      setExternalJourneyDate,
+    ] = useState(today());
+
+    const [
+      externalJourneyDestination,
+      setExternalJourneyDestination,
+    ] = useState("");
+
+    const [
+      externalJourneyNotes,
+      setExternalJourneyNotes,
+    ] = useState("");
+
+    const [
+      externalJourneyPhoto,
+      setExternalJourneyPhoto,
+    ] = useState<File | null>(
+      null
+    );
+
+    const [
       detailReceipt,
       setDetailReceipt,
     ] = useState<
@@ -465,6 +521,44 @@ const TandaTerimaV14Page:
             currentUser
           ),
         [currentUser, receipts]
+      );
+
+    const selectedReceiver =
+      eligibleReceivers.find(
+        user =>
+          user.id === receiverId
+      );
+
+    const filteredEligibleReceivers =
+      useMemo(
+        () => {
+          const keyword =
+            receiverSearch
+              .trim()
+              .toLowerCase();
+
+          if (!keyword) {
+            return eligibleReceivers;
+          }
+
+          return eligibleReceivers.filter(
+            user =>
+              [
+                user.name,
+                user.position,
+                user.unit,
+                user.department,
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(keyword)
+          );
+        },
+        [
+          eligibleReceivers,
+          receiverSearch,
+        ]
       );
 
     const relationOptions =
@@ -531,6 +625,8 @@ const TandaTerimaV14Page:
           today()
         );
         setReceiverId("");
+        setReceiverPickerOpen(false);
+        setReceiverSearch("");
         setExternalDestination("");
         setRelatedModule("NONE");
         setRelatedTransactionId("");
@@ -878,7 +974,7 @@ const TandaTerimaV14Page:
             formMode === "CREATE"
               ? receiverId ===
                 EXTERNAL_RECEIVER_ID
-                ? `${receiptId} berhasil dicatat sebagai terkirim final ke ${externalDestination.trim()}.`
+                ? `${receiptId} berhasil dibuat. Journey Fungsi Lainnya dimulai di ${externalDestination.trim()}.`
                 : `${receiptId} berhasil dibuat dan dikirim.`
               : formMode === "RESEND"
               ? `${receiptId} berhasil dikirim ulang menggunakan nomor registry yang sama.`
@@ -1235,6 +1331,138 @@ const TandaTerimaV14Page:
         }
       };
 
+    const openExternalJourney = (
+      receipt:
+        V14DocumentHandover
+    ) => {
+      setExternalJourneyReceipt(receipt);
+      setExternalJourneyAction(
+        "RETURN_FOR_REVISION"
+      );
+      setExternalJourneyDate(today());
+      setExternalJourneyDestination("");
+      setExternalJourneyNotes("");
+      setExternalJourneyPhoto(null);
+    };
+
+    const closeExternalJourney =
+      () => {
+        setExternalJourneyReceipt(null);
+        setExternalJourneyDestination("");
+        setExternalJourneyNotes("");
+        setExternalJourneyPhoto(null);
+      };
+
+    const submitExternalJourney =
+      async () => {
+        if (!externalJourneyReceipt) {
+          return;
+        }
+
+        if (
+          externalJourneyAction === "FORWARD" &&
+          !externalJourneyDestination.trim()
+        ) {
+          window.alert(
+            "Fungsi / unit tujuan berikutnya wajib diisi."
+          );
+          return;
+        }
+
+        if (!externalJourneyNotes.trim()) {
+          window.alert(
+            "Catatan update journey wajib diisi."
+          );
+          return;
+        }
+
+        try {
+          setSubmitting(true);
+
+          let evidence:
+            | {
+                fileId: string;
+                fileName: string;
+                fileSize: number;
+              }
+            | undefined;
+
+          if (externalJourneyPhoto) {
+            const fileId =
+              `TRM-EXT-JOURNEY-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 6)}`;
+
+            await saveDocumentHandoverFile({
+              id: fileId,
+              transactionId:
+                externalJourneyReceipt.id,
+              fileName:
+                externalJourneyPhoto.name,
+              fileType:
+                externalJourneyPhoto.type ||
+                "image/*",
+              fileSize:
+                externalJourneyPhoto.size,
+              uploadedByUserId:
+                currentUser.id,
+              uploadedByName:
+                currentUser.name,
+              uploadedAt:
+                new Date().toISOString(),
+              senderUserId:
+                externalJourneyReceipt.senderUserId,
+              receiverUserId:
+                EXTERNAL_RECEIVER_ID,
+              blob:
+                externalJourneyPhoto,
+            });
+
+            evidence = {
+              fileId,
+              fileName:
+                externalJourneyPhoto.name,
+              fileSize:
+                externalJourneyPhoto.size,
+            };
+          }
+
+          updateExternalDocumentJourneyV23(
+            externalJourneyReceipt.id,
+            {
+              action: externalJourneyAction,
+              eventDate: externalJourneyDate,
+              nextDestination:
+                externalJourneyAction === "FORWARD"
+                  ? externalJourneyDestination
+                  : undefined,
+              notes: externalJourneyNotes,
+              evidence,
+            }
+          );
+
+          await waitForDocumentHandoverV14Sync();
+
+          const successMessage =
+            externalJourneyAction === "RETURN_FOR_REVISION"
+              ? "Journey diperbarui: dokumen kembali ke pengirim untuk revisi."
+              : externalJourneyAction === "FORWARD"
+              ? `Journey dilanjutkan ke ${externalJourneyDestination.trim()}.`
+              : "Journey dokumen berhasil ditutup.";
+
+          closeExternalJourney();
+          window.alert(successMessage);
+        } catch (error) {
+          window.alert(
+            error instanceof Error
+              ? error.message
+              : "Gagal memperbarui journey dokumen."
+          );
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
     const getPosition = (
       receipt:
         V14DocumentHandover
@@ -1242,11 +1470,25 @@ const TandaTerimaV14Page:
       if (
         receipt.externalReceiver
       ) {
+        const journeyState =
+          receipt.externalJourneyState ||
+          "AT_EXTERNAL";
+        const currentLocation =
+          receipt.externalJourneyCurrentLocation ||
+          (journeyState ===
+          "RETURNED_FOR_REVISION"
+            ? receipt.senderName
+            : receipt.externalDestination ||
+              receipt.receiverName);
+
         return {
-          primary:
-            receipt.receiverName,
+          primary: currentLocation,
           secondary:
-            "Terkirim final ke Fungsi Lainnya",
+            journeyState === "DONE"
+              ? "Journey selesai / ditutup pengirim"
+              : journeyState === "RETURNED_FOR_REVISION"
+              ? "Kembali ke pengirim untuk revisi"
+              : "Berada di Fungsi Lainnya",
         };
       }
 
@@ -1427,8 +1669,18 @@ const TandaTerimaV14Page:
                 receipt.senderName,
                 receipt.receiverName,
                 receipt.externalDestination,
+                receipt.externalJourneyCurrentLocation,
                 receipt.relatedTransactionId,
                 receipt.relatedDescription,
+                ...getExternalJourneyStepsV23(
+                  receipt
+                ).flatMap(
+                  step => [
+                    step.fromLocation,
+                    step.toLocation,
+                    step.notes,
+                  ]
+                ),
                 ...receipt.items.map(
                   item =>
                     item.description
@@ -1495,7 +1747,7 @@ const TandaTerimaV14Page:
                 </h1>
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Registry chain of custody dokumen fisik. Nomor TRM yang sama dapat digunakan kembali setelah dokumen dikembalikan.
+                Registry chain of custody dokumen fisik. Fungsi Lainnya dapat dilacak bertahap dalam satu nomor TRM sampai journey ditutup.
               </p>
             </div>
 
@@ -1552,7 +1804,7 @@ const TandaTerimaV14Page:
                     Daftar Tanda Terima
                   </CardTitle>
                   <p className="mt-1 text-xs text-gray-500">
-                    History menyimpan setiap penyerahan, pengembalian, kirim ulang, dan evidence pada registry yang sama.
+                    Cari berdasarkan nomor, pengirim, penerima, posisi/fungsi, atau dokumen. Journey eksternal tersimpan pada registry yang sama.
                   </p>
                 </div>
 
@@ -1672,16 +1924,36 @@ const TandaTerimaV14Page:
                             </td>
 
                             <td className="p-3">
-                              <span
-                                className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(
-                                  receipt.status
-                                )}`}
-                              >
-                                {receipt.status}
-                              </span>
-                              <div className="mt-2">
-                                <SlaBadge receipt={receipt} />
-                              </div>
+                              {receipt.externalReceiver ? (
+                                <span
+                                  className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${
+                                    receipt.externalJourneyState === "DONE"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : receipt.externalJourneyState === "RETURNED_FOR_REVISION"
+                                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                                      : "border-blue-200 bg-blue-50 text-blue-700"
+                                  }`}
+                                >
+                                  {receipt.externalJourneyState === "DONE"
+                                    ? "SELESAI"
+                                    : receipt.externalJourneyState === "RETURNED_FOR_REVISION"
+                                    ? "REVISI"
+                                    : "JOURNEY AKTIF"}
+                                </span>
+                              ) : (
+                                <>
+                                  <span
+                                    className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black ${statusClass(
+                                      receipt.status
+                                    )}`}
+                                  >
+                                    {receipt.status}
+                                  </span>
+                                  <div className="mt-2">
+                                    <SlaBadge receipt={receipt} />
+                                  </div>
+                                </>
+                              )}
                             </td>
 
                             <td className="p-3">
@@ -1779,6 +2051,22 @@ const TandaTerimaV14Page:
                                       className="h-8 border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 hover:bg-amber-100"
                                     >
                                       Selesaikan Selisih
+                                    </Button>
+                                  )}
+
+                                {receipt.externalReceiver &&
+                                  receipt.senderUserId === currentUser.id &&
+                                  receipt.externalJourneyState !== "DONE" && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() =>
+                                        openExternalJourney(receipt)
+                                      }
+                                      className="h-8 gap-1.5 bg-indigo-600 text-[11px] text-white hover:bg-indigo-700"
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                      Kelola Journey
                                     </Button>
                                   )}
 
@@ -1959,40 +2247,92 @@ const TandaTerimaV14Page:
                       </label>
 
                       {formMode === "CREATE" ? (
-                        <Select
-                          value={receiverId}
-                          onValueChange={value => {
-                            setReceiverId(value);
-                            if (
-                              value !==
-                              EXTERNAL_RECEIVER_ID
-                            ) {
-                              setExternalDestination("");
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReceiverPickerOpen(current => !current)
                             }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih penerima..." />
-                          </SelectTrigger>
-                          <SelectContent
-                            position="popper"
-                            className="z-[300] max-h-72"
+                            className="flex min-h-10 w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs shadow-sm hover:border-blue-300"
                           >
-                            {eligibleReceivers.map(
-                              user => (
-                                <SelectItem
-                                  key={user.id}
-                                  value={user.id}
-                                >
-                                  {user.name} · {user.position}
-                                </SelectItem>
-                              )
-                            )}
-                            <SelectItem value={EXTERNAL_RECEIVER_ID}>
-                              Fungsi Lainnya
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                            <span
+                              className={receiverId ? "font-semibold text-gray-900" : "text-gray-400"}
+                            >
+                              {receiverId === EXTERNAL_RECEIVER_ID
+                                ? "Fungsi Lainnya"
+                                : selectedReceiver
+                                ? `${selectedReceiver.name} · ${selectedReceiver.position}`
+                                : "Pilih penerima..."}
+                            </span>
+                            <span className="ml-3 text-gray-400">⌄</span>
+                          </button>
+
+                          {receiverPickerOpen && (
+                            <div className="absolute left-0 top-full z-[320] mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                              <div className="border-b border-gray-100 p-2">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                  <Input
+                                    autoFocus
+                                    value={receiverSearch}
+                                    onChange={event => setReceiverSearch(event.target.value)}
+                                    placeholder="Cari nama penerima..."
+                                    className="pl-9"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="max-h-64 overflow-y-auto p-1">
+                                {filteredEligibleReceivers.length === 0 ? (
+                                  <div className="px-3 py-4 text-center text-[11px] text-gray-400">
+                                    Penerima tidak ditemukan.
+                                  </div>
+                                ) : (
+                                  filteredEligibleReceivers.map(user => (
+                                    <button
+                                      key={user.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setReceiverId(user.id);
+                                        setExternalDestination("");
+                                        setReceiverPickerOpen(false);
+                                        setReceiverSearch("");
+                                      }}
+                                      className="block w-full rounded-lg px-3 py-2 text-left hover:bg-blue-50"
+                                    >
+                                      <div className="text-xs font-bold text-gray-900">
+                                        {user.name}
+                                      </div>
+                                      <div className="text-[10px] text-gray-500">
+                                        {user.position} · {user.unit}
+                                      </div>
+                                    </button>
+                                  ))
+                                )}
+
+                                {(!receiverSearch.trim() ||
+                                  "fungsi lainnya".includes(receiverSearch.trim().toLowerCase())) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReceiverId(EXTERNAL_RECEIVER_ID);
+                                      setReceiverPickerOpen(false);
+                                      setReceiverSearch("");
+                                    }}
+                                    className="block w-full rounded-lg border-t border-gray-100 px-3 py-2 text-left hover:bg-indigo-50"
+                                  >
+                                    <div className="text-xs font-bold text-indigo-700">
+                                      Fungsi Lainnya
+                                    </div>
+                                    <div className="text-[10px] text-gray-500">
+                                      Unit eksternal dari Dashboard Marketing
+                                    </div>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold text-gray-900">
                           {formMode === "RETURN"
@@ -2002,7 +2342,7 @@ const TandaTerimaV14Page:
                       )}
 
                       <p className="mt-1 text-[10px] text-gray-400">
-                        User internal memakai proses serah-terima. Fungsi Lainnya langsung final tanpa acknowledgement.
+                        User internal memakai proses serah-terima. Fungsi Lainnya tidak membutuhkan acknowledgement; pengirim mengelola journey sampai proses ditutup.
                       </p>
                     </div>
 
@@ -2445,8 +2785,142 @@ const TandaTerimaV14Page:
                       : formMode === "RETURN"
                       ? "Kirim Pengembalian"
                       : receiverId === EXTERNAL_RECEIVER_ID
-                      ? "Posting & Selesaikan"
+                      ? "Posting & Mulai Journey"
                       : "Submit Tanda Terima"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {externalJourneyReceipt && (
+            <div className="fixed inset-0 z-[255] flex items-center justify-center bg-black/45 p-4">
+              <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+                  <div>
+                    <h2 className="text-base font-black text-gray-900">
+                      Kelola Journey Fungsi Lainnya
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {externalJourneyReceipt.id} · Posisi saat ini: {getPosition(externalJourneyReceipt).primary}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={closeExternalJourney}
+                    className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-5 p-5">
+                  <div>
+                    <div className="mb-2 text-xs font-black text-gray-800">
+                      Pilih Update Journey
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      {[
+                        ["RETURN_FOR_REVISION", "Dikembalikan", "Dokumen kembali ke saya karena perlu revisi."],
+                        ["FORWARD", "Lanjut Tahap", "Dokumen diteruskan ke fungsi / unit berikutnya."],
+                        ["DONE", "Selesai", "Journey dokumen dinyatakan selesai dan ditutup."],
+                      ].map(item => (
+                        <button
+                          key={item[0]}
+                          type="button"
+                          onClick={() => {
+                            setExternalJourneyAction(
+                              item[0] as "RETURN_FOR_REVISION" | "FORWARD" | "DONE"
+                            );
+                            if (item[0] !== "FORWARD") {
+                              setExternalJourneyDestination("");
+                            }
+                          }}
+                          className={`rounded-xl border p-3 text-left transition ${
+                            externalJourneyAction === item[0]
+                              ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
+                              : "border-gray-200 bg-white hover:border-blue-200"
+                          }`}
+                        >
+                          <div className="text-xs font-black text-gray-900">{item[1]}</div>
+                          <div className="mt-1 text-[10px] leading-4 text-gray-500">{item[2]}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-700">Tanggal Update *</label>
+                      <Input
+                        type="date"
+                        value={externalJourneyDate}
+                        onChange={event => setExternalJourneyDate(event.target.value)}
+                      />
+                    </div>
+
+                    {externalJourneyAction === "FORWARD" && (
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-gray-700">Fungsi / Unit Berikutnya *</label>
+                        <Input
+                          value={externalJourneyDestination}
+                          onChange={event => setExternalJourneyDestination(event.target.value)}
+                          placeholder="Contoh: Sekretaris Direksi"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-gray-700">Catatan *</label>
+                    <Textarea
+                      value={externalJourneyNotes}
+                      onChange={event => setExternalJourneyNotes(event.target.value)}
+                      rows={4}
+                      placeholder={
+                        externalJourneyAction === "RETURN_FOR_REVISION"
+                          ? "Contoh: Legal meminta revisi Pasal 4 sebelum diparaf."
+                          : externalJourneyAction === "FORWARD"
+                          ? "Contoh: Draft sudah diparaf Legal, lanjut ke Sekretaris Direksi untuk TTD Direksi."
+                          : "Contoh: Dokumen sudah selesai seluruh proses dan kembali ke PIC."
+                      }
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-black text-blue-900">
+                      <Camera className="h-4 w-4" /> Foto Bukti
+                    </div>
+                    <p className="mt-1 text-[10px] text-blue-700">
+                      Opsional. Upload jika ada bukti serah-terima pada step ini.
+                    </p>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={event => setExternalJourneyPhoto(event.target.files?.[0] || null)}
+                      className="mt-3 bg-white"
+                    />
+                    {externalJourneyPhoto && (
+                      <div className="mt-2 text-[10px] font-semibold text-blue-800">
+                        {externalJourneyPhoto.name} · {(externalJourneyPhoto.size / 1024).toFixed(1)} KB
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4">
+                  <Button type="button" variant="outline" disabled={submitting} onClick={closeExternalJourney}>
+                    Batal
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={submitting}
+                    onClick={submitExternalJourney}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    {submitting ? "Menyimpan..." : "Simpan Update Journey"}
                   </Button>
                 </div>
               </div>
@@ -2871,6 +3345,85 @@ const TandaTerimaV14Page:
                       </table>
                     </div>
                   </div>
+
+                  {detailReceipt.externalReceiver && (
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="text-sm font-black text-gray-900">Journey Fungsi Lainnya</div>
+                        <span
+                          className={`rounded-md border px-2 py-1 text-[10px] font-black ${
+                            detailReceipt.externalJourneyState === "DONE"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : detailReceipt.externalJourneyState === "RETURNED_FOR_REVISION"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-blue-200 bg-blue-50 text-blue-700"
+                          }`}
+                        >
+                          {detailReceipt.externalJourneyState === "DONE"
+                            ? "SELESAI"
+                            : detailReceipt.externalJourneyState === "RETURNED_FOR_REVISION"
+                            ? "REVISI"
+                            : "AKTIF"}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {getExternalJourneyStepsV23(detailReceipt).map(step => (
+                          <div
+                            key={step.id}
+                            className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3"
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <div className="text-[10px] font-black uppercase tracking-wide text-indigo-600">
+                                  Step {step.sequence} · {
+                                    step.action === "HANDOVER_EXTERNAL"
+                                      ? "Penyerahan Awal"
+                                      : step.action === "RETURNED_FOR_REVISION"
+                                      ? "Dikembalikan untuk Revisi"
+                                      : step.action === "FORWARDED_EXTERNAL"
+                                      ? "Dilanjutkan"
+                                      : "Journey Selesai"
+                                  }
+                                </div>
+                                <div className="mt-1 text-xs font-black text-gray-900">
+                                  {step.fromLocation} → {step.toLocation}
+                                </div>
+                                <div className="mt-1 text-[10px] text-gray-500">
+                                  {formatDateOnly(step.eventDate)} · dicatat {step.recordedByName}
+                                </div>
+                              </div>
+
+                              {step.evidenceFileId && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    void downloadDocumentHandoverFile(
+                                      step.evidenceFileId!,
+                                      step.evidenceFileName
+                                    ).catch(error => {
+                                      window.alert(
+                                        error instanceof Error
+                                          ? error.message
+                                          : "Foto journey tidak dapat didownload."
+                                      );
+                                    });
+                                  }}
+                                  className="h-8 gap-2 bg-white text-[11px]"
+                                >
+                                  <Download className="h-3.5 w-3.5" /> Download Foto
+                                </Button>
+                              )}
+                            </div>
+
+                            <div className="mt-2 text-[11px] leading-5 text-gray-600">{step.notes}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <div className="mb-3 text-sm font-black text-gray-900">
