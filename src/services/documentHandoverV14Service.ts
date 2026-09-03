@@ -18,6 +18,33 @@ const HANDOVER_STORAGE_KEY =
 export const EXTERNAL_RECEIVER_ID =
   "__FUNGSI_LAINNYA__";
 
+export type ExternalJourneyAction =
+  | "HANDOVER_EXTERNAL"
+  | "RETURNED_FOR_REVISION"
+  | "FORWARDED_EXTERNAL"
+  | "JOURNEY_DONE";
+
+export type ExternalJourneyState =
+  | "AT_EXTERNAL"
+  | "RETURNED_FOR_REVISION"
+  | "DONE";
+
+export type ExternalJourneyStep = {
+  id: string;
+  sequence: number;
+  action: ExternalJourneyAction;
+  eventDate: string;
+  fromLocation: string;
+  toLocation: string;
+  notes: string;
+  recordedAt: string;
+  recordedByUserId: string;
+  recordedByName: string;
+  evidenceFileId?: string;
+  evidenceFileName?: string;
+  evidenceFileSize?: number;
+};
+
 export type V14DocumentHandover =
   Omit<
     DocumentHandover,
@@ -32,6 +59,12 @@ export type V14DocumentHandover =
     receiverDepartment: string;
     externalReceiver?: boolean;
     externalDestination?: string;
+    externalJourneyState?: ExternalJourneyState;
+    externalJourneyCurrentLocation?: string;
+    externalJourneySteps?: ExternalJourneyStep[];
+    externalJourneyClosedAt?: string;
+    externalJourneyClosedByUserId?: string;
+    externalJourneyClosedByName?: string;
     cycleNumber?: number;
   };
 
@@ -61,6 +94,60 @@ type EvidenceInput = {
   fileName: string;
   fileSize: number;
 };
+
+const fallbackExternalJourneySteps = (
+  receipt: V14DocumentHandover
+): ExternalJourneyStep[] => {
+  if (!receipt.externalReceiver) {
+    return [];
+  }
+
+  if (
+    Array.isArray(receipt.externalJourneySteps) &&
+    receipt.externalJourneySteps.length > 0
+  ) {
+    return receipt.externalJourneySteps;
+  }
+
+  const destination =
+    receipt.externalDestination?.trim() ||
+    receipt.receiverName?.trim() ||
+    "Fungsi Lainnya";
+
+  return [
+    {
+      id: `${receipt.id}-EXT-STEP-01`,
+      sequence: 1,
+      action: "HANDOVER_EXTERNAL",
+      eventDate: receipt.handoverDate,
+      fromLocation: receipt.senderName,
+      toLocation: destination,
+      notes:
+        receipt.receiverDecisionNotes ||
+        `Penyerahan awal ke ${destination}.`,
+      recordedAt:
+        receipt.submittedAt ||
+        new Date().toISOString(),
+      recordedByUserId:
+        receipt.submittedByUserId ||
+        receipt.senderUserId,
+      recordedByName:
+        receipt.submittedByName ||
+        receipt.senderName,
+      evidenceFileId:
+        receipt.submissionPhotoFileId,
+      evidenceFileName:
+        receipt.submissionPhotoFileName,
+      evidenceFileSize:
+        receipt.submissionPhotoFileSize,
+    },
+  ];
+};
+
+export const getExternalJourneyStepsV23 = (
+  receipt: V14DocumentHandover
+): ExternalJourneyStep[] =>
+  fallbackExternalJourneySteps(receipt);
 
 const getRecords =
   (): V14DocumentHandover[] =>
@@ -507,7 +594,7 @@ export const createDocumentHandoverV14 = (
           : undefined,
       receiverDecisionNotes:
         isExternal
-          ? `Penyerahan ke Fungsi Lainnya (${externalDestination}) dicatat final tanpa proses acknowledgement di Dashboard Marketing.`
+          ? `Penyerahan ke Fungsi Lainnya (${externalDestination}) dicatat diterima pada hari penyerahan. Journey tetap aktif dan dikelola pengirim sampai ditutup.`
           : undefined,
 
       externalReceiver:
@@ -515,6 +602,34 @@ export const createDocumentHandoverV14 = (
       externalDestination:
         isExternal
           ? externalDestination
+          : undefined,
+      externalJourneyState:
+        isExternal
+          ? "AT_EXTERNAL"
+          : undefined,
+      externalJourneyCurrentLocation:
+        isExternal
+          ? externalDestination
+          : undefined,
+      externalJourneySteps:
+        isExternal
+          ? [
+              {
+                id: `${input.receiptId}-EXT-STEP-01`,
+                sequence: 1,
+                action: "HANDOVER_EXTERNAL",
+                eventDate: input.handoverDate,
+                fromLocation: sender.name,
+                toLocation: externalDestination,
+                notes: `Penyerahan awal ke ${externalDestination}.`,
+                recordedAt: now,
+                recordedByUserId: sender.id,
+                recordedByName: sender.name,
+                evidenceFileId: input.evidence.fileId,
+                evidenceFileName: input.evidence.fileName,
+                evidenceFileSize: input.evidence.fileSize,
+              },
+            ]
           : undefined,
       cycleNumber: 1,
     };
@@ -535,7 +650,7 @@ export const createDocumentHandoverV14 = (
     undefined,
     receipt.status,
     isExternal
-      ? `${sender.name} menyerahkan dokumen ke Fungsi Lainnya: ${externalDestination}. Registry langsung berstatus DITERIMA.`
+      ? `${sender.name} menyerahkan dokumen ke Fungsi Lainnya: ${externalDestination}. Journey eksternal dimulai dan tetap dikelola pengirim.`
       : `${sender.name} menyerahkan dokumen kepada ${receiver!.name}.`,
     itemSummary(
       input.items
@@ -559,6 +674,141 @@ export const createDocumentHandoverV14 = (
   return receipt;
 };
 
+export const updateExternalDocumentJourneyV23 = (
+  receiptId: string,
+  input: {
+    action:
+      | "RETURN_FOR_REVISION"
+      | "FORWARD"
+      | "DONE";
+    eventDate: string;
+    nextDestination?: string;
+    notes: string;
+    evidence?: EvidenceInput;
+  }
+): V14DocumentHandover => {
+  const currentUser =
+    store.getCurrentUser();
+
+  const {
+    records,
+    index,
+    receipt,
+  } = findReceipt(receiptId);
+
+  if (!receipt.externalReceiver) {
+    throw new Error(
+      "Kelola Journey hanya tersedia untuk penerima Fungsi Lainnya."
+    );
+  }
+
+  if (receipt.senderUserId !== currentUser.id) {
+    throw new Error(
+      "Hanya pengirim awal yang dapat mengelola journey Fungsi Lainnya."
+    );
+  }
+
+  const currentState: ExternalJourneyState =
+    receipt.externalJourneyState || "AT_EXTERNAL";
+
+  if (currentState === "DONE") {
+    throw new Error("Journey dokumen ini sudah ditutup.");
+  }
+
+  if (!input.eventDate) {
+    throw new Error("Tanggal update journey wajib diisi.");
+  }
+
+  const notes = input.notes.trim();
+  if (!notes) {
+    throw new Error("Catatan update journey wajib diisi.");
+  }
+
+  const nextDestination = input.nextDestination?.trim() || "";
+  if (input.action === "FORWARD" && !nextDestination) {
+    throw new Error("Fungsi / unit tujuan berikutnya wajib diisi.");
+  }
+
+  const existingSteps = fallbackExternalJourneySteps(receipt);
+  const currentLocation =
+    receipt.externalJourneyCurrentLocation?.trim() ||
+    (currentState === "RETURNED_FOR_REVISION"
+      ? receipt.senderName
+      : receipt.externalDestination?.trim() || receipt.receiverName);
+  const sequence = existingSteps.length + 1;
+
+  let action: ExternalJourneyAction;
+  let nextState: ExternalJourneyState;
+  let toLocation: string;
+  let auditAction: string;
+  let auditReason: string;
+
+  if (input.action === "RETURN_FOR_REVISION") {
+    action = "RETURNED_FOR_REVISION";
+    nextState = "RETURNED_FOR_REVISION";
+    toLocation = receipt.senderName;
+    auditAction = "EXTERNAL_RETURNED_FOR_REVISION";
+    auditReason = `${currentLocation} mengembalikan dokumen kepada ${receipt.senderName} untuk revisi.`;
+  } else if (input.action === "FORWARD") {
+    action = "FORWARDED_EXTERNAL";
+    nextState = "AT_EXTERNAL";
+    toLocation = nextDestination;
+    auditAction = "EXTERNAL_FORWARDED";
+    auditReason = `Journey dilanjutkan dari ${currentLocation} ke ${nextDestination}.`;
+  } else {
+    action = "JOURNEY_DONE";
+    nextState = "DONE";
+    toLocation = "Journey Selesai";
+    auditAction = "EXTERNAL_JOURNEY_DONE";
+    auditReason = `${currentUser.name} menutup journey dokumen. Posisi terakhir: ${currentLocation}.`;
+  }
+
+  const now = new Date().toISOString();
+  const step: ExternalJourneyStep = {
+    id: `${receipt.id}-EXT-STEP-${String(sequence).padStart(2, "0")}`,
+    sequence,
+    action,
+    eventDate: input.eventDate,
+    fromLocation: currentLocation,
+    toLocation,
+    notes,
+    recordedAt: now,
+    recordedByUserId: currentUser.id,
+    recordedByName: currentUser.name,
+    evidenceFileId: input.evidence?.fileId,
+    evidenceFileName: input.evidence?.fileName,
+    evidenceFileSize: input.evidence?.fileSize,
+  };
+
+  const updated: V14DocumentHandover = {
+    ...receipt,
+    externalJourneyState: nextState,
+    externalJourneyCurrentLocation:
+      nextState === "DONE" ? currentLocation : toLocation,
+    externalJourneySteps: [...existingSteps, step],
+    externalJourneyClosedAt: nextState === "DONE" ? now : undefined,
+    externalJourneyClosedByUserId:
+      nextState === "DONE" ? currentUser.id : undefined,
+    externalJourneyClosedByName:
+      nextState === "DONE" ? currentUser.name : undefined,
+  };
+
+  records[index] = updated;
+  saveRecords(records);
+
+  addAudit(
+    auditAction,
+    receipt.id,
+    receipt.status,
+    updated.status,
+    `${auditReason} Catatan: ${notes}`,
+    `${currentLocation} -> ${toLocation}`,
+    input.evidence
+  );
+
+  return updated;
+};
+
 export const resendDocumentHandoverV14 = (
   receiptId: string,
   input: {
@@ -580,7 +830,7 @@ export const resendDocumentHandoverV14 = (
 
   if (receipt.externalReceiver) {
     throw new Error(
-      "Tanda Terima Fungsi Lainnya sudah final dan tidak menggunakan siklus kirim ulang."
+      "Tanda Terima Fungsi Lainnya menggunakan Kelola Journey, bukan siklus Kirim Lagi internal."
     );
   }
 
