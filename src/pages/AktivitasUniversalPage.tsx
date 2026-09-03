@@ -445,7 +445,6 @@ const AktivitasUniversalPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkHandledRef = useRef<string | null>(null);
   const directoryFetchedAtRef = useRef(0);
-  const detailRef = useRef<ActivityDetailPayload | null>(null);
   const [unseenCountByActivityId, setUnseenCountByActivityId] =
     useState<Record<string, number>>({});
   const [
@@ -548,10 +547,6 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const [workspaceSection, setWorkspaceSection] =
     useState<"WORKSPACE" | "MONITORING">("WORKSPACE");
-
-  useEffect(() => {
-    detailRef.current = detail;
-  }, [detail]);
 
   const profileMap = useMemo(
     () =>
@@ -704,7 +699,7 @@ const AktivitasUniversalPage: React.FC = () => {
       .filter((item): item is DirectoryProfile => Boolean(item))
       .sort((a, b) =>
         getWorkspaceBranchLabel(a).localeCompare(
-          b.full_name,
+          getWorkspaceBranchLabel(b),
           "id"
         )
       );
@@ -797,7 +792,6 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const refresh = async (options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
-    const activeDetailId = detailRef.current?.activity.id || null;
 
     if (!silent) {
       setLoading(true);
@@ -811,7 +805,6 @@ const AktivitasUniversalPage: React.FC = () => {
         actionRoleRows,
         attentionRows,
         discussionAttentionRows,
-        liveDetailRows,
       ] = await Promise.all([
         getUniversalActivities(),
         Date.now() - directoryFetchedAtRef.current > 5 * 60_000
@@ -820,15 +813,6 @@ const AktivitasUniversalPage: React.FC = () => {
         getMyActivityActionRoles(),
         getMyActivityAttention(profile?.id || ""),
         getMyActivityDiscussionAttention(profile?.id || ""),
-        activeDetailId
-          ? getUniversalActivityDetail(activeDetailId).catch((detailError) => {
-              console.warn(
-                "Gagal menyinkronkan detail aktivitas aktif:",
-                detailError
-              );
-              return null;
-            })
-          : Promise.resolve<ActivityDetailPayload | null>(null),
       ]);
 
       setActivities(activityRows);
@@ -866,18 +850,6 @@ const AktivitasUniversalPage: React.FC = () => {
           return result;
         }, {})
       );
-
-      if (
-        liveDetailRows &&
-        detailRef.current?.activity.id ===
-          activeDetailId
-      ) {
-        detailRef.current = liveDetailRows;
-        setDetail(liveDetailRows);
-        setProgressValue(
-          liveDetailRows.activity.progress
-        );
-      }
 
       setError("");
     } catch (err) {
@@ -930,6 +902,8 @@ const AktivitasUniversalPage: React.FC = () => {
     void refresh();
     void runActivityMaintenanceBestEffort();
 
+    // Primary live path: refresh Activity + action roles immediately when
+    // another user changes a task (e.g. submit validation / approve / revise).
     let realtimeRefreshTimer: number | null = null;
 
     const activityRealtimeChannel = supabase
@@ -953,6 +927,8 @@ const AktivitasUniversalPage: React.FC = () => {
       )
       .subscribe();
 
+    // Realtime is the primary live path. This slow poll is only a
+    // resilience fallback if a websocket silently drops.
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void refresh({ silent: true });
@@ -1186,6 +1162,7 @@ const AktivitasUniversalPage: React.FC = () => {
     subordinateIds,
   ]);
 
+
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(calendarMonth);
     const monthEnd = endOfMonth(calendarMonth);
@@ -1417,6 +1394,8 @@ const AktivitasUniversalPage: React.FC = () => {
         actionRole
       );
 
+    // Personal task is a self-managed diary.
+    // Never route it into managerial validation.
     const resolvedTargetStatus =
       isPersonalActivity(activity) &&
       targetStatus === "PENDING_VALIDATION"
@@ -1788,7 +1767,6 @@ const AktivitasUniversalPage: React.FC = () => {
         }));
       }
 
-      detailRef.current = nextDetail;
       setDetail(nextDetail);
       setProgressValue(nextDetail.activity.progress);
     } catch (err: any) {
@@ -1804,12 +1782,6 @@ const AktivitasUniversalPage: React.FC = () => {
 
   const deepLinkedTaskId =
     searchParams.get("task");
-
-  const requestedDetailTab =
-    searchParams.get("tab");
-
-  const requestedCommentId =
-    searchParams.get("comment");
 
   useEffect(() => {
     if (
@@ -1832,6 +1804,13 @@ const AktivitasUniversalPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkedTaskId, profile?.id]);
 
+  const requestedDetailTab =
+    searchParams.get("tab");
+
+  const requestedCommentId =
+    searchParams.get("comment");
+
+
   useEffect(() => {
     if (
       detailTab !== "discussion" ||
@@ -1852,7 +1831,6 @@ const AktivitasUniversalPage: React.FC = () => {
           );
 
         if (!cancelled) {
-          detailRef.current = refreshed;
           setDetail(refreshed);
         }
 
@@ -1883,6 +1861,7 @@ const AktivitasUniversalPage: React.FC = () => {
     profile?.id,
   ]);
 
+
   const handleUpdateProgress = async () => {
     if (!detail) return;
 
@@ -1901,7 +1880,6 @@ const AktivitasUniversalPage: React.FC = () => {
           detail.activity.id
         );
 
-      detailRef.current = refreshed;
       setDetail(refreshed);
       setProgressValue(refreshed.activity.progress);
     } catch (err: any) {
@@ -1933,7 +1911,6 @@ const AktivitasUniversalPage: React.FC = () => {
           detail.activity.id
         );
 
-      detailRef.current = refreshed;
       setDetail(refreshed);
     } catch (err: any) {
       console.error(err);
@@ -1992,7 +1969,6 @@ const AktivitasUniversalPage: React.FC = () => {
           detail.activity.id
         );
 
-      detailRef.current = refreshed;
       setDetail(refreshed);
     } catch (err: any) {
       console.error(err);
@@ -2003,6 +1979,7 @@ const AktivitasUniversalPage: React.FC = () => {
       setAttachmentBusy(false);
     }
   };
+
 
   return (
     <AppLayout>
@@ -2180,859 +2157,591 @@ const AktivitasUniversalPage: React.FC = () => {
 
         {workspaceSection === "WORKSPACE" ? (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Card
-                role="button"
-                tabIndex={0}
-                title="Klik untuk lihat task"
-                className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                onClick={() => focusActivitySummary("MY")}
-              >
-                <CardContent className="flex items-center gap-3 p-5">
-                  <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
-                    <ListTodo className="h-5 w-5" />
-                  </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            onClick={() => focusActivitySummary("MY")}
+          >
+            <CardContent className="flex items-center gap-3 p-5">
+              <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
+                <ListTodo className="h-5 w-5" />
+              </div>
 
-                  <div>
-                    <div className="text-2xl font-black text-slate-900">
-                      {myCount}
-                    </div>
-
-                    <div className="text-xs text-slate-500">
-                      Aktivitas Saya
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card
-                role="button"
-                tabIndex={0}
-                title="Klik untuk lihat task"
-                className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                onClick={() => focusActivitySummary("ALL", "ON_PROGRESS")}
-              >
-                <CardContent className="flex items-center gap-3 p-5">
-                  <div className="rounded-lg bg-amber-50 p-2 text-amber-700">
-                    <Clock3 className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-black text-slate-900">
-                      {onProgressCount}
-                    </div>
-
-                    <div className="text-xs text-slate-500">
-                      On Progress
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card
-                role="button"
-                tabIndex={0}
-                title="Klik untuk lihat task overdue"
-                className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500/30"
-                onClick={() => focusActivitySummary("OVERDUE")}
-              >
-                <CardContent className="flex items-center gap-3 p-5">
-                  <div className="rounded-lg bg-red-50 p-2 text-red-700">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-black text-slate-900">
-                      {overdueCount}
-                    </div>
-
-                    <div className="text-xs text-slate-500">
-                      Due / Overdue
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card
-                role="button"
-                tabIndex={0}
-                title="Klik untuk proses task"
-                className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                onClick={() => focusActivitySummary("ACTION")}
-              >
-                <CardContent className="flex items-center gap-3 p-5">
-                  <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-black text-slate-900">
-                      {actionCount}
-                    </div>
-
-                    <div className="text-xs text-slate-500">
-                      Need My Action
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card id="activity-results">
-              <CardHeader className="pb-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-sm">
-                      Aktivitas
-                    </CardTitle>
-
-                    {unseenActivityCount > 0 && (
-                      <Badge className="border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
-                        {unseenActivityCount} belum dilihat
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        viewMode === "KANBAN"
-                          ? "default"
-                          : "ghost"
-                      }
-                      className="h-8"
-                      onClick={() =>
-                        changeViewMode(
-                          "KANBAN"
-                        )
-                      }
-                    >
-                      <ListTodo className="mr-1.5 h-4 w-4" />
-                      Kanban
-                    </Button>
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        viewMode === "LIST"
-                          ? "default"
-                          : "ghost"
-                      }
-                      className="h-8"
-                      onClick={() =>
-                        changeViewMode(
-                          "LIST"
-                        )
-                      }
-                    >
-                      <Rows3 className="mr-1.5 h-4 w-4" />
-                      List
-                    </Button>
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        viewMode === "CALENDAR"
-                          ? "default"
-                          : "ghost"
-                      }
-                      className="h-8"
-                      onClick={() =>
-                        changeViewMode(
-                          "CALENDAR"
-                        )
-                      }
-                    >
-                      <CalendarDays className="mr-1.5 h-4 w-4" />
-                      Calendar
-                    </Button>
-                  </div>
+              <div>
+                <div className="text-2xl font-black text-slate-900">
+                  {myCount}
                 </div>
-              </CardHeader>
 
-              <CardContent>
-                {hasSubordinates && (
-                  <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                      Filter Organisasi
-                    </div>
+                <div className="text-xs text-slate-500">
+                  Aktivitas Saya
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-                    <div
-                      className={`grid gap-3 ${
-                        isDirectorWorkspace
-                          ? "md:grid-cols-3"
-                          : "md:grid-cols-2"
-                      }`}
-                    >
-                      {isDirectorWorkspace && (
-                        <Select
-                          value={workspaceDivisionId}
-                          onValueChange={(value) => {
-                            setWorkspaceDivisionId(value);
-                            setWorkspaceBranchId("ALL");
-                            setWorkspacePicId("ALL");
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Pilih Divisi" />
-                          </SelectTrigger>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            onClick={() => focusActivitySummary("ALL", "ON_PROGRESS")}
+          >
+            <CardContent className="flex items-center gap-3 p-5">
+              <div className="rounded-lg bg-amber-50 p-2 text-amber-700">
+                <Clock3 className="h-5 w-5" />
+              </div>
 
-                          <SelectContent>
-                            <SelectItem value="ALL">
-                              Semua Divisi
-                            </SelectItem>
+              <div>
+                <div className="text-2xl font-black text-slate-900">
+                  {onProgressCount}
+                </div>
 
-                            {workspaceDivisionOptions.map((division) => (
-                              <SelectItem
-                                key={division.id}
-                                value={division.id}
-                              >
-                                {getWorkspaceDivisionLabel(division)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                <div className="text-xs text-slate-500">
+                  On Progress
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-                      <Select
-                        value={workspaceBranchId}
-                        onValueChange={(value) => {
-                          setWorkspaceBranchId(value);
-                          setWorkspacePicId("ALL");
-                        }}
-                        disabled={
-                          isDirectorWorkspace &&
-                          workspaceDivisionId === "ALL"
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              isDirectorWorkspace
-                                ? workspaceDivisionId === "ALL"
-                                  ? "Pilih Divisi dulu"
-                                  : "Pilih Sub Unit"
-                                : `Pilih ${workspaceManagerFilterLabel}`
-                            }
-                          />
-                        </SelectTrigger>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk lihat task overdue"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            onClick={() => focusActivitySummary("OVERDUE")}
+          >
+            <CardContent className="flex items-center gap-3 p-5">
+              <div className="rounded-lg bg-red-50 p-2 text-red-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
 
-                        <SelectContent>
-                          <SelectItem value="ALL">
-                            {isDirectorWorkspace
-                              ? "Semua Sub Unit"
-                              : `Semua ${workspaceManagerFilterLabel}`}
-                          </SelectItem>
+              <div>
+                <div className="text-2xl font-black text-slate-900">
+                  {overdueCount}
+                </div>
 
-                          {workspaceBranchOptions.map((branch) => (
-                            <SelectItem
-                              key={branch.id}
-                              value={branch.id}
-                            >
-                              {getWorkspaceBranchLabel(branch)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                <div className="text-xs text-slate-500">
+                  Due / Overdue
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-                      <Select
-                        value={workspacePicId}
-                        onValueChange={setWorkspacePicId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih PIC" />
-                        </SelectTrigger>
+          <Card
+            role="button"
+            tabIndex={0}
+            title="Klik untuk proses task"
+            className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            onClick={() => focusActivitySummary("ACTION")}
+          >
+            <CardContent className="flex items-center gap-3 p-5">
+              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
 
-                        <SelectContent>
-                          <SelectItem value="ALL">
-                            Semua PIC
-                          </SelectItem>
+              <div>
+                <div className="text-2xl font-black text-slate-900">
+                  {actionCount}
+                </div>
 
-                          {workspacePicProfiles.map((person) => (
-                            <SelectItem
-                              key={person.id}
-                              value={person.id}
-                            >
-                              {person.full_name} — {getOrgLabel(person)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                <div className="text-xs text-slate-500">
+                  Need My Action
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                    <div className="mt-2 text-[10px] text-slate-500">
-                      Filter hanya mempersempit aktivitas yang memang sudah boleh dilihat berdasarkan hierarchy akun.
-                    </div>
-                  </div>
+        <Card id="activity-results">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-sm">
+                  Aktivitas
+                </CardTitle>
+
+                {unseenActivityCount > 0 && (
+                  <Badge className="border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                    {unseenActivityCount} belum dilihat
+                  </Badge>
                 )}
+              </div>
 
-                <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    viewMode === "KANBAN"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() =>
+                    changeViewMode(
+                      "KANBAN"
+                    )
+                  }
+                >
+                  <ListTodo className="mr-1.5 h-4 w-4" />
+                  Kanban
+                </Button>
 
-                    <Input
-                      className="pl-9"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Cari aktivitas, PIC, unit..."
-                    />
-                  </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    viewMode === "LIST"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() =>
+                    changeViewMode(
+                      "LIST"
+                    )
+                  }
+                >
+                  <Rows3 className="mr-1.5 h-4 w-4" />
+                  List
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    viewMode === "CALENDAR"
+                      ? "default"
+                      : "ghost"
+                  }
+                  className="h-8"
+                  onClick={() =>
+                    changeViewMode(
+                      "CALENDAR"
+                    )
+                  }
+                >
+                  <CalendarDays className="mr-1.5 h-4 w-4" />
+                  Calendar
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            {hasSubordinates && (
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Filter Organisasi
+                </div>
+
+                <div
+                  className={`grid gap-3 ${
+                    isDirectorWorkspace
+                      ? "md:grid-cols-3"
+                      : "md:grid-cols-2"
+                  }`}
+                >
+                  {isDirectorWorkspace && (
+                    <Select
+                      value={workspaceDivisionId}
+                      onValueChange={(value) => {
+                        setWorkspaceDivisionId(value);
+                        setWorkspaceBranchId("ALL");
+                        setWorkspacePicId("ALL");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih Divisi" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        <SelectItem value="ALL">
+                          Semua Divisi
+                        </SelectItem>
+
+                        {workspaceDivisionOptions.map((division) => (
+                          <SelectItem
+                            key={division.id}
+                            value={division.id}
+                          >
+                            {getWorkspaceDivisionLabel(division)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
 
                   <Select
-                    value={scope}
-                    onValueChange={(value) =>
-                      setScope(value as ScopeFilter)
+                    value={workspaceBranchId}
+                    onValueChange={(value) => {
+                      setWorkspaceBranchId(value);
+                      setWorkspacePicId("ALL");
+                    }}
+                    disabled={
+                      isDirectorWorkspace &&
+                      workspaceDivisionId === "ALL"
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue
+                        placeholder={
+                          isDirectorWorkspace
+                            ? workspaceDivisionId === "ALL"
+                              ? "Pilih Divisi dulu"
+                              : "Pilih Sub Unit"
+                            : `Pilih ${workspaceManagerFilterLabel}`
+                        }
+                      />
                     </SelectTrigger>
 
                     <SelectContent>
-                      <SelectItem value="ALL">All Visible</SelectItem>
-                      <SelectItem value="MY">My Activities</SelectItem>
-                      <SelectItem value="TEAM">Team</SelectItem>
-                      <SelectItem value="ACTION">Need My Action</SelectItem>
-                      <SelectItem value="OVERDUE">Overdue</SelectItem>
+                      <SelectItem value="ALL">
+                        {isDirectorWorkspace
+                          ? "Semua Sub Unit"
+                          : `Semua ${workspaceManagerFilterLabel}`}
+                      </SelectItem>
+
+                      {workspaceBranchOptions.map((branch) => (
+                        <SelectItem
+                          key={branch.id}
+                          value={branch.id}
+                        >
+                          {getWorkspaceBranchLabel(branch)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
 
                   <Select
-                    value={statusFilter}
-                    onValueChange={setStatusFilter}
+                    value={workspacePicId}
+                    onValueChange={setWorkspacePicId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Status" />
+                      <SelectValue placeholder="Pilih PIC" />
                     </SelectTrigger>
 
                     <SelectContent>
-                      <SelectItem value="ALL">Semua Status</SelectItem>
+                      <SelectItem value="ALL">
+                        Semua PIC
+                      </SelectItem>
 
-                      {Object.entries(STATUS_LABELS).map(
-                        ([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={categoryFilter}
-                    onValueChange={setCategoryFilter}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Kategori" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="ALL">Semua Kategori</SelectItem>
-
-                      {Object.entries(CATEGORY_LABELS).map(
-                        ([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        )
-                      )}
+                      {workspacePicProfiles.map((person) => (
+                        <SelectItem
+                          key={person.id}
+                          value={person.id}
+                        >
+                          {person.full_name} — {getOrgLabel(person)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {viewMode === "KANBAN" ? (
-                  <div className="overflow-x-auto pb-2">
-                    {statusFilter === "CANCELLED" ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                        Aktivitas Cancelled disimpan sebagai archive. Gunakan List View untuk melihatnya.
-                      </div>
-                    ) : (
-                      <div className="grid min-w-max auto-cols-[290px] grid-flow-col gap-3">
-                        {KANBAN_STATUSES.map((bucketStatus) => {
-                          const bucketItems =
-                            filteredActivities.filter(
-                              (activity) =>
-                                activity.status === bucketStatus
-                            );
+                <div className="mt-2 text-[10px] text-slate-500">
+                  Filter hanya mempersempit aktivitas yang memang sudah boleh dilihat berdasarkan hierarchy akun.
+                </div>
+              </div>
+            )}
 
-                          return (
-                            <div
-                              key={bucketStatus}
-                              className="flex min-h-[420px] w-[290px] flex-col rounded-xl border border-slate-200 bg-slate-50/80"
-                              onDragOver={(event) => {
-                                event.preventDefault();
-                                event.dataTransfer.dropEffect = "move";
-                              }}
-                              onDrop={(event) => {
-                                event.preventDefault();
-                                const activityId =
-                                  event.dataTransfer.getData(
-                                    "text/activity-id"
-                                  );
+            <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
 
-                                if (activityId) {
-                                  handleKanbanDrop(
-                                    activityId,
-                                    bucketStatus
-                                  );
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
-                                <div className="text-[11px] font-black uppercase tracking-wide text-slate-700">
-                                  {STATUS_LABELS[bucketStatus]}
-                                </div>
+                <Input
+                  className="pl-9"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Cari aktivitas, PIC, unit..."
+                />
+              </div>
 
-                                <div className="flex items-center gap-1.5">
-                                  {bucketItems.some(
-                                    (activity) =>
-                                      (unseenCountByActivityId[
-                                        activity.id
-                                      ] || 0) > 0
-                                  ) && (
-                                    <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
-                                      {
-                                        bucketItems.filter(
-                                          (activity) =>
-                                            (unseenCountByActivityId[
-                                              activity.id
-                                            ] || 0) > 0
-                                        ).length
-                                      } baru
-                                    </Badge>
-                                  )}
+              <Select
+                value={scope}
+                onValueChange={(value) =>
+                  setScope(value as ScopeFilter)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
 
-                                  <Badge variant="secondary">
-                                    {bucketItems.length}
-                                  </Badge>
-                                </div>
-                              </div>
+                <SelectContent>
+                  <SelectItem value="ALL">All Visible</SelectItem>
+                  <SelectItem value="MY">My Activities</SelectItem>
+                  <SelectItem value="TEAM">Team</SelectItem>
+                  <SelectItem value="ACTION">Need My Action</SelectItem>
+                  <SelectItem value="OVERDUE">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
 
-                              <div className="flex-1 space-y-3 p-3">
-                                {bucketItems.length === 0 ? (
-                                  <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-center text-[11px] text-slate-400">
-                                    Drop task ke sini jika flow mengizinkan.
-                                  </div>
-                                ) : (
-                                  bucketItems.map((activity) => {
-                                    const owner =
-                                      profileMap.get(
-                                        activity.owner_profile_id
-                                      );
+              <Select
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
 
-                                    const unseenCount =
-                                      unseenCountByActivityId[
-                                        activity.id
-                                      ] || 0;
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Status</SelectItem>
 
-                                    const discussionUnreadCount =
-                                      discussionUnreadCountByActivityId[
-                                        activity.id
-                                      ] || 0;
+                  {Object.entries(STATUS_LABELS).map(
+                    ([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
 
-                                    const actionRole =
-                                      actionRoleByActivityId[
-                                        activity.id
-                                      ];
+              <Select
+                value={categoryFilter}
+                onValueChange={setCategoryFilter}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Kategori" />
+                </SelectTrigger>
 
-                                    const allowedTargets =
-                                      getAllowedTransitionTargets(
-                                        activity,
-                                        actionRole
-                                      );
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Kategori</SelectItem>
 
-                                    const canDrag =
-                                      allowedTargets.length > 0;
+                  {Object.entries(CATEGORY_LABELS).map(
+                    ([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
 
-                                    const actionBadgeLabel =
-                                      actionRole === "OWNER" &&
-                                      activity.status === "ON_PROGRESS" &&
-                                      Boolean(activity.validation_notes)
-                                        ? "Returned to You"
-                                        : actionRole
-                                        ? ACTION_ROLE_LABELS[actionRole]
-                                        : "Observer";
-
-                                    return (
-                                      <div
-                                        key={activity.id}
-                                        draggable={canDrag}
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-label={`Buka detail aktivitas ${activity.title}`}
-                                        onClick={() =>
-                                          openActivityDetail(
-                                            activity.id
-                                          )
-                                        }
-                                        onKeyDown={(event) => {
-                                          if (
-                                            event.key === "Enter" ||
-                                            event.key === " "
-                                          ) {
-                                            event.preventDefault();
-                                            openActivityDetail(
-                                              activity.id
-                                            );
-                                          }
-                                        }}
-                                        onDragStart={(event) => {
-                                          if (!canDrag) {
-                                            event.preventDefault();
-                                            return;
-                                          }
-
-                                          event.dataTransfer.effectAllowed =
-                                            "move";
-                                          event.dataTransfer.setData(
-                                            "text/activity-id",
-                                            activity.id
-                                          );
-                                        }}
-                                        className={`group rounded-xl border p-3 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
-                                          unseenCount > 0
-                                            ? "bg-slate-100 border-slate-300 shadow-md"
-                                            : "bg-white"
-                                        } ${
-                                          canDrag
-                                            ? "cursor-grab border-slate-200 hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
-                                            : "cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md"
-                                        }`}
-                                      >
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="min-w-0 flex-1 text-left">
-                                            <div className="line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-blue-700">
-                                              {activity.title}
-                                            </div>
-                                          </div>
-
-                                          <Badge
-                                            variant="outline"
-                                            className={`shrink-0 gap-1 text-[9px] ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
-                                          >
-                                            {activity.priority === "URGENT" && (
-                                              <AlertTriangle className="h-3 w-3" />
-                                            )}
-                                            {activity.priority === "HIGH" && (
-                                              <span className="font-black">!</span>
-                                            )}
-                                            {
-                                              PRIORITY_LABELS[
-                                                activity.priority
-                                              ]
-                                            }
-                                          </Badge>
-                                        </div>
-
-                                        {unseenCount > 0 && (
-                                          <div className="mt-2">
-                                            <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
-                                              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-blue-600" />
-                                              {unseenCount} update baru
-                                            </Badge>
-                                          </div>
-                                        )}
-
-                                        {discussionUnreadCount > 0 && (
-                                          <div className="mt-2">
-                                            <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
-                                              <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
-                                              {discussionUnreadCount} komentar unread
-                                            </Badge>
-                                          </div>
-                                        )}
-
-                                        <div className="mt-2 text-[10px] text-slate-500">
-                                          {owner?.full_name || "-"}
-                                          {" • "}
-                                          {getOrgLabel(owner)}
-                                        </div>
-
-                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                          <Badge
-                                            variant="outline"
-                                            className="text-[9px]"
-                                          >
-                                            {
-                                              MODE_LABELS[
-                                                activity.activity_mode ||
-                                                  "PERSONAL"
-                                              ]
-                                            }
-                                          </Badge>
-
-                                          <Badge
-                                            variant="outline"
-                                            className={
-                                              actionRole
-                                                ? "border-blue-200 bg-blue-50 text-[9px] text-blue-700"
-                                                : "text-[9px] text-slate-500"
-                                            }
-                                          >
-                                            {actionBadgeLabel}
-                                          </Badge>
-                                        </div>
-
-                                        <div className="mt-3">
-                                          <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
-                                            <span>
-                                              Progress
-                                            </span>
-                                            <span className="font-bold text-slate-700">
-                                              {activity.progress}%
-                                            </span>
-                                          </div>
-
-                                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                            <div
-                                              className="h-full rounded-full bg-blue-600"
-                                              style={{
-                                                width: `${Math.max(
-                                                  0,
-                                                  Math.min(
-                                                    100,
-                                                    activity.progress
-                                                  )
-                                                )}%`,
-                                              }}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="mt-3 flex items-center justify-between gap-2">
-                                          <div
-                                            className={`text-[10px] ${
-                                              isOverdue(activity)
-                                                ? "font-bold text-red-700"
-                                                : "text-slate-500"
-                                            }`}
-                                          >
-                                            Due:{" "}
-                                            {formatDateOnly(
-                                              activity.due_date
-                                            )}
-                                          </div>
-
-                                          {allowedTargets.length > 0 && (
-                                            <Button
-                                              type="button"
-                                              size="sm"
-                                              variant="outline"
-                                              className="h-7 px-2 text-[10px]"
-                                              disabled={
-                                                busyId === activity.id
-                                              }
-                                              onClick={(event) => {
-                                                event.stopPropagation();
-                                                requestTransition(
-                                                  activity
-                                                );
-                                              }}
-                                            >
-                                              Aksi
-                                            </Button>
-                                          )}
-                                        </div>
-
-                                        {activity.status_note && (
-                                          <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] leading-4 text-amber-800">
-                                            {activity.status_note}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+            {viewMode === "KANBAN" ? (
+              <div className="overflow-x-auto pb-2">
+                {statusFilter === "CANCELLED" ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    Aktivitas Cancelled disimpan sebagai archive. Gunakan List View untuk melihatnya.
                   </div>
-                ) : viewMode === "LIST" ? (
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[1280px] text-left text-xs">
-                      <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
-                        <tr>
-                          <th className="p-3">Aktivitas</th>
-                          <th className="p-3">Mode</th>
-                          <th className="p-3">Owner</th>
-                          <th className="p-3">Department</th>
-                          <th className="p-3">Due</th>
-                          <th className="p-3">Priority</th>
-                          <th className="p-3">Status</th>
-                          <th className="p-3">Progress</th>
-                          <th className="p-3">Action</th>
-                        </tr>
-                      </thead>
+                ) : (
+                  <div className="grid min-w-max auto-cols-[290px] grid-flow-col gap-3">
+                    {KANBAN_STATUSES.map((bucketStatus) => {
+                      const bucketItems =
+                        filteredActivities.filter(
+                          (activity) =>
+                            activity.status === bucketStatus
+                        );
 
-                      <tbody className="divide-y divide-slate-100">
-                        {loading ? (
-                          <tr>
-                            <td colSpan={9} className="p-8 text-center text-slate-500">
-                              Memuat aktivitas...
-                            </td>
-                          </tr>
-                        ) : filteredActivities.length === 0 ? (
-                          <tr>
-                            <td colSpan={9} className="p-8 text-center text-slate-500">
-                              Belum ada aktivitas pada filter ini.
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredActivities.map((activity) => {
-                            const owner =
-                              profileMap.get(activity.owner_profile_id);
-
-                            const unseenCount =
-                              unseenCountByActivityId[
-                                activity.id
-                              ] || 0;
-
-                            const discussionUnreadCount =
-                              discussionUnreadCountByActivityId[
-                                activity.id
-                              ] || 0;
-
-                            const awaitingMyApproval =
-                              activity.status === "PENDING_VALIDATION" &&
-                              activity.validation_approver_profile_id === profile?.id;
-
-                            const actionRole =
-                              actionRoleByActivityId[
-                                activity.id
-                              ];
-
-                            const allowedTargets =
-                              getAllowedTransitionTargets(
-                                activity,
-                                actionRole
+                      return (
+                        <div
+                          key={bucketStatus}
+                          className="flex min-h-[420px] w-[290px] flex-col rounded-xl border border-slate-200 bg-slate-50/80"
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            const activityId =
+                              event.dataTransfer.getData(
+                                "text/activity-id"
                               );
 
-                            const actionBadgeLabel =
-                              actionRole === "OWNER" &&
-                              activity.status === "ON_PROGRESS" &&
-                              Boolean(activity.validation_notes)
-                                ? "Returned to You"
-                                : actionRole
-                                ? ACTION_ROLE_LABELS[actionRole]
-                                : "Observer";
+                            if (activityId) {
+                              handleKanbanDrop(
+                                activityId,
+                                bucketStatus
+                              );
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
+                            <div className="text-[11px] font-black uppercase tracking-wide text-slate-700">
+                              {STATUS_LABELS[bucketStatus]}
+                            </div>
 
-                            return (
-                              <tr
-                                key={activity.id}
-                                className={`align-top transition ${PRIORITY_CARD_CLASSES[activity.priority]} ${
-                                  unseenCount > 0
-                                    ? "bg-slate-100/90 hover:bg-slate-100"
-                                    : "hover:bg-slate-50/60"
-                                }`}
-                              >
-                                <td className="p-3">
-                                  <button
-                                    type="button"
+                            <div className="flex items-center gap-1.5">
+                              {bucketItems.some(
+                                (activity) =>
+                                  (unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0) > 0
+                              ) && (
+                                <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                  {
+                                    bucketItems.filter(
+                                      (activity) =>
+                                        (unseenCountByActivityId[
+                                          activity.id
+                                        ] || 0) > 0
+                                    ).length
+                                  } baru
+                                </Badge>
+                              )}
+
+                              <Badge variant="secondary">
+                                {bucketItems.length}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div className="flex-1 space-y-3 p-3">
+                            {bucketItems.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-slate-200 bg-white/70 p-4 text-center text-[11px] text-slate-400">
+                                Drop task ke sini jika flow mengizinkan.
+                              </div>
+                            ) : (
+                              bucketItems.map((activity) => {
+                                const owner =
+                                  profileMap.get(
+                                    activity.owner_profile_id
+                                  );
+
+                                const unseenCount =
+                                  unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
+                                const actionRole =
+                                  actionRoleByActivityId[
+                                    activity.id
+                                  ];
+
+                                const allowedTargets =
+                                  getAllowedTransitionTargets(
+                                    activity,
+                                    actionRole
+                                  );
+
+                                const canDrag =
+                                  allowedTargets.length > 0;
+
+                                const actionBadgeLabel =
+                                  actionRole === "OWNER" &&
+                                  activity.status === "ON_PROGRESS" &&
+                                  Boolean(activity.validation_notes)
+                                    ? "Returned to You"
+                                    : actionRole
+                                    ? ACTION_ROLE_LABELS[actionRole]
+                                    : "Observer";
+
+                                return (
+                                  <div
+                                    key={activity.id}
+                                    draggable={canDrag}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Buka detail aktivitas ${activity.title}`}
                                     onClick={() =>
-                                      openActivityDetail(activity.id)
+                                      openActivityDetail(
+                                        activity.id
+                                      )
                                     }
-                                    className="text-left"
-                                  >
-                                    <div className="font-bold text-slate-900 hover:text-blue-700">
-                                      {activity.title}
-                                    </div>
-                                  </button>
+                                    onKeyDown={(event) => {
+                                      if (
+                                        event.key === "Enter" ||
+                                        event.key === " "
+                                      ) {
+                                        event.preventDefault();
+                                        openActivityDetail(
+                                          activity.id
+                                        );
+                                      }
+                                    }}
+                                    onDragStart={(event) => {
+                                      if (!canDrag) {
+                                        event.preventDefault();
+                                        return;
+                                      }
 
-                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                    <span>
-                                      {CATEGORY_LABELS[activity.category]}
-                                    </span>
+                                      event.dataTransfer.effectAllowed =
+                                        "move";
+                                      event.dataTransfer.setData(
+                                        "text/activity-id",
+                                        activity.id
+                                      );
+                                    }}
+                                    className={`group rounded-xl border p-3 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                                      unseenCount > 0
+                                        ? "bg-slate-100 border-slate-300 shadow-md"
+                                        : "bg-white"
+                                    } ${
+                                      canDrag
+                                        ? "cursor-grab border-slate-200 hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
+                                        : "cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1 text-left">
+                                        <div className="line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-blue-700">
+                                          {activity.title}
+                                        </div>
+                                      </div>
+
+                                      <Badge
+                                        variant="outline"
+                                        className={`shrink-0 gap-1 text-[9px] ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
+                                      >
+                                        {activity.priority === "URGENT" && (
+                                          <AlertTriangle className="h-3 w-3" />
+                                        )}
+                                        {activity.priority === "HIGH" && (
+                                          <span className="font-black">!</span>
+                                        )}
+                                        {
+                                          PRIORITY_LABELS[
+                                            activity.priority
+                                          ]
+                                        }
+                                      </Badge>
+                                    </div>
 
                                     {unseenCount > 0 && (
-                                      <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
-                                        {unseenCount} baru
-                                      </Badge>
+                                      <div className="mt-2">
+                                        <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                          <span className="mr-1 h-1.5 w-1.5 rounded-full bg-blue-600" />
+                                          {unseenCount} update baru
+                                        </Badge>
+                                      </div>
                                     )}
 
                                     {discussionUnreadCount > 0 && (
-                                      <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
-                                        <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
-                                        {discussionUnreadCount} unread
-                                      </Badge>
+                                      <div className="mt-2">
+                                        <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
+                                          <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
+                                          {discussionUnreadCount} komentar unread
+                                        </Badge>
+                                      </div>
                                     )}
-                                  </div>
 
-                                  {activity.description && (
-                                    <div className="mt-1 max-w-sm text-[11px] text-slate-500">
-                                      {activity.description}
+                                    <div className="mt-2 text-[10px] text-slate-500">
+                                      {owner?.full_name || "-"}
+                                      {" • "}
+                                      {getOrgLabel(owner)}
                                     </div>
-                                  )}
-                                </td>
 
-                                <td className="p-3">
-                                  <Badge variant="outline">
-                                    {MODE_LABELS[activity.activity_mode || "PERSONAL"]}
-                                  </Badge>
-                                </td>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px]"
+                                      >
+                                        {
+                                          MODE_LABELS[
+                                            activity.activity_mode ||
+                                              "PERSONAL"
+                                          ]
+                                        }
+                                      </Badge>
 
-                                <td className="p-3">
-                                  <div className="font-semibold text-slate-800">
-                                    {owner?.full_name || "-"}
-                                  </div>
-
-                                  <div className="mt-0.5 text-[10px] text-slate-500">
-                                    {owner?.role_level || ""}
-                                  </div>
-                                </td>
-
-                                <td className="p-3 text-slate-600">
-                                  {getOrgLabel(owner)}
-                                </td>
-
-                                <td className="p-3">
-                                  <div
-                                    className={
-                                      isOverdue(activity)
-                                        ? "font-bold text-red-700"
-                                        : "text-slate-700"
-                                    }
-                                  >
-                                    {formatDateOnly(activity.due_date)}
-                                  </div>
-                                </td>
-
-                                <td className="p-3">
-                                  <Badge
-                                    variant="outline"
-                                    className={`gap-1 ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
-                                  >
-                                    {activity.priority === "URGENT" && (
-                                      <AlertTriangle className="h-3.5 w-3.5" />
-                                    )}
-                                    {activity.priority === "HIGH" && (
-                                      <span className="font-black">!</span>
-                                    )}
-                                    {PRIORITY_LABELS[activity.priority]}
-                                  </Badge>
-                                </td>
-
-                                <td className="p-3">
-                                  <div className="space-y-1.5">
-                                    <Badge
-                                      variant={
-                                        activity.status === "DONE"
-                                          ? "default"
-                                          : activity.status === "PENDING_VALIDATION"
-                                          ? "secondary"
-                                          : "outline"
-                                      }
-                                    >
-                                      {STATUS_LABELS[activity.status]}
-                                    </Badge>
-
-                                    <div>
                                       <Badge
                                         variant="outline"
                                         className={
@@ -3044,257 +2753,525 @@ const AktivitasUniversalPage: React.FC = () => {
                                         {actionBadgeLabel}
                                       </Badge>
                                     </div>
-                                  </div>
-                                </td>
 
-                                <td className="p-3">
-                                  <div className="w-28">
-                                    <div className="mb-1 text-[10px] text-slate-500">
-                                      {activity.progress}%
+                                    <div className="mt-3">
+                                      <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+                                        <span>
+                                          Progress
+                                        </span>
+                                        <span className="font-bold text-slate-700">
+                                          {activity.progress}%
+                                        </span>
+                                      </div>
+
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                        <div
+                                          className="h-full rounded-full bg-blue-600"
+                                          style={{
+                                            width: `${Math.max(
+                                              0,
+                                              Math.min(
+                                                100,
+                                                activity.progress
+                                              )
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
                                     </div>
 
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                    <div className="mt-3 flex items-center justify-between gap-2">
                                       <div
-                                        className="h-full rounded-full bg-blue-600"
-                                        style={{
-                                          width: `${Math.max(
-                                            0,
-                                            Math.min(100, activity.progress)
-                                          )}%`,
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                </td>
-
-                                <td className="p-3">
-                                  <div className="flex flex-wrap gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-8 text-[11px]"
-                                      onClick={() =>
-                                        openActivityDetail(activity.id)
-                                      }
-                                    >
-                                      <Eye className="mr-1 h-3.5 w-3.5" />
-                                      Detail
-                                    </Button>
-
-                                    {allowedTargets.length > 0 ? (
-                                      <Button
-                                        size="sm"
-                                        variant={
-                                          awaitingMyApproval
-                                            ? "default"
-                                            : "outline"
-                                        }
-                                        className="h-8 text-[11px]"
-                                        disabled={busyId === activity.id}
-                                        onClick={() =>
-                                          requestTransition(activity)
-                                        }
-                                      >
-                                        {awaitingMyApproval ? (
-                                          <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-                                        ) : (
-                                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                        )}
-                                        {awaitingMyApproval
-                                          ? "Review"
-                                          : "Aksi Status"}
-                                      </Button>
-                                    ) : null}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-white">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setCalendarMonth((month) =>
-                            subMonths(month, 1)
-                          )
-                        }
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-
-                      <div className="text-sm font-bold text-slate-900">
-                        {format(
-                          calendarMonth,
-                          "MMMM yyyy",
-                          { locale: idLocale }
-                        )}
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            setCalendarMonth(new Date())
-                          }
-                        >
-                          Hari ini
-                        </Button>
-
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            setCalendarMonth((month) =>
-                              addMonths(month, 1)
-                            )
-                          }
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <div className="min-w-[900px]">
-                        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-                          {[
-                            "Sen",
-                            "Sel",
-                            "Rab",
-                            "Kam",
-                            "Jum",
-                            "Sab",
-                            "Min",
-                          ].map((dayName) => (
-                            <div
-                              key={dayName}
-                              className="px-3 py-2 text-center text-[10px] font-bold uppercase text-slate-500"
-                            >
-                              {dayName}
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="grid grid-cols-7">
-                          {calendarDays.map((day) => {
-                            const key = format(day, "yyyy-MM-dd");
-                            const dayActivities =
-                              calendarActivityMap.get(key) || [];
-
-                            return (
-                              <div
-                                key={key}
-                                className={`min-h-[132px] border-b border-r border-slate-100 p-2 ${
-                                  isSameMonth(day, calendarMonth)
-                                    ? "bg-white"
-                                    : "bg-slate-50/70"
-                                }`}
-                              >
-                                <div
-                                  className={`mb-2 text-xs font-bold ${
-                                    key === todayKey()
-                                      ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
-                                      : isSameMonth(day, calendarMonth)
-                                      ? "text-slate-800"
-                                      : "text-slate-400"
-                                  }`}
-                                >
-                                  {format(day, "d")}
-                                </div>
-
-                                <div className="space-y-1">
-                                  {dayActivities.slice(0, 3).map((activity) => {
-                                    const owner =
-                                      profileMap.get(
-                                        activity.owner_profile_id
-                                      );
-
-                                    const unseenCount =
-                                      unseenCountByActivityId[
-                                        activity.id
-                                      ] || 0;
-
-                                    const discussionUnreadCount =
-                                      discussionUnreadCountByActivityId[
-                                        activity.id
-                                      ] || 0;
-
-                                    return (
-                                      <button
-                                        key={activity.id}
-                                        type="button"
-                                        onClick={() =>
-                                          openActivityDetail(
-                                            activity.id
-                                          )
-                                        }
-                                        className={`block w-full rounded-md border px-2 py-1.5 text-left transition hover:border-blue-300 hover:bg-blue-50 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
-                                          unseenCount > 0
-                                            ? "border-slate-300 bg-slate-200"
-                                            : "border-slate-200 bg-slate-50"
+                                        className={`text-[10px] ${
+                                          isOverdue(activity)
+                                            ? "font-bold text-red-700"
+                                            : "text-slate-500"
                                         }`}
                                       >
-                                        <div className="flex items-center gap-1">
-                                          <div className="min-w-0 flex-1 truncate text-[10px] font-bold text-slate-900">
-                                            {activity.title}
-                                          </div>
-
-                                          <span
-                                            className={`shrink-0 rounded border px-1 py-0.5 text-[8px] font-black ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
-                                          >
-                                            {activity.priority === "URGENT"
-                                              ? "⚠ "
-                                              : activity.priority === "HIGH"
-                                              ? "! "
-                                              : ""}
-                                            {PRIORITY_LABELS[activity.priority]}
-                                          </span>
-                                        </div>
-
-                                        <div className="mt-0.5 truncate text-[9px] text-slate-500">
-                                          {owner?.full_name || "-"} • {STATUS_LABELS[activity.status]}
-                                          {unseenCount > 0
-                                            ? ` • ${unseenCount} baru`
-                                            : ""}
-                                        </div>
-
-                                        {discussionUnreadCount > 0 && (
-                                          <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-red-700">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-red-600" />
-                                            {discussionUnreadCount} unread
-                                          </div>
+                                        Due:{" "}
+                                        {formatDateOnly(
+                                          activity.due_date
                                         )}
-                                      </button>
-                                    );
-                                  })}
+                                      </div>
 
-                                  {dayActivities.length > 3 && (
-                                    <div className="px-1 text-[9px] font-semibold text-blue-700">
-                                      +{dayActivities.length - 3} aktivitas lainnya
+                                      {allowedTargets.length > 0 && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2 text-[10px]"
+                                          disabled={
+                                            busyId === activity.id
+                                          }
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            requestTransition(
+                                              activity
+                                            );
+                                          }}
+                                        >
+                                          Aksi
+                                        </Button>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+
+                                    {activity.status_note && (
+                                      <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] leading-4 text-amber-800">
+                                        {activity.status_note}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            ) : viewMode === "LIST" ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[1280px] text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3">Aktivitas</th>
+                      <th className="p-3">Mode</th>
+                      <th className="p-3">Owner</th>
+                      <th className="p-3">Department</th>
+                      <th className="p-3">Due</th>
+                      <th className="p-3">Priority</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">Progress</th>
+                      <th className="p-3">Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-500">
+                          Memuat aktivitas...
+                        </td>
+                      </tr>
+                    ) : filteredActivities.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-500">
+                          Belum ada aktivitas pada filter ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredActivities.map((activity) => {
+                        const owner =
+                          profileMap.get(activity.owner_profile_id);
+
+                        const unseenCount =
+                          unseenCountByActivityId[
+                            activity.id
+                          ] || 0;
+
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
+                        const awaitingMyApproval =
+                          activity.status === "PENDING_VALIDATION" &&
+                          activity.validation_approver_profile_id === profile?.id;
+
+                        const actionRole =
+                          actionRoleByActivityId[
+                            activity.id
+                          ];
+
+                        const allowedTargets =
+                          getAllowedTransitionTargets(
+                            activity,
+                            actionRole
+                          );
+
+                        const actionBadgeLabel =
+                          actionRole === "OWNER" &&
+                          activity.status === "ON_PROGRESS" &&
+                          Boolean(activity.validation_notes)
+                            ? "Returned to You"
+                            : actionRole
+                            ? ACTION_ROLE_LABELS[actionRole]
+                            : "Observer";
+
+                        return (
+                          <tr
+                            key={activity.id}
+                            className={`align-top transition ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                              unseenCount > 0
+                                ? "bg-slate-100/90 hover:bg-slate-100"
+                                : "hover:bg-slate-50/60"
+                            }`}
+                          >
+                            <td className="p-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openActivityDetail(activity.id)
+                                }
+                                className="text-left"
+                              >
+                                <div className="font-bold text-slate-900 hover:text-blue-700">
+                                  {activity.title}
+                                </div>
+                              </button>
+
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                <span>
+                                  {CATEGORY_LABELS[activity.category]}
+                                </span>
+
+                                {unseenCount > 0 && (
+                                  <Badge className="border border-blue-200 bg-blue-50 text-[9px] text-blue-700 hover:bg-blue-50">
+                                    {unseenCount} baru
+                                  </Badge>
+                                )}
+
+                                {discussionUnreadCount > 0 && (
+                                  <Badge className="border border-red-200 bg-red-50 text-[9px] font-bold text-red-700 hover:bg-red-50">
+                                    <span className="mr-1 h-2 w-2 rounded-full bg-red-600" />
+                                    {discussionUnreadCount} unread
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {activity.description && (
+                                <div className="mt-1 max-w-sm text-[11px] text-slate-500">
+                                  {activity.description}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              <Badge variant="outline">
+                                {MODE_LABELS[activity.activity_mode || "PERSONAL"]}
+                              </Badge>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-800">
+                                {owner?.full_name || "-"}
+                              </div>
+
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                {owner?.role_level || ""}
+                              </div>
+                            </td>
+
+                            <td className="p-3 text-slate-600">
+                              {getOrgLabel(owner)}
+                            </td>
+
+                            <td className="p-3">
+                              <div
+                                className={
+                                  isOverdue(activity)
+                                    ? "font-bold text-red-700"
+                                    : "text-slate-700"
+                                }
+                              >
+                                {formatDateOnly(activity.due_date)}
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <Badge
+                                variant="outline"
+                                className={`gap-1 ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
+                              >
+                                {activity.priority === "URGENT" && (
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                )}
+                                {activity.priority === "HIGH" && (
+                                  <span className="font-black">!</span>
+                                )}
+                                {PRIORITY_LABELS[activity.priority]}
+                              </Badge>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="space-y-1.5">
+                                <Badge
+                                  variant={
+                                    activity.status === "DONE"
+                                      ? "default"
+                                      : activity.status === "PENDING_VALIDATION"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                >
+                                  {STATUS_LABELS[activity.status]}
+                                </Badge>
+
+                                <div>
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      actionRole
+                                        ? "border-blue-200 bg-blue-50 text-[9px] text-blue-700"
+                                        : "text-[9px] text-slate-500"
+                                    }
+                                  >
+                                    {actionBadgeLabel}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="w-28">
+                                <div className="mb-1 text-[10px] text-slate-500">
+                                  {activity.progress}%
+                                </div>
+
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className="h-full rounded-full bg-blue-600"
+                                    style={{
+                                      width: `${Math.max(
+                                        0,
+                                        Math.min(100, activity.progress)
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 text-[11px]"
+                                  onClick={() =>
+                                    openActivityDetail(activity.id)
+                                  }
+                                >
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  Detail
+                                </Button>
+
+                                {allowedTargets.length > 0 ? (
+                                  <Button
+                                    size="sm"
+                                    variant={
+                                      awaitingMyApproval
+                                        ? "default"
+                                        : "outline"
+                                    }
+                                    className="h-8 text-[11px]"
+                                    disabled={busyId === activity.id}
+                                    onClick={() =>
+                                      requestTransition(activity)
+                                    }
+                                  >
+                                    {awaitingMyApproval ? (
+                                      <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                                    ) : (
+                                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                    )}
+                                    {awaitingMyApproval
+                                      ? "Review"
+                                      : "Aksi Status"}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setCalendarMonth((month) =>
+                        subMonths(month, 1)
+                      )
+                    }
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="text-sm font-bold text-slate-900">
+                    {format(
+                      calendarMonth,
+                      "MMMM yyyy",
+                      { locale: idLocale }
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setCalendarMonth(new Date())
+                      }
+                    >
+                      Hari ini
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setCalendarMonth((month) =>
+                          addMonths(month, 1)
+                        )
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className="min-w-[900px]">
+                    <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+                      {[
+                        "Sen",
+                        "Sel",
+                        "Rab",
+                        "Kam",
+                        "Jum",
+                        "Sab",
+                        "Min",
+                      ].map((dayName) => (
+                        <div
+                          key={dayName}
+                          className="px-3 py-2 text-center text-[10px] font-bold uppercase text-slate-500"
+                        >
+                          {dayName}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-7">
+                      {calendarDays.map((day) => {
+                        const key = format(day, "yyyy-MM-dd");
+                        const dayActivities =
+                          calendarActivityMap.get(key) || [];
+
+                        return (
+                          <div
+                            key={key}
+                            className={`min-h-[132px] border-b border-r border-slate-100 p-2 ${
+                              isSameMonth(day, calendarMonth)
+                                ? "bg-white"
+                                : "bg-slate-50/70"
+                            }`}
+                          >
+                            <div
+                              className={`mb-2 text-xs font-bold ${
+                                key === todayKey()
+                                  ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white"
+                                  : isSameMonth(day, calendarMonth)
+                                  ? "text-slate-800"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {format(day, "d")}
+                            </div>
+
+                            <div className="space-y-1">
+                              {dayActivities.slice(0, 3).map((activity) => {
+                                const owner =
+                                  profileMap.get(
+                                    activity.owner_profile_id
+                                  );
+
+                                const unseenCount =
+                                  unseenCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
+                                const discussionUnreadCount =
+                                  discussionUnreadCountByActivityId[
+                                    activity.id
+                                  ] || 0;
+
+                                return (
+                                  <button
+                                    key={activity.id}
+                                    type="button"
+                                    onClick={() =>
+                                      openActivityDetail(
+                                        activity.id
+                                      )
+                                    }
+                                    className={`block w-full rounded-md border px-2 py-1.5 text-left transition hover:border-blue-300 hover:bg-blue-50 ${PRIORITY_CARD_CLASSES[activity.priority]} ${
+                                      unseenCount > 0
+                                        ? "border-slate-300 bg-slate-200"
+                                        : "border-slate-200 bg-slate-50"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1">
+                                      <div className="min-w-0 flex-1 truncate text-[10px] font-bold text-slate-900">
+                                        {activity.title}
+                                      </div>
+
+                                      <span
+                                        className={`shrink-0 rounded border px-1 py-0.5 text-[8px] font-black ${PRIORITY_BADGE_CLASSES[activity.priority]}`}
+                                      >
+                                        {activity.priority === "URGENT"
+                                          ? "⚠ "
+                                          : activity.priority === "HIGH"
+                                          ? "! "
+                                          : ""}
+                                        {PRIORITY_LABELS[activity.priority]}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-0.5 truncate text-[9px] text-slate-500">
+                                      {owner?.full_name || "-"} • {STATUS_LABELS[activity.status]}
+                                      {unseenCount > 0
+                                        ? ` • ${unseenCount} baru`
+                                        : ""}
+                                    </div>
+
+                                    {discussionUnreadCount > 0 && (
+                                      <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-red-700">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" />
+                                        {discussionUnreadCount} unread
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+
+                              {dayActivities.length > 3 && (
+                                <div className="px-1 text-[9px] font-semibold text-blue-700">
+                                  +{dayActivities.length - 3} aktivitas lainnya
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
           </>
         ) : (
           profile && (
@@ -3308,6 +3285,7 @@ const AktivitasUniversalPage: React.FC = () => {
         )}
       </div>
 
+      {/* CREATE ACTIVITY */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
@@ -3768,6 +3746,7 @@ const AktivitasUniversalPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* GOVERNED STATUS TRANSITION — shared by Kanban, List, Detail */}
       <Dialog
         open={transitionOpen}
         onOpenChange={(open) => {
@@ -4168,13 +4147,13 @@ const AktivitasUniversalPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* ACTIVITY DETAIL */}
       <Dialog
         open={detailOpen}
         onOpenChange={(open) => {
           setDetailOpen(open);
 
           if (!open) {
-            detailRef.current = null;
             setDetail(null);
             setAttachmentFile(null);
             setAttachmentInputKey((value) => value + 1);
@@ -4550,10 +4529,7 @@ const AktivitasUniversalPage: React.FC = () => {
                     highlightCommentId={
                       requestedCommentId
                     }
-                    onDetailChange={(nextDetail) => {
-                      detailRef.current = nextDetail;
-                      setDetail(nextDetail);
-                    }}
+                    onDetailChange={setDetail}
                   />
                 </TabsContent>
 
