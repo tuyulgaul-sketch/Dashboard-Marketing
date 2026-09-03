@@ -243,6 +243,47 @@ const isBlockingStatus = (
   status === "PENDING_APPROVAL";
 
 
+
+const findRoomConflict = (
+  rows: MeetingRoomBooking[],
+  roomCode: MeetingRoomCode,
+  bookingDate: string,
+  startTime: string,
+  endTime: string
+) => {
+  const start =
+    normalizeTime(
+      startTime
+    );
+
+  const end =
+    normalizeTime(
+      endTime
+    );
+
+  return (
+    rows.find(
+      item =>
+        item.room_code ===
+          roomCode &&
+
+        item.booking_date ===
+          bookingDate &&
+
+        isBlockingStatus(
+          item.booking_status
+        ) &&
+
+        item.start_time <
+          end &&
+
+        item.end_time >
+          start
+    ) || null
+  );
+};
+
+
 const MarketingMeetingRoomPage:
   React.FC = () => {
     const { profile } =
@@ -290,6 +331,30 @@ const MarketingMeetingRoomPage:
     const [
       bookingModalOpen,
       setBookingModalOpen,
+    ] =
+      useState(false);
+
+
+
+    const [
+      availabilityBookings,
+      setAvailabilityBookings,
+    ] =
+      useState<
+        MeetingRoomBooking[]
+      >([]);
+
+
+    const [
+      availabilityChecking,
+      setAvailabilityChecking,
+    ] =
+      useState(false);
+
+
+    const [
+      availabilityReady,
+      setAvailabilityReady,
     ] =
       useState(false);
 
@@ -545,56 +610,150 @@ const MarketingMeetingRoomPage:
       );
 
 
-    const conflict =
-      useMemo(() => {
-        if (
-          !bookingDate ||
-          !startTime ||
-          !endTime
-        ) {
-          return null;
-        }
-
-
-        const start =
-          normalizeTime(
-            startTime
-          );
-
-
-        const end =
-          normalizeTime(
-            endTime
-          );
-
-
-        return (
-          bookings.find(
-            item =>
-              item.room_code ===
-                roomCode &&
-
-              item.booking_date ===
-                bookingDate &&
-
-              isBlockingStatus(
-                item.booking_status
-              ) &&
-
-              item.start_time <
-                end &&
-
-              item.end_time >
-                start
-          ) || null
+    useEffect(() => {
+      if (
+        !bookingModalOpen ||
+        !bookingDate ||
+        !startTime ||
+        !endTime ||
+        endTime <=
+          startTime
+      ) {
+        setAvailabilityReady(
+          false
         );
-      }, [
-        bookingDate,
-        bookings,
-        endTime,
-        roomCode,
-        startTime,
-      ]);
+
+        return;
+      }
+
+
+      let cancelled =
+        false;
+
+
+      setAvailabilityChecking(
+        true
+      );
+
+      setAvailabilityReady(
+        false
+      );
+
+
+      const timer =
+        window.setTimeout(
+          () => {
+            void (
+              async () => {
+                try {
+                  const rows =
+                    await getMeetingRoomBookings(
+                      bookingDate,
+                      bookingDate
+                    );
+
+                  if (
+                    cancelled
+                  ) {
+                    return;
+                  }
+
+                  setAvailabilityBookings(
+                    rows
+                  );
+
+                  setAvailabilityReady(
+                    true
+                  );
+                } catch (
+                  error
+                ) {
+                  console.error(
+                    error
+                  );
+
+                  if (
+                    !cancelled
+                  ) {
+                    setAvailabilityReady(
+                      false
+                    );
+
+                    setMessage({
+                      type:
+                        "error",
+
+                      text:
+                        "Gagal mengecek ketersediaan ruangan. Silakan coba lagi.",
+                    });
+                  }
+                } finally {
+                  if (
+                    !cancelled
+                  ) {
+                    setAvailabilityChecking(
+                      false
+                    );
+                  }
+                }
+              }
+            )();
+          },
+          250
+        );
+
+
+      return () => {
+        cancelled =
+          true;
+
+        window.clearTimeout(
+          timer
+        );
+      };
+    }, [
+      bookingDate,
+      bookingModalOpen,
+      endTime,
+      roomCode,
+      startTime,
+    ]);
+
+
+    const conflict =
+      useMemo(
+        () =>
+          findRoomConflict(
+            availabilityBookings,
+            roomCode,
+            bookingDate,
+            startTime,
+            endTime
+          ),
+        [
+          availabilityBookings,
+          bookingDate,
+          endTime,
+          roomCode,
+          startTime,
+        ]
+      );
+
+
+    const currentJakartaTime =
+      getJakartaTime();
+
+
+    const startTimeIsPastOrNow =
+      Boolean(
+        bookingDate ===
+          today &&
+
+        startTime &&
+
+        startTime <=
+          currentJakartaTime
+      );
 
 
     const canSubmit =
@@ -603,16 +762,22 @@ const MarketingMeetingRoomPage:
           .trim()
           .length >= 3 &&
 
-          bookingDate &&
+        bookingDate &&
 
+        startTime &&
+
+        endTime &&
+
+        endTime >
           startTime &&
 
-          endTime &&
+        !startTimeIsPastOrNow &&
 
-          endTime >
-            startTime &&
+        availabilityReady &&
 
-          !conflict
+        !availabilityChecking &&
+
+        !conflict
       );
 
 
@@ -622,11 +787,26 @@ const MarketingMeetingRoomPage:
           null
         );
 
+
+        setAvailabilityBookings(
+          []
+        );
+
+        setAvailabilityReady(
+          false
+        );
+
+        setAvailabilityChecking(
+          true
+        );
+
+
         const selectedDate =
           scheduleDate >=
             today
             ? scheduleDate
             : today;
+
 
         setBookingDate(
           selectedDate
@@ -640,13 +820,19 @@ const MarketingMeetingRoomPage:
           const currentTime =
             getJakartaTime();
 
+          const safeStartTime =
+            addMinutesToTime(
+              currentTime,
+              1
+            );
+
           setStartTime(
-            currentTime
+            safeStartTime
           );
 
           setEndTime(
             addMinutesToTime(
-              currentTime,
+              safeStartTime,
               60
             )
           );
@@ -679,9 +865,48 @@ const MarketingMeetingRoomPage:
         );
 
 
+        const nowTime =
+          getJakartaTime();
+
+
+        if (
+          bookingDate ===
+            today &&
+
+          startTime <=
+            nowTime
+        ) {
+          setMessage({
+            type:
+              "error",
+
+            text:
+              `Jam mulai harus setelah pukul ${nowTime} WIB.`,
+          });
+
+          return;
+        }
+
+
         if (
           !canSubmit
         ) {
+          if (
+            availabilityChecking ||
+            !availabilityReady
+          ) {
+            setMessage({
+              type:
+                "error",
+
+              text:
+                "Ketersediaan ruangan sedang diperiksa. Tunggu sebentar lalu coba lagi.",
+            });
+
+            return;
+          }
+
+
           if (
             conflict
           ) {
@@ -710,6 +935,80 @@ const MarketingMeetingRoomPage:
 
 
         try {
+          /*
+           * Final frontend availability check.
+           * Database create RPC tetap menjadi final concurrency guard.
+           */
+          const latestRows =
+            await getMeetingRoomBookings(
+              bookingDate,
+              bookingDate
+            );
+
+
+          setAvailabilityBookings(
+            latestRows
+          );
+
+          setAvailabilityReady(
+            true
+          );
+
+
+          const latestConflict =
+            findRoomConflict(
+              latestRows,
+              roomCode,
+              bookingDate,
+              startTime,
+              endTime
+            );
+
+
+          if (
+            latestConflict
+          ) {
+            setMessage({
+              type:
+                "error",
+
+              text:
+                `Slot ${getRoomName(
+                  roomCode
+                )} sudah terpakai oleh ${latestConflict.requester_name} — ${latestConflict.meeting_title}, pukul ${formatTime(
+                  latestConflict.start_time
+                )}-${formatTime(
+                  latestConflict.end_time
+                )}.`,
+            });
+
+            return;
+          }
+
+
+          const latestNowTime =
+            getJakartaTime();
+
+
+          if (
+            bookingDate ===
+              today &&
+
+            startTime <=
+              latestNowTime
+          ) {
+            setMessage({
+              type:
+                "error",
+
+              text:
+                `Jam mulai harus setelah pukul ${latestNowTime} WIB.`,
+            });
+
+            return;
+          }
+
+
           await createMeetingRoomBooking(
             meetingTitle,
             bookingDate,
@@ -772,6 +1071,7 @@ const MarketingMeetingRoomPage:
               error?.message ||
               "Booking gagal.",
           });
+
 
           await refresh();
         } finally {
@@ -1559,6 +1859,18 @@ const MarketingMeetingRoomPage:
                 setMessage(
                   null
                 );
+
+                setAvailabilityBookings(
+                  []
+                );
+
+                setAvailabilityReady(
+                  false
+                );
+
+                setAvailabilityChecking(
+                  false
+                );
               }
             }}
           >
@@ -1636,12 +1948,16 @@ const MarketingMeetingRoomPage:
                     }
                     onChange={(
                       event
-                    ) =>
+                    ) => {
+                      setAvailabilityReady(
+                        false
+                      );
+
                       setRoomCode(
                         event.target
                           .value as MeetingRoomCode
-                      )
-                    }
+                      );
+                    }}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900 ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   >
 
@@ -1749,6 +2065,11 @@ const MarketingMeetingRoomPage:
                       );
 
 
+                      setAvailabilityReady(
+                        false
+                      );
+
+
                       if (
                         value ===
                         today
@@ -1756,15 +2077,29 @@ const MarketingMeetingRoomPage:
                         const currentTime =
                           getJakartaTime();
 
+                        const safeStartTime =
+                          addMinutesToTime(
+                            currentTime,
+                            1
+                          );
+
                         setStartTime(
-                          currentTime
+                          safeStartTime
                         );
 
                         setEndTime(
                           addMinutesToTime(
-                            currentTime,
+                            safeStartTime,
                             60
                           )
+                        );
+                      } else {
+                        setStartTime(
+                          "09:00"
+                        );
+
+                        setEndTime(
+                          "10:00"
                         );
                       }
                     }}
@@ -1790,12 +2125,16 @@ const MarketingMeetingRoomPage:
                       }
                       onChange={(
                         event
-                      ) =>
+                      ) => {
+                        setAvailabilityReady(
+                          false
+                        );
+
                         setStartTime(
                           event.target
                             .value
-                        )
-                      }
+                        );
+                      }}
                     />
 
                   </div>
@@ -1814,12 +2153,16 @@ const MarketingMeetingRoomPage:
                       }
                       onChange={(
                         event
-                      ) =>
+                      ) => {
+                        setAvailabilityReady(
+                          false
+                        );
+
                         setEndTime(
                           event.target
                             .value
-                        )
-                      }
+                        );
+                      }}
                     />
 
                   </div>
@@ -1843,9 +2186,40 @@ const MarketingMeetingRoomPage:
                   )}
 
 
+                {bookingDate ===
+                  today &&
+                  startTimeIsPastOrNow && (
+
+                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                      Jam mulai harus setelah pukul{" "}
+                      {currentJakartaTime} WIB.
+
+                    </div>
+
+                  )}
+
+
+                {availabilityChecking &&
+                  !startTimeIsPastOrNow &&
+                  endTime >
+                    startTime && (
+
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-700">
+
+                      Memeriksa ketersediaan slot terbaru...
+
+                    </div>
+
+                  )}
+
+
                 {/* CONFLICT */}
 
-                {conflict && (
+                {availabilityReady &&
+                  conflict && (
 
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
 
@@ -1903,7 +2277,10 @@ const MarketingMeetingRoomPage:
                 )}
 
 
-                {!conflict &&
+                {availabilityReady &&
+                  !availabilityChecking &&
+                  !conflict &&
+                  !startTimeIsPastOrNow &&
                   bookingDate &&
                   startTime &&
                   endTime >
