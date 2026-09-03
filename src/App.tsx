@@ -20,6 +20,7 @@ import {
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import NativeAlertBridge from "@/components/common/NativeAlertBridge";
 import BrandedActionDialog from "@/components/common/BrandedActionDialog";
+import ReleaseSyncBridge from "@/components/common/ReleaseSyncBridge";
 import {
   AppFeature,
   canAccessFeature,
@@ -217,6 +218,8 @@ const App = () => (
       <BrandedActionDialog />
 
       <AuthProvider>
+        <ReleaseSyncBridge />
+
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>
