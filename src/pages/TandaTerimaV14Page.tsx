@@ -4,6 +4,7 @@ import React, {
   useState,
 } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { brandedPrompt } from "@/lib/brandedDialog";
 import { supabase } from "@/lib/supabase";
 import { store } from "@/services/store";
 import {
@@ -1156,9 +1157,22 @@ const TandaTerimaV14Page:
           V14DocumentHandover
       ) => {
         const reason =
-          window.prompt(
-            "Masukkan alasan penolakan penerimaan:"
-          );
+          await brandedPrompt({
+            heading:
+              "Tolak Penerimaan?",
+            message:
+              `Masukkan alasan penolakan penerimaan ${receipt.id}.`,
+            placeholder:
+              "Tulis alasan penolakan...",
+            confirmLabel:
+              "Ya, Tolak",
+            tone:
+              "danger",
+            required:
+              true,
+            multiline:
+              true,
+          });
 
         if (!reason) {
           return;
@@ -1185,9 +1199,22 @@ const TandaTerimaV14Page:
           V14DocumentHandover
       ) => {
         const reason =
-          window.prompt(
-            "Masukkan alasan pembatalan Tanda Terima:"
-          );
+          await brandedPrompt({
+            heading:
+              "Batalkan Tanda Terima?",
+            message:
+              `Masukkan alasan pembatalan ${receipt.id}.`,
+            placeholder:
+              "Tulis alasan pembatalan...",
+            confirmLabel:
+              "Ya, Batalkan",
+            tone:
+              "danger",
+            required:
+              true,
+            multiline:
+              true,
+          });
 
         if (!reason) {
           return;
