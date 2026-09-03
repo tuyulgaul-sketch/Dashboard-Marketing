@@ -121,7 +121,7 @@ export const AppSidebar:
         ...(canSeeMeetingRoom
           ? [{
               label:
-                "Booking Ruangan Meeting Marketing",
+                "Booking Ruangan Meeting",
               path:
                 "/booking-ruang-meeting",
               icon:
