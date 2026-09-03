@@ -106,6 +106,75 @@ const normalizeTime = (
     : value;
 
 
+const getJakartaTime = () => {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Asia/Jakarta",
+        hour:
+          "2-digit",
+        minute:
+          "2-digit",
+        hour12:
+          false,
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+  const hour =
+    parts.find(
+      part =>
+        part.type ===
+        "hour"
+    )?.value || "00";
+
+  const minute =
+    parts.find(
+      part =>
+        part.type ===
+        "minute"
+    )?.value || "00";
+
+  return `${hour}:${minute}`;
+};
+
+
+const addMinutesToTime = (
+  value: string,
+  minutesToAdd: number
+) => {
+  const [
+    hour,
+    minute,
+  ] =
+    value
+      .split(":")
+      .map(Number);
+
+  const totalMinutes =
+    hour * 60 +
+    minute +
+    minutesToAdd;
+
+  const cappedMinutes =
+    Math.min(
+      totalMinutes,
+      23 * 60 + 59
+    );
+
+  return `${pad(
+    Math.floor(
+      cappedMinutes / 60
+    )
+  )}:${pad(
+    cappedMinutes % 60
+  )}`;
+};
+
+
 const getRoomName = (
   roomCode: MeetingRoomCode
 ) => {
@@ -553,12 +622,44 @@ const MarketingMeetingRoomPage:
           null
         );
 
-        setBookingDate(
+        const selectedDate =
           scheduleDate >=
             today
             ? scheduleDate
-            : today
+            : today;
+
+        setBookingDate(
+          selectedDate
         );
+
+
+        if (
+          selectedDate ===
+          today
+        ) {
+          const currentTime =
+            getJakartaTime();
+
+          setStartTime(
+            currentTime
+          );
+
+          setEndTime(
+            addMinutesToTime(
+              currentTime,
+              60
+            )
+          );
+        } else {
+          setStartTime(
+            "09:00"
+          );
+
+          setEndTime(
+            "10:00"
+          );
+        }
+
 
         setBookingModalOpen(
           true
@@ -1177,7 +1278,8 @@ const MarketingMeetingRoomPage:
 
           {/* MESSAGE */}
 
-          {message && (
+          {message &&
+            !bookingModalOpen && (
 
             <div
               className={`rounded-xl border p-4 text-sm ${
@@ -1444,9 +1546,21 @@ const MarketingMeetingRoomPage:
             open={
               bookingModalOpen
             }
-            onOpenChange={
-              setBookingModalOpen
-            }
+            onOpenChange={(
+              open
+            ) => {
+              setBookingModalOpen(
+                open
+              );
+
+              if (
+                !open
+              ) {
+                setMessage(
+                  null
+                );
+              }
+            }}
           >
 
             <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
@@ -1462,6 +1576,42 @@ const MarketingMeetingRoomPage:
                 </DialogDescription>
 
               </DialogHeader>
+
+
+              {message &&
+                bookingModalOpen && (
+
+                  <div
+                    className={`rounded-xl border p-3 text-sm ${
+                      message.type ===
+                      "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                  >
+
+                    <div className="flex items-start gap-2">
+
+                      {message.type ===
+                      "success" ? (
+
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+
+                      ) : (
+
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+
+                      )}
+
+                      <span>
+                        {message.text}
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                )}
 
 
               <form
@@ -1589,12 +1739,35 @@ const MarketingMeetingRoomPage:
                     }
                     onChange={(
                       event
-                    ) =>
-                      setBookingDate(
+                    ) => {
+                      const value =
                         event.target
-                          .value
-                      )
-                    }
+                          .value;
+
+                      setBookingDate(
+                        value
+                      );
+
+
+                      if (
+                        value ===
+                        today
+                      ) {
+                        const currentTime =
+                          getJakartaTime();
+
+                        setStartTime(
+                          currentTime
+                        );
+
+                        setEndTime(
+                          addMinutesToTime(
+                            currentTime,
+                            60
+                          )
+                        );
+                      }
+                    }}
                   />
 
                 </div>
