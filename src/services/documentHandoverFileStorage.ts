@@ -1,8 +1,10 @@
+import { supabase } from "@/lib/supabase";
 import {
+  BUSINESS_FILE_BUCKET,
   downloadCentralBusinessFile,
   getCentralBusinessFile,
+  getCentralBusinessFileMetadata,
   openCentralBusinessFile,
-  uploadCentralBusinessFile,
 } from "@/services/businessFileStorage";
 
 export interface DocumentHandoverStoredFile {
@@ -21,6 +23,73 @@ export interface DocumentHandoverStoredFile {
 
   blob: Blob;
 }
+
+const safeSegment = (
+  value: string
+) =>
+  String(value || "unlinked")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120) ||
+  "unlinked";
+
+const safeFileName = (
+  value: string
+) =>
+  String(value || "file")
+    .replace(/[^\w.\-() ]+/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 160) ||
+  "file";
+
+const describeSupabaseError = (
+  error: unknown
+) => {
+  if (
+    error instanceof Error
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object"
+  ) {
+    const candidate =
+      error as {
+        message?: unknown;
+        details?: unknown;
+        hint?: unknown;
+        code?: unknown;
+      };
+
+    return [
+      typeof candidate.message === "string"
+        ? candidate.message
+        : "",
+      typeof candidate.details === "string" &&
+      candidate.details
+        ? `details: ${candidate.details}`
+        : "",
+      typeof candidate.hint === "string" &&
+      candidate.hint
+        ? `hint: ${candidate.hint}`
+        : "",
+      typeof candidate.code === "string" &&
+      candidate.code
+        ? `code: ${candidate.code}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" | ") ||
+      "Error Supabase tidak dapat dibaca.";
+  }
+
+  return String(
+    error ||
+      "Error tidak diketahui."
+  );
+};
 
 const findHandoverContext =
   (
@@ -99,37 +168,134 @@ export const saveDocumentHandoverFile =
         }
       );
 
-    await uploadCentralBusinessFile({
-      fileId:
-        record.id,
-      module:
-        "TANDA_TERIMA",
-      storageKey:
-        "pertalife_document_handovers",
-      entityId:
+    const existingMetadata =
+      await getCentralBusinessFileMetadata(
+        record.id
+      );
+
+    const storagePath = [
+      "TANDA_TERIMA",
+      safeSegment(
+        record.transactionId
+      ),
+      `${crypto.randomUUID()}-${safeFileName(
+        file.name
+      )}`,
+    ].join("/");
+
+    const {
+      error:
+        uploadError,
+    } =
+      await supabase.storage
+        .from(
+          BUSINESS_FILE_BUCKET
+        )
+        .upload(
+          storagePath,
+          file,
+          {
+            upsert: false,
+            contentType:
+              file.type ||
+              undefined,
+          }
+        );
+
+    if (
+      uploadError
+    ) {
+      throw new Error(
+        `Gagal upload file evidence Tanda Terima: ${describeSupabaseError(
+          uploadError
+        )}`
+      );
+    }
+
+    const visibilityPayload = {
+      senderUserId:
+        record.senderUserId ||
+        context.senderUserId,
+      receiverUserId:
+        record.receiverUserId ||
+        context.receiverUserId,
+      uploadedByUserId:
+        record.uploadedByUserId,
+    };
+
+    const metadata = {
+      transactionId:
         record.transactionId,
-      file,
-      visibilityPayload: {
-        senderUserId:
-          record.senderUserId ||
-          context.senderUserId,
-        receiverUserId:
-          record.receiverUserId ||
-          context.receiverUserId,
-        uploadedByUserId:
-          record.uploadedByUserId,
-      },
-      metadata: {
-        transactionId:
-          record.transactionId,
-        uploadedByUserId:
-          record.uploadedByUserId,
-        uploadedByName:
-          record.uploadedByName,
-        uploadedAt:
-          record.uploadedAt,
-      },
-    });
+      uploadedByUserId:
+        record.uploadedByUserId,
+      uploadedByName:
+        record.uploadedByName,
+      uploadedAt:
+        record.uploadedAt,
+    };
+
+    const {
+      error:
+        metadataError,
+    } =
+      await supabase.rpc(
+        "register_tanda_terima_business_file_v18",
+        {
+          p_file_id:
+            record.id,
+          p_module:
+            "TANDA_TERIMA",
+          p_storage_key:
+            "pertalife_document_handovers",
+          p_entity_id:
+            record.transactionId,
+          p_storage_path:
+            storagePath,
+          p_file_name:
+            file.name,
+          p_mime_type:
+            file.type ||
+            "application/octet-stream",
+          p_file_size:
+            file.size,
+          p_visibility_payload:
+            visibilityPayload,
+          p_metadata:
+            metadata,
+        }
+      );
+
+    if (
+      metadataError
+    ) {
+      await supabase.storage
+        .from(
+          BUSINESS_FILE_BUCKET
+        )
+        .remove([
+          storagePath,
+        ]);
+
+      throw new Error(
+        `Gagal register metadata file evidence Tanda Terima: ${describeSupabaseError(
+          metadataError
+        )}`
+      );
+    }
+
+    if (
+      existingMetadata &&
+      existingMetadata.storage_path !==
+        storagePath
+    ) {
+      await supabase.storage
+        .from(
+          BUSINESS_FILE_BUCKET
+        )
+        .remove([
+          existingMetadata.storage_path,
+        ]);
+    }
   };
 
 export const getDocumentHandoverFile =
