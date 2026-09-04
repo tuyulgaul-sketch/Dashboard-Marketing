@@ -672,8 +672,70 @@ const AktivitasUniversalPage: React.FC = () => {
         manager.manager_id || null;
     }
 
+    const currentProfile =
+      profileMap.get(profile.id);
+    const currentRole =
+      currentProfile?.role_level
+        ?.trim()
+        .toUpperCase() || "";
+    const currentUnit =
+      currentProfile?.unit
+        ?.trim()
+        .toUpperCase() || "";
+
+    const isDhSpvOrStaff =
+      currentRole === "DH" ||
+      currentRole === "STAFF" ||
+      currentRole.includes("DEPARTMENT HEAD") ||
+      currentRole.includes("SUPERVISOR") ||
+      currentRole.includes("SPV");
+
+    const isCaptiveOrCorporateRetail =
+      currentUnit.startsWith("CAPTIVE") ||
+      currentUnit.startsWith("CRM") ||
+      currentUnit.startsWith("CORPORATE & RETAIL") ||
+      currentUnit.startsWith("CORPORATE AND RETAIL");
+
+    if (
+      isDhSpvOrStaff &&
+      isCaptiveOrCorporateRetail
+    ) {
+      const mursid = directory.find((item) => {
+        const name =
+          item.full_name
+            ?.trim()
+            .toUpperCase() || "";
+        const role =
+          item.role_level
+            ?.trim()
+            .toUpperCase() || "";
+        const unit =
+          item.unit
+            ?.trim()
+            .toUpperCase() || "";
+
+        return (
+          name === "MURSID PRATOMO" &&
+          role === "ADVISOR" &&
+          [
+            "DIRECTORATE MARKETING",
+            "DIREKTORAT MARKETING",
+          ].includes(unit)
+        );
+      });
+
+      if (
+        mursid &&
+        !result.some(
+          (item) => item.id === mursid.id
+        )
+      ) {
+        result.push(mursid);
+      }
+    }
+
     return result;
-  }, [profile?.id, profileMap]);
+  }, [directory, profile?.id, profileMap]);
 
   const workspaceDivisionOptions = useMemo(
     () =>
