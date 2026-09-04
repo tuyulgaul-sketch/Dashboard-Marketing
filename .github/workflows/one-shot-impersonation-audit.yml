@@ -35,7 +35,14 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Lint changed frontend files
-        run: pnpm exec eslint src/services/adminService.ts src/lib/adminImpersonation.ts src/pages/AdministrasiPage.tsx src/components/layout/AppHeader.tsx src/pages/LoginPage.tsx --rule '@typescript-eslint/no-explicit-any: off'
+        run: >-
+          pnpm exec eslint
+          src/services/adminService.ts
+          src/lib/adminImpersonation.ts
+          src/pages/AdministrasiPage.tsx
+          src/components/layout/AppHeader.tsx
+          src/pages/LoginPage.tsx
+          --rule '@typescript-eslint/no-explicit-any: off'
 
       - name: Build application
         run: pnpm build
