@@ -101,6 +101,9 @@ export type UniversalActivity = {
   validation_notes: string | null;
   status_note: string | null;
   follow_up_date: string | null;
+  support_approval_status: "PENDING" | "APPROVED" | "REJECTED" | null;
+  support_approval_total: number;
+  support_approval_approved: number;
   created_at: string;
   updated_at: string;
 };
@@ -184,6 +187,18 @@ export type ActivityCollaboratorDetail = {
   created_at: string;
 };
 
+export type ActivitySupportApprovalDetail = {
+  profile_id: string;
+  full_name: string;
+  role_level: string;
+  unit: string;
+  department: string | null;
+  decision_status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+  decision_note: string | null;
+  requested_at: string;
+  decided_at: string | null;
+};
+
 export type ActivityCommentMention = {
   profile_id: string;
   full_name: string;
@@ -238,6 +253,7 @@ export type ActivityDetailPayload = {
   created_by: ActivityDetailPerson;
   validation_approver: ActivityDetailPerson | null;
   collaborators: ActivityCollaboratorDetail[];
+  support_approvals: ActivitySupportApprovalDetail[];
   attachments: ActivityAttachmentDetail[];
   comments: ActivityCommentDetail[];
   history: ActivityHistoryDetail[];
@@ -437,6 +453,42 @@ export async function reviewUniversalActivityValidationV2(
   return data as UniversalActivity;
 }
 
+export async function getActivitySupportApprovalsV30(
+  activityId: string
+) {
+  const { data, error } = await supabase.rpc(
+    "list_activity_support_approvals_v30",
+    {
+      p_activity_id: activityId,
+    }
+  );
+
+  if (error) throw error;
+
+  return (data || []) as ActivitySupportApprovalDetail[];
+}
+
+export async function reviewPersonalTaskSupportV30(
+  activityId: string,
+  decision: "APPROVE" | "REJECT",
+  note = ""
+) {
+  const { data, error } = await supabase.rpc(
+    "review_personal_task_support_v30",
+    {
+      p_activity_id: activityId,
+      p_decision: decision,
+      p_note: note || null,
+    }
+  );
+
+  if (error) throw error;
+
+  void flushNotificationEmailOutboxBestEffort();
+
+  return data as UniversalActivity;
+}
+
 export async function getActivityDirectory() {
   const { data, error } =
     await supabase.rpc("get_profile_directory");
@@ -576,6 +628,20 @@ export async function getUniversalActivityDetail(
     console.warn(
       "Comment V2 belum tersedia; menggunakan discussion legacy.",
       discussionError
+    );
+  }
+
+  try {
+    detail.support_approvals =
+      await getActivitySupportApprovalsV30(
+        activityId
+      );
+  } catch (supportApprovalError) {
+    // Backward-compatible while V30 migration is rolling out.
+    detail.support_approvals = [];
+    console.warn(
+      "Need Support Approval V30 belum tersedia.",
+      supportApprovalError
     );
   }
 

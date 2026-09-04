@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import ActivityMonitoringPanel from "@/components/activity/ActivityMonitoringPanel";
 import ActivityPeoplePicker from "@/components/activity/ActivityPeoplePicker";
 import ActivityDiscussionV2 from "@/components/activity/ActivityDiscussionV2";
+import ActivitySupportApprovalPanel from "@/components/activity/ActivitySupportApprovalPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ActivityActionRole,
@@ -214,7 +215,7 @@ const ACTION_ROLE_LABELS: Record<ActivityActionRole, string> = {
   OWNER: "Assigned to You",
   COLLABORATOR: "Collaboration",
   FOLLOW_UP: "Follow Up Requested",
-  SUPPORT: "Support Requested",
+  SUPPORT: "Need Support — Awaiting Your Approval",
   APPROVER: "Awaiting Your Approval",
   CREATOR: "Draft Owner",
 };
@@ -272,6 +273,20 @@ const getAllowedTransitionTargets = (
   const personal =
     isPersonalActivity(activity);
 
+  const personalCanComplete =
+    personal &&
+    !["PENDING", "REJECTED"].includes(
+      activity.support_approval_status || ""
+    );
+
+  if (
+    personal &&
+    activity.status === "NEED_SUPPORT" &&
+    activity.support_approval_status === "PENDING"
+  ) {
+    return ["CANCELLED"];
+  }
+
   switch (activity.status) {
     case "DRAFT":
       return ["TO_DO", "CANCELLED"];
@@ -280,30 +295,32 @@ const getAllowedTransitionTargets = (
         "ON_PROGRESS",
         "WAITING_FOLLOW_UP",
         "NEED_SUPPORT",
-        ...(personal ? ["DONE" as const] : []),
+        ...(personalCanComplete ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     case "ON_PROGRESS":
       return [
         "WAITING_FOLLOW_UP",
         "NEED_SUPPORT",
-        personal
-          ? "DONE"
-          : "PENDING_VALIDATION",
+        ...(personalCanComplete
+          ? ["DONE" as const]
+          : personal
+          ? []
+          : ["PENDING_VALIDATION" as const]),
         "CANCELLED",
       ];
     case "WAITING_FOLLOW_UP":
       return [
         "ON_PROGRESS",
         "NEED_SUPPORT",
-        ...(personal ? ["DONE" as const] : []),
+        ...(personalCanComplete ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     case "NEED_SUPPORT":
       return [
         "ON_PROGRESS",
         "WAITING_FOLLOW_UP",
-        ...(personal ? ["DONE" as const] : []),
+        ...(personalCanComplete ? ["DONE" as const] : []),
         "CANCELLED",
       ];
     default:
@@ -1115,11 +1132,17 @@ const AktivitasUniversalPage: React.FC = () => {
   const orgScopedActivities = useMemo(
     () =>
       workspaceOwnerFilterIds
-        ? periodFilteredActivities.filter((activity) =>
-            workspaceOwnerFilterIds.has(activity.owner_profile_id)
+        ? periodFilteredActivities.filter(
+            (activity) =>
+              workspaceOwnerFilterIds.has(activity.owner_profile_id) ||
+              Boolean(actionRoleByActivityId[activity.id])
           )
         : periodFilteredActivities,
-    [periodFilteredActivities, workspaceOwnerFilterIds]
+    [
+      actionRoleByActivityId,
+      periodFilteredActivities,
+      workspaceOwnerFilterIds,
+    ]
   );
 
   const filteredActivities = useMemo(() => {
@@ -1135,7 +1158,7 @@ const AktivitasUniversalPage: React.FC = () => {
         return false;
       }
 
-      if (scope === "TEAM") {
+      if (scope === "TEAM" && !actionRoleByActivityId[activity.id]) {
         const isHierarchyTeamMember =
           activity.owner_profile_id === profile?.id ||
           subordinateIds.has(
@@ -4402,6 +4425,21 @@ const AktivitasUniversalPage: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  <ActivitySupportApprovalPanel
+                    detail={detail}
+                    actionRole={
+                      actionRoleByActivityId[detail.activity.id]
+                    }
+                    onChanged={async () => {
+                      await refresh({ silent: true });
+                      const refreshed =
+                        await getUniversalActivityDetail(
+                          detail.activity.id
+                        );
+                      setDetail(refreshed);
+                    }}
+                  />
 
                   {actionRoleByActivityId[detail.activity.id] === "OWNER" &&
                     !["PENDING_VALIDATION", "DONE", "CANCELLED"].includes(
