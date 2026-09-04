@@ -36,6 +36,23 @@ export type BulkActivationResult = {
   error: string | null;
 };
 
+export type AdminImpersonationResult = {
+  success: boolean;
+  action_link: string;
+  admin: {
+    profile_id: string;
+    full_name: string;
+    email: string;
+  };
+  target: {
+    profile_id: string;
+    full_name: string;
+    email: string;
+    role_level: string;
+    unit: string;
+  };
+};
+
 export const getAdminAccounts =
   async (): Promise<
     AdminAccount[]
@@ -147,6 +164,60 @@ export const sendAdminTestNotification =
       profile_id:
         profileId,
     });
+
+export const startAdminImpersonation =
+  async (
+    profileId: string
+  ): Promise<
+    AdminImpersonationResult
+  > => {
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .functions
+        .invoke(
+          "admin-impersonate",
+          {
+            body: {
+              profile_id:
+                profileId,
+            },
+          }
+        );
+
+    if (error) {
+      throw error;
+    }
+
+    if (
+      data &&
+      typeof data ===
+        "object" &&
+      "error" in data &&
+      data.error
+    ) {
+      throw new Error(
+        String(data.error)
+      );
+    }
+
+    if (
+      !data ||
+      typeof data !==
+        "object" ||
+      !("action_link" in data) ||
+      !data.action_link
+    ) {
+      throw new Error(
+        "Server tidak mengembalikan Login As link."
+      );
+    }
+
+    return data as
+      AdminImpersonationResult;
+  };
 
 export const resetAccountPassword =
   async (
