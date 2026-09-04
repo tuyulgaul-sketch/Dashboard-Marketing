@@ -89,6 +89,43 @@ const LoginPage:
       )?.from ||
       "/";
 
+    useEffect(() => {
+      const params =
+        new URLSearchParams(
+          location.search
+        );
+
+      const requestedEmail =
+        (
+          params.get("email") ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        requestedEmail.endsWith(
+          "@pertalife.com"
+        )
+      ) {
+        setEmail(
+          current =>
+            current ||
+            requestedEmail
+        );
+      }
+
+      if (
+        params.get(
+          "impersonation_return"
+        ) === "1"
+      ) {
+        setMessage(
+          "Mode Login As selesai. Masukkan password admin untuk kembali ke Administrasi Sistem."
+        );
+      }
+    }, [location.search]);
+
     useEffect(
       () => {
         if (

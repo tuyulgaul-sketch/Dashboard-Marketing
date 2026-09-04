@@ -1,10 +1,24 @@
-import React, { useState } from "react";
-import { KeyRound, LogOut, Menu } from "lucide-react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
+import {
+  KeyRound,
+  LogOut,
+  Menu,
+  RotateCcw,
+  UserRoundCog,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import NotificationBell from "@/components/layout/NotificationBell";
 import PasswordControlDialog from "@/components/layout/PasswordControlDialog";
+import {
+  clearAdminImpersonationMarker,
+  getAdminImpersonationMarker,
+  type AdminImpersonationMarker,
+} from "@/lib/adminImpersonation";
 
 interface AppHeaderProps {
   onMenuClick?: () => void;
@@ -16,10 +30,53 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [impersonationMarker, setImpersonationMarker] =
+    useState<AdminImpersonationMarker | null>(() =>
+      getAdminImpersonationMarker()
+    );
+
+  useEffect(() => {
+    setImpersonationMarker(
+      getAdminImpersonationMarker()
+    );
+  }, [profile?.id]);
+
+  const activeImpersonation =
+    profile &&
+    impersonationMarker?.target_profile_id === profile.id
+      ? impersonationMarker
+      : null;
 
   const handleLogout = async () => {
+    clearAdminImpersonationMarker();
     await signOut();
     navigate("/login", { replace: true });
+  };
+
+  const handleReturnToAdmin = async () => {
+    const adminEmail =
+      activeImpersonation?.admin_email || "";
+
+    clearAdminImpersonationMarker();
+    setImpersonationMarker(null);
+    await signOut();
+
+    const params =
+      new URLSearchParams();
+
+    if (adminEmail) {
+      params.set("email", adminEmail);
+    }
+
+    params.set(
+      "impersonation_return",
+      "1"
+    );
+
+    navigate(
+      `/login?${params.toString()}`,
+      { replace: true }
+    );
   };
 
   const isSystemAdmin =
@@ -59,6 +116,25 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {profile && !isSystemAdmin && <NotificationBell />}
 
+          {activeImpersonation && (
+            <div className="hidden items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 md:flex">
+              <UserRoundCog className="h-4 w-4 text-amber-700" />
+              <div className="max-w-40 truncate text-[10px] font-bold text-amber-900">
+                Login As: {profile?.full_name}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 border-amber-300 px-2 text-[10px] text-amber-900 hover:bg-amber-100"
+                onClick={handleReturnToAdmin}
+              >
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                Kembali Admin
+              </Button>
+            </div>
+          )}
+
           <div className="hidden text-right lg:block">
             <div className="text-xs font-bold text-slate-900">
               {profile?.full_name || "User"}
@@ -70,7 +146,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </div>
           </div>
 
-          {profile && (
+          {activeImpersonation && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 border-amber-300 px-2 text-amber-900 md:hidden"
+              onClick={handleReturnToAdmin}
+              aria-label="Kembali ke akun admin"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          )}
+
+          {profile && !activeImpersonation && (
             <Button
               variant="outline"
               size="sm"

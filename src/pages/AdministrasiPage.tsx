@@ -15,8 +15,12 @@ import {
   globalResetAllBusinessData,
   resetAccountPassword,
   sendAdminTestNotification,
+  startAdminImpersonation,
 } from "@/services/adminService";
 import { syncGlobalResetState } from "@/lib/globalResetSync";
+import {
+  setAdminImpersonationMarker,
+} from "@/lib/adminImpersonation";
 import {
   ProductMaster,
   AuditLog,
@@ -53,6 +57,7 @@ import {
   Copy,
   Database,
   KeyRound,
+  LogIn,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
@@ -256,6 +261,13 @@ export const AdministrasiPage:
     const [
       testBusyProfileId,
       setTestBusyProfileId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      impersonationBusyProfileId,
+      setImpersonationBusyProfileId,
     ] = useState<
       string | null
     >(null);
@@ -757,6 +769,89 @@ export const AdministrasiPage:
         }
       };
 
+    const handleLoginAs =
+      async (
+        account: AdminAccount
+      ) => {
+        if (!profile) {
+          return;
+        }
+
+        const targetIsSystemAdmin =
+          account.role_level
+            .trim()
+            .toUpperCase() ===
+            "SYSTEM_ADMIN" ||
+          account.unit
+            .trim()
+            .toLowerCase() ===
+            "administrasi sistem";
+
+        if (targetIsSystemAdmin) {
+          alert(
+            "Login As ke akun SYSTEM_ADMIN lain tidak diizinkan."
+          );
+          return;
+        }
+
+        if (!account.auth_user_id) {
+          alert(
+            "Aktifkan akun terlebih dahulu sebelum menggunakan Login As."
+          );
+          return;
+        }
+
+        if (
+          !window.confirm(
+            `Login sebagai ${account.full_name} (${account.email})?
+
+Browser akan berpindah ke sesi Supabase user tersebut tanpa mengubah password user. Untuk kembali ke admin, gunakan tombol Kembali ke Admin lalu login ulang dengan password admin.`
+          )
+        ) {
+          return;
+        }
+
+        setImpersonationBusyProfileId(
+          account.profile_id
+        );
+
+        try {
+          const result =
+            await startAdminImpersonation(
+              account.profile_id
+            );
+
+          setAdminImpersonationMarker({
+            admin_email:
+              profile.email,
+            admin_name:
+              profile.full_name,
+            target_profile_id:
+              result.target.profile_id,
+            target_name:
+              result.target.full_name,
+            started_at:
+              new Date().toISOString(),
+          });
+
+          window.location.assign(
+            result.action_link
+          );
+        } catch (error) {
+          console.error(error);
+
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Login As gagal."
+          );
+
+          setImpersonationBusyProfileId(
+            null
+          );
+        }
+      };
+
     const copyBulkCredentials =
       async () => {
         const lines =
@@ -996,6 +1091,7 @@ export const AdministrasiPage:
 
                   <CardDescription className="text-xs">
                     Aktifkan akun,
+                    Login As user,
                     reset password,
                     atau kirim test
                     notification langsung
@@ -1114,6 +1210,36 @@ export const AdministrasiPage:
                                     </Button>
                                   ) : (
                                     <>
+                                      {account.role_level
+                                        .trim()
+                                        .toUpperCase() !==
+                                        "SYSTEM_ADMIN" &&
+                                        account.unit
+                                          .trim()
+                                          .toLowerCase() !==
+                                          "administrasi sistem" && (
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            className="bg-amber-500 text-slate-950 hover:bg-amber-400"
+                                            disabled={
+                                              impersonationBusyProfileId ===
+                                              account.profile_id
+                                            }
+                                            onClick={() =>
+                                              handleLoginAs(
+                                                account
+                                              )
+                                            }
+                                          >
+                                            <LogIn className="mr-1.5 h-4 w-4" />
+                                            {impersonationBusyProfileId ===
+                                            account.profile_id
+                                              ? "Opening..."
+                                              : "Login As"}
+                                          </Button>
+                                        )}
+
                                       <Button
                                         type="button"
                                         size="sm"
