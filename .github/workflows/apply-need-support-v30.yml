@@ -26,7 +26,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps --package-lock=false
 
       - name: Apply scoped frontend patch
         run: python3 scripts/apply_need_support_approval_v30.py
