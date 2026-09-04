@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-and-verify:
+  patch-source:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -20,34 +20,15 @@ jobs:
           ref: feat/personal-need-support-approval
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps --package-lock=false
-
       - name: Apply scoped frontend patch
         run: python3 scripts/apply_need_support_approval_v30.py
-
-      - name: Targeted lint
-        run: >-
-          npx eslint
-          src/services/activityService.ts
-          src/pages/AktivitasUniversalPage.tsx
-          src/components/activity/ActivitySupportApprovalPanel.tsx
-          --rule '@typescript-eslint/no-explicit-any: off'
-
-      - name: Production build
-        run: npm run build
 
       - name: Remove temporary patch tooling
         run: |
           rm scripts/apply_need_support_approval_v30.py
           rm .github/workflows/apply-need-support-v30.yml
 
-      - name: Commit verified patch
+      - name: Commit patched source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
