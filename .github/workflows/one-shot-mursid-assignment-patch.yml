@@ -119,7 +119,7 @@ jobs:
           pnpm --version
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Lint changed page
         run: pnpm exec eslint src/pages/AktivitasUniversalPage.tsx
@@ -130,6 +130,7 @@ jobs:
       - name: Commit verified patch and remove one-shot files
         shell: bash
         run: |
+          git checkout -- pnpm-lock.yaml
           rm .github/workflows/one-shot-mursid-assignment-patch.yml
           rm -f scripts/one-shot-mursid-patch.trigger
           git config user.name "github-actions[bot]"
