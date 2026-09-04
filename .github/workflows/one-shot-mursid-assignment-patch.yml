@@ -1,0 +1,200 @@
+name: One-shot Mursid Assignment Patch
+
+on:
+  push:
+    branches:
+      - fix/mursid-assignment-requester
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Patch assignment requester options
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/pages/AktivitasUniversalPage.tsx')
+          text = path.read_text()
+
+          old = '''  const assignmentRequesterOptions = useMemo(() => {
+            if (!profile?.id) return [];
+
+            const result: DirectoryProfile[] = [];
+            const visited = new Set<string>();
+            let managerId =
+              profileMap.get(profile.id)?.manager_id || null;
+
+            while (
+              managerId &&
+              !visited.has(managerId)
+            ) {
+              visited.add(managerId);
+
+              const manager =
+                profileMap.get(managerId);
+
+              if (!manager) break;
+
+              const role =
+                manager.role_level
+                  ?.trim()
+                  .toUpperCase() || "";
+
+              const isSupervisor =
+                role.includes("SUPERVISOR") ||
+                role.includes("SPV");
+
+              if (!isSupervisor) {
+                result.push(manager);
+              }
+
+              managerId =
+                manager.manager_id || null;
+            }
+
+            return result;
+          }, [profile?.id, profileMap]);'''
+
+          new = '''  const assignmentRequesterOptions = useMemo(() => {
+            if (!profile?.id) return [];
+
+            const result: DirectoryProfile[] = [];
+            const visited = new Set<string>();
+            let managerId =
+              profileMap.get(profile.id)?.manager_id || null;
+
+            while (
+              managerId &&
+              !visited.has(managerId)
+            ) {
+              visited.add(managerId);
+
+              const manager =
+                profileMap.get(managerId);
+
+              if (!manager) break;
+
+              const role =
+                manager.role_level
+                  ?.trim()
+                  .toUpperCase() || "";
+
+              const isSupervisor =
+                role.includes("SUPERVISOR") ||
+                role.includes("SPV");
+
+              if (!isSupervisor) {
+                result.push(manager);
+              }
+
+              managerId =
+                manager.manager_id || null;
+            }
+
+            const currentProfile =
+              profileMap.get(profile.id);
+            const currentRole =
+              currentProfile?.role_level
+                ?.trim()
+                .toUpperCase() || "";
+            const currentUnit =
+              currentProfile?.unit
+                ?.trim()
+                .toUpperCase() || "";
+
+            const isDhSpvOrStaff =
+              currentRole === "DH" ||
+              currentRole === "STAFF" ||
+              currentRole.includes("DEPARTMENT HEAD") ||
+              currentRole.includes("SUPERVISOR") ||
+              currentRole.includes("SPV");
+
+            const isCaptiveOrCorporateRetail =
+              currentUnit.startsWith("CAPTIVE") ||
+              currentUnit.startsWith("CRM") ||
+              currentUnit.startsWith("CORPORATE & RETAIL") ||
+              currentUnit.startsWith("CORPORATE AND RETAIL");
+
+            if (
+              isDhSpvOrStaff &&
+              isCaptiveOrCorporateRetail
+            ) {
+              const mursid = directory.find((item) => {
+                const name =
+                  item.full_name
+                    ?.trim()
+                    .toUpperCase() || "";
+                const role =
+                  item.role_level
+                    ?.trim()
+                    .toUpperCase() || "";
+                const unit =
+                  item.unit
+                    ?.trim()
+                    .toUpperCase() || "";
+
+                return (
+                  name === "MURSID PRATOMO" &&
+                  role === "ADVISOR" &&
+                  [
+                    "DIRECTORATE MARKETING",
+                    "DIREKTORAT MARKETING",
+                  ].includes(unit)
+                );
+              });
+
+              if (
+                mursid &&
+                !result.some(
+                  (item) => item.id === mursid.id
+                )
+              ) {
+                result.push(mursid);
+              }
+            }
+
+            return result;
+          }, [directory, profile?.id, profileMap]);'''
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected requester-options block exactly once, found {count}')
+
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint changed page
+        run: npx eslint src/pages/AktivitasUniversalPage.tsx
+
+      - name: Build application
+        run: npm run build
+
+      - name: Commit verified patch and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/one-shot-mursid-assignment-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/AktivitasUniversalPage.tsx .github/workflows/one-shot-mursid-assignment-patch.yml
+          git commit -m "feat(activity): add Mursid requester option [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
