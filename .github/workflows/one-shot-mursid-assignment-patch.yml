@@ -122,7 +122,8 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Lint changed page excluding pre-existing no-explicit-any debt
-        run: pnpm exec eslint src/pages/AktivitasUniversalPage.tsx --rule '@typescript-eslint/no-explicit-any: off'
+        run: |
+          pnpm exec eslint src/pages/AktivitasUniversalPage.tsx --rule '@typescript-eslint/no-explicit-any: off'
 
       - name: Build application
         run: pnpm build
