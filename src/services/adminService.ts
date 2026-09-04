@@ -36,6 +36,105 @@ export type BulkActivationResult = {
   error: string | null;
 };
 
+const adminPasswordValidationError = (
+  value: string
+) => {
+  if (value.length < 12) {
+    return "Password minimal 12 karakter.";
+  }
+
+  if (!/[A-Z]/.test(value)) {
+    return "Password wajib memiliki minimal 1 huruf besar (A-Z).";
+  }
+
+  if (!/[a-z]/.test(value)) {
+    return "Password wajib memiliki minimal 1 huruf kecil (a-z).";
+  }
+
+  if (!/[0-9]/.test(value)) {
+    return "Password wajib memiliki minimal 1 angka (0-9).";
+  }
+
+  return null;
+};
+
+const functionErrorMessage = async (
+  error: unknown
+) => {
+  if (
+    error &&
+    typeof error === "object" &&
+    "context" in error
+  ) {
+    const context =
+      (
+        error as {
+          context?: unknown;
+        }
+      ).context;
+
+    if (context instanceof Response) {
+      try {
+        const payload =
+          await context.clone().json();
+
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "error" in payload &&
+          payload.error
+        ) {
+          return String(
+            payload.error
+          );
+        }
+      } catch {
+        // Response is not JSON; fall back to text/message below.
+      }
+
+      try {
+        const text =
+          (
+            await context.clone().text()
+          ).trim();
+
+        if (text) {
+          return text;
+        }
+      } catch {
+        // Fall back to the original error message below.
+      }
+    }
+  }
+
+  if (
+    error instanceof Error &&
+    error.message
+  ) {
+    return error.message;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error
+  ) {
+    return String(
+      (
+        error as {
+          message?: unknown;
+        }
+      ).message ||
+        "Operasi admin gagal."
+    );
+  }
+
+  return String(
+    error ||
+      "Operasi admin gagal."
+  );
+};
+
 export const getAdminAccounts =
   async (): Promise<
     AdminAccount[]
@@ -84,7 +183,11 @@ const invokeAdminControl =
     if (
       error
     ) {
-      throw error;
+      throw new Error(
+        await functionErrorMessage(
+          error
+        )
+      );
     }
 
     if (
@@ -110,8 +213,19 @@ export const activateAccount =
       string,
     temporaryPassword:
       string
-  ) =>
-    invokeAdminControl({
+  ) => {
+    const validationError =
+      adminPasswordValidationError(
+        temporaryPassword
+      );
+
+    if (validationError) {
+      throw new Error(
+        validationError
+      );
+    }
+
+    return invokeAdminControl({
       action:
         "activate_account",
       profile_id:
@@ -119,6 +233,7 @@ export const activateAccount =
       temporary_password:
         temporaryPassword,
     });
+  };
 
 export const activateAllAccounts =
   async (): Promise<{
@@ -154,8 +269,19 @@ export const resetAccountPassword =
       string,
     newPassword:
       string
-  ) =>
-    invokeAdminControl({
+  ) => {
+    const validationError =
+      adminPasswordValidationError(
+        newPassword
+      );
+
+    if (validationError) {
+      throw new Error(
+        validationError
+      );
+    }
+
+    return invokeAdminControl({
       action:
         "reset_password",
       profile_id:
@@ -163,6 +289,7 @@ export const resetAccountPassword =
       new_password:
         newPassword,
     });
+  };
 
 type ResetFilePathRow = {
   file_id: string;
