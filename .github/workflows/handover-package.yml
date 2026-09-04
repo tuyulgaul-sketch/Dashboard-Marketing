@@ -1,0 +1,25 @@
+name: Handover Source Package
+
+on:
+  push:
+    branches:
+      - handover/package-20260904
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build source archive
+        run: |
+          mkdir -p handover-artifact/Dashboard-Marketing
+          rsync -a --exclude '.git' --exclude '.github/workflows/handover-package.yml' ./ handover-artifact/Dashboard-Marketing/
+          cd handover-artifact
+          zip -r Dashboard-Marketing-Source-8efc817.zip Dashboard-Marketing
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dashboard-Marketing-Source-8efc817
+          path: handover-artifact/Dashboard-Marketing-Source-8efc817.zip
+          retention-days: 3
