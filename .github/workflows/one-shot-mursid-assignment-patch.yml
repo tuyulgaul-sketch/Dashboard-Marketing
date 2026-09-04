@@ -111,16 +111,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm --version
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint changed page
-        run: npx eslint src/pages/AktivitasUniversalPage.tsx
+        run: pnpm exec eslint src/pages/AktivitasUniversalPage.tsx
 
       - name: Build application
-        run: npm run build
+        run: pnpm build
 
       - name: Commit verified patch and remove one-shot files
         shell: bash
