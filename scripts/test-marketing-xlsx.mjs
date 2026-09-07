@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import Module from 'node:module';
 import { resolve, dirname } from 'node:path';
 import ts from 'typescript';
@@ -10,7 +9,7 @@ function loadTs(path, overrides = {}) {
   const filename = resolve(path);
   const source = readFileSync(filename, 'utf8');
   const compiled = ts.transpileModule(source, { fileName: filename, compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true } });
-  const mod = new Module(filename, module);
+  const mod = new Module(filename);
   mod.filename = filename;
   mod.paths = Module._nodeModulePaths(dirname(filename));
   const original = mod.require.bind(mod);
