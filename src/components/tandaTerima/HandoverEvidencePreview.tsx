@@ -84,7 +84,6 @@ const HandoverEvidencePreview: React.FC<Props> = ({ fileId, fileName, transactio
           <DialogPrimitive.Overlay className="fixed inset-0 z-[300] bg-black/85" />
           <DialogPrimitive.Content
             className="fixed inset-0 z-[301] flex h-screen h-[100dvh] w-screen flex-col overflow-hidden bg-slate-950 text-white shadow-2xl focus:outline-none"
-            aria-describedby={undefined}
           >
             <header className="flex shrink-0 items-center justify-between gap-4 border-b border-white/15 px-4 py-3 pr-16 sm:px-6 sm:pr-20">
               <div className="min-w-0">

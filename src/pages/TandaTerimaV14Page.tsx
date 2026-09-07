@@ -4,6 +4,7 @@ import React, {
   useState,
 } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import HandoverEvidencePreview from "@/components/tandaTerima/HandoverEvidencePreview";
 import { brandedPrompt } from "@/lib/brandedDialog";
 import { supabase } from "@/lib/supabase";
 import { store } from "@/services/store";
@@ -3400,6 +3401,12 @@ const TandaTerimaV14Page:
                               </div>
 
                               {step.evidenceFileId && (
+                                <div className="flex flex-wrap gap-2">
+                                  <HandoverEvidencePreview
+                                    fileId={step.evidenceFileId}
+                                    fileName={step.evidenceFileName}
+                                    transactionId={detailReceipt.id}
+                                  />
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -3420,6 +3427,7 @@ const TandaTerimaV14Page:
                                 >
                                   <Download className="h-3.5 w-3.5" /> Download Foto
                                 </Button>
+                                </div>
                               )}
                             </div>
 
@@ -3462,6 +3470,12 @@ const TandaTerimaV14Page:
                               </div>
 
                               {log.evidenceFileId && (
+                                <div className="flex flex-wrap gap-2">
+                                  <HandoverEvidencePreview
+                                    fileId={log.evidenceFileId}
+                                    fileName={log.evidenceFileName}
+                                    transactionId={detailReceipt.id}
+                                  />
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -3476,6 +3490,7 @@ const TandaTerimaV14Page:
                                   <Download className="h-3.5 w-3.5" />
                                   Download Foto
                                 </Button>
+                                </div>
                               )}
                             </div>
 
