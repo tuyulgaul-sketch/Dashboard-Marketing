@@ -29,6 +29,13 @@ import {
   isSystemAdminProfile,
 } from "@/lib/accessControl";
 
+import Index from './pages/Index';
+import TargetRkapPage from './pages/TargetRkapPage';
+import BookingPipelinePage from './pages/BookingPipelinePage';
+import ProduksiPage from './pages/ProduksiPage';
+import DigitalAffinityPage from './pages/DigitalAffinityPage';
+import RestoredBusinessGuard from './components/common/RestoredBusinessGuard';
+import { isDigitalAffinityProfile } from '@/lib/accessControl';
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
@@ -93,30 +100,11 @@ const DocumentOnly: React.FC<{
 
 const HomeRoute: React.FC = () => {
   const { profile } = useAuth();
-
-  if (!profile) {
-    return null;
-  }
-
-  if (
-    isSystemAdminProfile(
-      profile
-    )
-  ) {
-    return (
-      <Navigate
-        to="/administrasi"
-        replace
-      />
-    );
-  }
-
-  return (
-    <Navigate
-      to="/aktivitas"
-      replace
-    />
-  );
+  if (!profile) return null;
+  if (isSystemAdminProfile(profile)) return <Navigate to="/administrasi" replace />;
+  if (isDigitalAffinityProfile(profile)) return <DigitalAffinityPage />;
+  if (!profile.legacy_user_id) return <Navigate to="/aktivitas" replace />;
+  return <RestoredBusinessGuard feature="DASHBOARD"><Index /></RestoredBusinessGuard>;
 };
 
 const Protected = ({
@@ -160,6 +148,10 @@ const AppRoutes = () => (
         </Protected>
       }
     />
+
+    <Route path="/target-rkap" element={<Protected><RestoredBusinessGuard feature="TARGET_RKAP"><TargetRkapPage /></RestoredBusinessGuard></Protected>} />
+    <Route path="/booking-pipeline" element={<Protected><RestoredBusinessGuard feature="BOOKING_PIPELINE"><BookingPipelinePage /></RestoredBusinessGuard></Protected>} />
+    <Route path="/produksi" element={<Protected><RestoredBusinessGuard feature="PRODUCTION"><ProduksiPage /></RestoredBusinessGuard></Protected>} />
 
     <Route
       path="/booking-ruang-meeting"

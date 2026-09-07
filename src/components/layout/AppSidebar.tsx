@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   canAccessFeature,
   isSystemAdminProfile,
+  isMarketingSupportRootProfile,
 } from "@/lib/accessControl";
 import {
   Briefcase,
@@ -15,6 +16,9 @@ import {
   CalendarDays,
   ChevronRight,
   FileText,
+  LayoutDashboard,
+  Target,
+  TrendingUp,
   Megaphone,
   Settings,
 } from "lucide-react";
@@ -47,6 +51,11 @@ export const AppSidebar:
       isSystemAdminProfile(
         profile
       );
+
+    const canSeeTarget = canAccessFeature(profile, 'TARGET_RKAP');
+    const canSeeBooking = canAccessFeature(profile, 'BOOKING_PIPELINE');
+    const canSeeProduction = canAccessFeature(profile, 'PRODUCTION');
+    const isSupportRoot = isMarketingSupportRootProfile(profile);
 
     const canSeeMeetingRoom =
       canAccessFeature(
@@ -118,6 +127,8 @@ export const AppSidebar:
 
     const administrationItems:
       FlyoutItem[] = [
+        ...(canSeeBooking ? [{ label: 'Booking & Pipeline', path: '/booking-pipeline', icon: Briefcase }] : []),
+        ...(canSeeProduction ? [{ label: 'Produksi', path: '/produksi', icon: TrendingUp }] : []),
         ...(canSeeMeetingRoom
           ? [{
               label:
@@ -328,6 +339,18 @@ export const AppSidebar:
         </div>
 
         <nav className="flex-1 space-y-1 p-3">
+          {!isSystemAdmin && canAccessFeature(profile, 'DASHBOARD') && (
+            <NavLink to="/" end onClick={onNavigate} className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
+              <LayoutDashboard className="h-4 w-4 shrink-0" /><span>Dashboard</span>
+            </NavLink>
+          )}
+          {canSeeTarget && (
+            <NavLink to="/target-rkap" onClick={onNavigate} className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
+              <Target className="h-4 w-4 shrink-0" /><span>{isSupportRoot ? 'Target & RKAP' : 'Target Kinerja'}</span>
+            </NavLink>
+          )}
           {!isSystemAdmin &&
             canAccessFeature(
               profile,

@@ -1,0 +1,84 @@
+name: Restored business regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'src/components/common/RestoredBusinessGuard.tsx'
+      - 'src/contexts/AuthContext.tsx'
+      - 'src/services/centralBusinessService.ts'
+      - 'src/services/centralBusinessStorageRuntime.ts'
+      - 'src/services/centralMasterRuntime.ts'
+      - 'src/services/centralTargetRuntime.ts'
+      - 'scripts/test-restored-business.mjs'
+      - '.github/workflows/restored-business-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+          git restore -- pnpm-lock.yaml
+      - name: Preserve and compare existing live features
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const paths = [
+            'src/lib/accessControl.ts',
+            'src/pages/AktivitasUniversalPage.tsx',
+            'src/pages/MarketingMeetingRoomPage.tsx',
+            'src/pages/DokumenPendukungPage.tsx',
+            'src/pages/DokumenAdministrasiReaderPage.tsx',
+            'src/pages/TandaTerimaV14Page.tsx',
+            'src/pages/AdministrasiPage.tsx',
+            'src/components/common/ReleaseSyncBridge.tsx',
+            'src/services/centralUserRuntime.ts',
+            'src/services/targetService.ts',
+            'src/services/masterDataService.ts',
+            'src/services/businessFileStorage.ts',
+            'src/services/pipelineFileStorage.ts',
+          ];
+          const main = execFileSync('git', ['rev-parse', 'origin/main'], {encoding:'utf8'}).trim();
+          const snapshot = Object.fromEntries(paths.map(path => [path, execFileSync('git', ['show', `${main}:${path}`], {encoding:'utf8'})]));
+          writeFileSync('/tmp/restore-preserved-files.json', JSON.stringify(snapshot));
+          for (const [path, expected] of Object.entries(snapshot)) {
+            if (readFileSync(path, 'utf8') !== expected) throw new Error(`Existing live file changed: ${path}`);
+          }
+          console.log(`${paths.length} existing live files preserved byte-for-byte.`);
+          NODE
+      - name: Run restored and existing feature regressions
+        run: |
+          node --experimental-strip-types --test scripts/test-restored-business.mjs scripts/test-admin-document-access.mjs scripts/test-admin-document-reader.mjs scripts/test-admin-document-browse.mjs scripts/test-admin-product-search.mjs scripts/test-marketing-tool-browse.mjs scripts/test-document-handover-sort.mjs
+      - name: Verify lint and TypeScript against unchanged main baseline
+        run: |
+          git worktree add --detach /tmp/restore-baseline origin/main
+          ln -s "$PWD/node_modules" /tmp/restore-baseline/node_modules
+          (cd /tmp/restore-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/restore-ts-before.txt 2>&1 || true)
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/restore-ts-after.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const errors = path => readFileSync(path, 'utf8').split('\n')
+            .filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line))
+            .map(line => line.replace(/\(\d+,\d+\)/, ''));
+          const before = errors('/tmp/restore-ts-before.txt');
+          const after = errors('/tmp/restore-ts-after.txt');
+          const added = after.filter(error => !new Set(before).has(error));
+          console.log(`TypeScript baseline: ${before.length}; current: ${after.length}; new: ${added.length}.`);
+          if (added.length) { console.error(added.join('\n')); process.exit(1); }
+          NODE
+          pnpm exec eslint src/App.tsx src/components/layout/AppSidebar.tsx src/contexts/AuthContext.tsx src/services/centralBusinessService.ts src/services/centralBusinessStorageRuntime.ts src/components/common/RestoredBusinessGuard.tsx
+      - name: Verify production build
+        run: pnpm run build
