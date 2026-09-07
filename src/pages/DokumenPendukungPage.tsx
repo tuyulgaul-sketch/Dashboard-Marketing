@@ -9,6 +9,7 @@ import {
 import {
   AppLayout,
 } from '@/components/layout/AppLayout';
+import { AdminDocumentBrowser } from '@/components/documents/AdminDocumentBrowser';
 import { ADMIN_DOCUMENT_CATEGORIES } from '@/lib/adminDocumentCategories';
 import {
   ManagedServiceDocument,
@@ -1261,6 +1262,10 @@ export const DokumenPendukungPage:
       ].includes(
         currentUser.id
       );
+
+    // Existing Administration operators and final approvers keep their full workflow.
+    const isAdminDocumentPublisher =
+      isAdminOperator || isEndah;
 
     const isAndi =
       store.canActAsMarketingCommunicationHead(
@@ -3780,7 +3785,21 @@ export const DokumenPendukungPage:
           </div>
 
           {area ===
-            'administration' && (
+            'administration' &&
+            !isAdminDocumentPublisher && (
+            <AdminDocumentBrowser
+              key={currentUser.id}
+              documents={publishedDocs}
+              products={products}
+              onDownload={document =>
+                handleDownload(document.id, document.fileName)
+              }
+            />
+          )}
+
+          {area ===
+            'administration' &&
+            isAdminDocumentPublisher && (
             <>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {ADMIN_CATEGORIES.map(
