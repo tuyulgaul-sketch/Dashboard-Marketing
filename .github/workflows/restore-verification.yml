@@ -3,7 +3,7 @@ on:
   push:
     branches: [feat/restore-capped-business-modules]
     paths:
-      - 'scripts/apply-restore-capped.mjs'
+      - 'scripts/prepare-restore-integration.mjs'
       - '.github/workflows/restore-verification.yml'
 concurrency:
   group: restore-capped-business-modules
@@ -51,24 +51,7 @@ jobs:
           pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/restore-ts-before.txt 2>&1 || true
           pnpm exec eslint src/App.tsx src/components/layout/AppSidebar.tsx src/contexts/AuthContext.tsx src/services/centralBusinessService.ts src/services/centralBusinessStorageRuntime.ts > /tmp/restore-lint-before.txt 2>&1 || true
       - name: Apply reviewed additive integration
-        run: |
-          node scripts/apply-restore-capped.mjs
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import { readFileSync, writeFileSync } from 'node:fs';
-          const path = 'src/services/centralBusinessService.ts';
-          const source = readFileSync(path, 'utf8');
-          assert(source.includes("  'pertalife_approver_delegations',\n"));
-          writeFileSync(path, source.replace("  'pertalife_approver_delegations',\n", ''));
-          // Delegation is an existing live workflow, not a capped collection.
-          // Do not migrate or empty it as part of this release.
-          const testPath = 'scripts/test-restored-business.mjs';
-          let tests = readFileSync(testPath, 'utf8');
-          tests = tests.replace('assert.equal(restored.length, 11);', 'assert.equal(restored.length, 10);')
-            .replace('assert.equal(new Set([...lite, ...restored]).size, 19);', 'assert.equal(new Set([...lite, ...restored]).size, 18);')
-            .replace(",'pertalife_approver_delegations'", '');
-          writeFileSync(testPath, tests);
-          NODE
+        run: node scripts/prepare-restore-integration.mjs
       - name: Run restoration and existing document regressions
         run: |
           node --experimental-strip-types --test scripts/test-restored-business.mjs
