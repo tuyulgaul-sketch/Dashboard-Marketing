@@ -28,9 +28,9 @@ for (const department of ['Marketing Communication', 'Digital & Affinity']) {
   check(isCrossSupportAdminDocumentReader(reader), true);
   check(canAccessFeature(reader, 'DOCUMENT_ADMIN'), true);
   check(canAccessFeature(reader, 'SYSTEM_ADMIN'), false);
-  check(canAccessFeature(reader, 'TARGET_RKAP'), false);
+  check(canAccessFeature(reader, 'TARGET_RKAP'), true);
   check(canAccessFeature(reader, 'BOOKING_PIPELINE'), false);
-  check(canAccessFeature(reader, 'PRODUCTION'), false);
+  check(canAccessFeature(reader, 'PRODUCTION'), true);
   check(canAccessFeature(reader, 'DOCUMENT_MARCOMM'), false);
   check(canAccessFeature({ ...reader, active: false }, 'DOCUMENT_ADMIN'), false);
   check(canAccessFeature({ ...reader, unit: 'Other Unit' }, 'DOCUMENT_ADMIN'), false);

@@ -166,6 +166,12 @@ export const canAccessFeature = (
     );
   }
 
+  // These two routes are read-only for every active directorate profile.
+  // Upload authorization remains a separate server-verified permission.
+  if (feature === "TARGET_RKAP" || feature === "PRODUCTION") {
+    return !isSystemAdminProfile(profile);
+  }
+
   // Modules below masih memakai identity legacy untuk menjaga kompatibilitas
   // business store lama. Jangan mengizinkan fallback identitas untuk modul ini.
   if (!hasLegacyBusinessIdentity(profile)) {
@@ -173,17 +179,7 @@ export const canAccessFeature = (
   }
 
   switch (feature) {
-    case "TARGET_RKAP":
-      return business || supportRoot;
-
     case "BOOKING_PIPELINE":
-      return (
-        business ||
-        supportRoot ||
-        marketingAdmin
-      );
-
-    case "PRODUCTION":
       return (
         business ||
         supportRoot ||

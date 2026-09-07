@@ -667,7 +667,8 @@ const getRupiahDifference = (
   );
 };
 
-export const TargetRkapPage: React.FC = () => {
+export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: 'targets' | 'bulk'; publisherAuthorized?: boolean }> = ({ embedded = false, initialUploadTab = 'targets', publisherAuthorized = false }) => {
+  const PageLayout = embedded ? React.Fragment : AppLayout;
   const [currentUser, setCurrentUser] = useState<User>(
     store.getCurrentUser()
   );
@@ -802,7 +803,7 @@ export const TargetRkapPage: React.FC = () => {
   }, []);
 
   const isTLMS =
-    currentUser.role ===
+    publisherAuthorized && currentUser.role ===
     'TEAM_LEADER_MARKETING_SUPPORT';
 
   const isMarketingTargetUser =
@@ -4125,10 +4126,10 @@ export const TargetRkapPage: React.FC = () => {
   // ============================================================
 
   if (
-    isMarketingTargetUser
+    isMarketingTargetUser && !embedded
   ) {
     return (
-      <AppLayout>
+      <PageLayout>
 
         <div className="space-y-6">
 
@@ -4868,7 +4869,7 @@ export const TargetRkapPage: React.FC = () => {
 
         </div>
 
-      </AppLayout>
+      </PageLayout>
     );
   }
 
@@ -4880,7 +4881,7 @@ export const TargetRkapPage: React.FC = () => {
     !isTLMS
   ) {
     return (
-      <AppLayout>
+      <PageLayout>
 
         <Card className="border-gray-200">
 
@@ -4900,21 +4901,21 @@ export const TargetRkapPage: React.FC = () => {
 
         </Card>
 
-      </AppLayout>
+      </PageLayout>
     );
   }
 
   return (
-    <AppLayout>
+    <PageLayout>
       <div className="space-y-6">
 
         {/* ==================================================
             HEADER
         =================================================== */}
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        {!embedded && (<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
 
-          <div>
+          {!embedded && (<div>
 
             <h1 className="text-xl font-bold text-gray-900">
               Target & RKAP Directorate Marketing
@@ -4924,17 +4925,17 @@ export const TargetRkapPage: React.FC = () => {
               Pengelolaan Target RKAP, Cascading Hierarchy Validation, dan Bulk Import Pipeline RKAP
             </p>
 
-          </div>
+          </div>)}
 
 
-        </div>
+        </div>)}
 
         <Tabs
-          defaultValue="targets"
+          defaultValue={initialUploadTab}
           className="w-full"
         >
 
-          <TabsList className="bg-white border border-gray-200 p-1 rounded-xl shadow-sm grid grid-cols-2 w-full max-w-md">
+          {!embedded && (<TabsList className="bg-white border border-gray-200 p-1 rounded-xl shadow-sm grid grid-cols-2 w-full max-w-md">
 
             <TabsTrigger
               value="targets"
@@ -4950,7 +4951,7 @@ export const TargetRkapPage: React.FC = () => {
               Bulk Pipeline RKAP
             </TabsTrigger>
 
-          </TabsList>
+          </TabsList>)}
 
           {/* ==================================================
               MASTER TARGET RKAP
@@ -6123,7 +6124,7 @@ export const TargetRkapPage: React.FC = () => {
         </Tabs>
 
       </div>
-    </AppLayout>
+    </PageLayout>
   );
 };
 

@@ -31,11 +31,12 @@ import {
 
 import Index from './pages/Index';
 import TargetRkapPage from './pages/TargetRkapPage';
+import DirectoratePerformancePage from './pages/DirectoratePerformancePage';
+import TargetRealizationUploadPage from './pages/TargetRealizationUploadPage';
 import BookingPipelinePage from './pages/BookingPipelinePage';
-import ProduksiPage from './pages/ProduksiPage';
 import DigitalAffinityPage from './pages/DigitalAffinityPage';
 import RestoredBusinessGuard from './components/common/RestoredBusinessGuard';
-import { isDigitalAffinityProfile } from '@/lib/accessControl';
+import { isDigitalAffinityProfile, isMarketingSupportProfile } from '@/lib/accessControl';
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
@@ -107,6 +108,17 @@ const HomeRoute: React.FC = () => {
   return <RestoredBusinessGuard feature="DASHBOARD"><Index /></RestoredBusinessGuard>;
 };
 
+// Preserve the original hierarchy cockpit for marketing target holders.
+// Support functions use the independent company-wide aggregate reader.
+const TargetViewRoute: React.FC = () => {
+  const { profile } = useAuth();
+  if (!profile) return null;
+  if (isMarketingSupportProfile(profile) || !profile.legacy_user_id) {
+    return <DirectoratePerformancePage view="target" />;
+  }
+  return <RestoredBusinessGuard feature="TARGET_RKAP"><TargetRkapPage /></RestoredBusinessGuard>;
+};
+
 const Protected = ({
   children,
 }: {
@@ -149,9 +161,10 @@ const AppRoutes = () => (
       }
     />
 
-    <Route path="/target-rkap" element={<Protected><RestoredBusinessGuard feature="TARGET_RKAP"><TargetRkapPage /></RestoredBusinessGuard></Protected>} />
+    <Route path="/target-rkap" element={<Protected><FeatureOnly feature="TARGET_RKAP"><TargetViewRoute /></FeatureOnly></Protected>} />
     <Route path="/booking-pipeline" element={<Protected><RestoredBusinessGuard feature="BOOKING_PIPELINE"><BookingPipelinePage /></RestoredBusinessGuard></Protected>} />
-    <Route path="/produksi" element={<Protected><RestoredBusinessGuard feature="PRODUCTION"><ProduksiPage /></RestoredBusinessGuard></Protected>} />
+    <Route path="/produksi" element={<Protected><FeatureOnly feature="PRODUCTION"><DirectoratePerformancePage view="realization" /></FeatureOnly></Protected>} />
+    <Route path="/target-realisasi/upload" element={<Protected><RestoredBusinessGuard feature="TARGET_RKAP"><TargetRealizationUploadPage /></RestoredBusinessGuard></Protected>} />
 
     <Route
       path="/booking-ruang-meeting"
