@@ -6,6 +6,9 @@ on:
       - 'scripts/integrate-target-realization.mjs'
       - 'scripts/integrate-target-realization-v2.mjs'
       - 'scripts/test-target-realization-navigation.mjs'
+      - 'src/hooks/useTargetRealizationPublisher.ts'
+      - 'src/services/directoratePerformanceService.ts'
+      - 'src/pages/DirectoratePerformancePage.tsx'
       - '.github/workflows/target-realization-integration.yml'
 permissions:
   contents: write
