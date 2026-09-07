@@ -31,11 +31,18 @@ const transformRestoredRegression = source => replaceOnce(source,
   `  assert.match(sidebar, /isSupportRoot \\? 'Target & RKAP' : 'Target Kinerja'/);`,
   `  assert.match(sidebar, /renderFlyoutGroup\\('Target & Realisasi', Target, targetRealizationItems\\)/);\n  assert.match(sidebar, /Upload Target dan Realisasi/);\n  assert.doesNotMatch(sidebar, /label: 'Produksi', path: '\\/produksi'/);`);
 
+const transformAdminDocumentRegression = source => {
+  let next = replaceOnce(source, `check(canAccessFeature(reader, 'TARGET_RKAP'), false);`, `check(canAccessFeature(reader, 'TARGET_RKAP'), true);`);
+  next = replaceOnce(next, `check(canAccessFeature(reader, 'PRODUCTION'), false);`, `check(canAccessFeature(reader, 'PRODUCTION'), true);`);
+  return next;
+};
+
 export const FINAL_TRANSFORMS = {
   ...TRANSFORMS,
   'src/pages/TargetRkapPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/TargetRkapPage.tsx'](source), 'Target & RKAP Directorate Marketing'),
   'src/pages/ProduksiPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/ProduksiPage.tsx'](source), 'Realisasi Official menggunakan snapshot laporan produksi CSV'),
   'scripts/test-restored-business.mjs': transformRestoredRegression,
+  'scripts/test-admin-document-access.mjs': transformAdminDocumentRegression,
 };
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
