@@ -50,7 +50,9 @@ transform('src/pages/ProduksiPage.tsx', source => {
   let next = replace(source,
     `        const sourceHeaders = Array.from(new Set([...TEMPLATE_HEADERS, ...parsedData.flatMap(row => Object.keys(row))]));`,
     `        const sourceHeaders = Array.from(new Set(parsedData.flatMap(row => Object.keys(row))));`, 'preserve source columns');
-  // Keep the existing ID-only lookup, block an invalid owner and preserve all official snapshot logic.
+  const unusedCounter = /\blet ignoredRowCount\s*=\s*0;/g;
+  assert.equal([...next.matchAll(unusedCounter)].length, 1, 'Only the upload ignored-row counter');
+  next = next.replace(unusedCounter, 'const ignoredRowCount = 0;');
   assert.match(next, /resolveMarketingOwner\(ownerId, users/);
   assert.match(next, /picUserId:\s*picMatch!\.id/);
   assert.match(next, /validatedFile !== uploadFile/);
@@ -77,5 +79,4 @@ transform('scripts/test-marketing-xlsx.mjs', source => replace(source,
   `actual.definedNames.getRanges('MarketingUserIDs').length`,
   `actual.definedNames.getRanges('MarketingUserIDs').ranges.length`, 'named range assertion'));
 
-// All source anchors and syntax are checked before any file is written.
 for (const [path, content] of changes) { writeFileSync(path, content); console.log(`Patched ${path}`); }
