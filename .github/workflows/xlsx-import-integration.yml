@@ -24,8 +24,10 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
-      - name: Apply minimal source patch
-        run: node scripts/patch-xlsx-release.mjs
+      - name: Apply minimal source corrections
+        run: |
+          node scripts/patch-xlsx-release.mjs
+          node scripts/fix-xlsx-types.mjs
       - name: Native XLSX roundtrip
         run: node scripts/test-marketing-xlsx.mjs
       - name: Reject new lint and TypeScript diagnostics
