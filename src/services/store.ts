@@ -630,6 +630,7 @@ export type ServiceDocumentOwner =
 export type ServiceDocumentCategory =
   | 'SPAJ'
   | 'SPAK'
+  | 'FACT_FINDING'
   | 'PROPOSAL_PENAWARAN_STANDAR'
   | 'MATERI_PRESENTASI'
   | 'MATERI_SOSIALISASI'

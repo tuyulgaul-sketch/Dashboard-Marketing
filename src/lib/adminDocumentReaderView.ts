@@ -1,3 +1,10 @@
+import {
+  ADMIN_DOCUMENT_CATEGORIES,
+  getAdminDocumentCategoryLabel,
+  isAdminDocumentCategory,
+  type AdminDocumentCategory,
+} from './adminDocumentCategories.ts';
+
 export interface AdminDocumentListItem {
   ownerArea?: string;
   status?: string;
@@ -26,7 +33,7 @@ const normalize = (value: unknown): string =>
 export const isPublishedAdminDocument = (document: AdminDocumentListItem): boolean =>
   document.ownerArea === 'MARKETING_ADMINISTRATION' &&
   document.status === 'PUBLISHED' &&
-  (document.category === 'SPAJ' || document.category === 'SPAK');
+  isAdminDocumentCategory(document.category);
 
 /** A second client-side guard; the catalogue RPC remains the authority. */
 export function filterPublishedAdminDocuments<T extends AdminDocumentListItem>(
@@ -42,6 +49,7 @@ export function filterPublishedAdminDocuments<T extends AdminDocumentListItem>(
       document.title,
       document.productName,
       document.fileName,
+      getAdminDocumentCategoryLabel(document.category || ''),
       document.category,
       document.versionLabel,
     ].some(value => normalize(value).includes(query)))
@@ -70,10 +78,10 @@ export function getAdminDocumentProductOptions(
   return [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
 }
 
-export function getPublishedAdminDocumentCounts(documents: readonly AdminDocumentListItem[]) {
-  const published = documents.filter(isPublishedAdminDocument);
-  return {
-    SPAJ: published.filter(document => document.category === 'SPAJ').length,
-    SPAK: published.filter(document => document.category === 'SPAK').length,
-  };
+export function getPublishedAdminDocumentCounts(documents: readonly AdminDocumentListItem[]): Record<AdminDocumentCategory, number> {
+  const counts = Object.fromEntries(ADMIN_DOCUMENT_CATEGORIES.map(category => [category.value, 0])) as Record<AdminDocumentCategory, number>;
+  for (const document of documents) {
+    if (isPublishedAdminDocument(document)) counts[document.category as AdminDocumentCategory] += 1;
+  }
+  return counts;
 }

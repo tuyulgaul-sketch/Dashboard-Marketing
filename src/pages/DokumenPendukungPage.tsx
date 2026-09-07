@@ -9,6 +9,7 @@ import {
 import {
   AppLayout,
 } from '@/components/layout/AppLayout';
+import { ADMIN_DOCUMENT_CATEGORIES } from '@/lib/adminDocumentCategories';
 import {
   ManagedServiceDocument,
   MarcommRequest,
@@ -111,26 +112,8 @@ type DecisionContext =
         MarcommRequest;
     };
 
-const ADMIN_CATEGORIES:
-  Array<{
-    value:
-      ServiceDocumentCategory;
-    label:
-      string;
-  }> = [
-    {
-      value:
-        'SPAJ',
-      label:
-        'SPAJ',
-    },
-    {
-      value:
-        'SPAK',
-      label:
-        'SPAK',
-    },
-  ];
+const ADMIN_CATEGORIES: Array<{ value: ServiceDocumentCategory; label: string }> =
+  [...ADMIN_DOCUMENT_CATEGORIES];
 
 const MARKETING_TOOL_CATEGORIES:
   Array<{
@@ -3727,7 +3710,7 @@ export const DokumenPendukungPage:
     const pageDescription =
       area ===
         'administration'
-        ? 'Repository SPAJ dan SPAK. Suci/Ayu/Ulfia/Raydinda upload, Endah Wasis final approve, lalu tersedia untuk seluruh Marketing.'
+        ? 'Repository SPAJ, SPAK, dan Fact Finding. Suci/Ayu/Ulfia/Raydinda upload, Endah Wasis final approve, lalu tersedia untuk seluruh Marketing.'
         : area ===
           'marketing-tools'
           ? 'Katalog approved yang bisa langsung di-download: Proposal Produk Standar, Materi Presentasi Produk Standar, dan Brosur Produk Standar.'
@@ -3771,7 +3754,7 @@ export const DokumenPendukungPage:
                   className="gap-2 bg-blue-600 text-xs font-bold text-white hover:bg-blue-700"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload SPAJ / SPAK
+                  Upload SPAJ / SPAK / Fact Finding
                 </Button>
               )}
 
@@ -3799,7 +3782,7 @@ export const DokumenPendukungPage:
           {area ===
             'administration' && (
             <>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {ADMIN_CATEGORIES.map(
                   category => {
                     const count =

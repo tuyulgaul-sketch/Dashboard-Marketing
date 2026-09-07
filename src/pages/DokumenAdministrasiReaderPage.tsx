@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessFeature, isCrossSupportAdminDocumentReader } from '@/lib/accessControl';
+import { ADMIN_DOCUMENT_CATEGORIES } from '@/lib/adminDocumentCategories';
 import {
   filterPublishedAdminDocuments,
   getAdminDocumentProductOptions,
@@ -112,7 +113,7 @@ export const DokumenAdministrasiReaderPage: React.FC = () => {
               <FileText className="h-6 w-6 text-blue-600" /> Dokumen Administrasi
             </h1>
             <p className="mt-1 text-xs leading-relaxed text-gray-500">
-              Repository SPAJ dan SPAK. Suci/Ayu/Ulfia/Raydinda upload, Endah Wasis final approve, lalu tersedia untuk seluruh Marketing.
+              Repository SPAJ, SPAK, dan Fact Finding. Suci/Ayu/Ulfia/Raydinda upload, Endah Wasis final approve, lalu tersedia untuk seluruh Marketing.
             </p>
           </div>
           {allowed && (
@@ -129,13 +130,13 @@ export const DokumenAdministrasiReaderPage: React.FC = () => {
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Akses Dokumen Administrasi tidak tersedia untuk akun ini.</div>
         ) : (
           <>
-            <div className="grid gap-3 md:grid-cols-2">
-              {(['SPAJ', 'SPAK'] as const).map(category => (
-                <Card key={category} className="border-blue-100 bg-blue-50/30">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {ADMIN_DOCUMENT_CATEGORIES.map(category => (
+                <Card key={category.value} className="border-blue-100 bg-blue-50/30">
                   <CardContent className="flex items-center justify-between p-4">
                     <div>
-                      <div className="text-sm font-black text-gray-900">{category}</div>
-                      <div className="mt-1 text-[10px] text-gray-500">{counts[category]} dokumen published</div>
+                      <div className="text-sm font-black text-gray-900">{category.label}</div>
+                      <div className="mt-1 text-[10px] text-gray-500">{counts[category.value]} dokumen published</div>
                     </div>
                   </CardContent>
                 </Card>
