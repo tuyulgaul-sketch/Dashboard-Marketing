@@ -1,0 +1,1 @@
+Run the isolated XLSX reader and template roundtrip, lint, and build before committing the final source changes. Existing production data remains untouched.
