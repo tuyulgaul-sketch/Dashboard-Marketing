@@ -62,7 +62,14 @@ $function$;
 
 revoke all on function public.guard_official_performance_upload_v34() from public, anon, authenticated;
 
+-- INSERT ... ON CONFLICT DO UPDATE fires BEFORE INSERT even for an existing
+-- row. Therefore only actual inserts are checked AFTER INSERT. Otherwise a
+-- legitimate update to an existing RKAP_BULK pipeline would be rejected.
 drop trigger if exists central_official_performance_upload_guard_v34 on public.central_business_entities;
+drop trigger if exists central_official_performance_upload_insert_v34 on public.central_business_entities;
 create trigger central_official_performance_upload_guard_v34
-before insert or update or delete on public.central_business_entities
+before update or delete on public.central_business_entities
+for each row execute function public.guard_official_performance_upload_v34();
+create trigger central_official_performance_upload_insert_v34
+after insert on public.central_business_entities
 for each row execute function public.guard_official_performance_upload_v34();
