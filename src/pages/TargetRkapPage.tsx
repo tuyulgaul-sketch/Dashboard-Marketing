@@ -3241,24 +3241,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                     'ERROR';
                 }
 
-                if (
-                  inputPicName &&
-                  normalizeComparableText(
-                    inputPicName
-                  ) !==
-                    normalizeComparableText(
-                      picUser.name
-                    )
-                ) {
-                  messages.push(
-                    `Nama PIC tidak sesuai User Master. Seharusnya ${picUser.name}`
-                  );
-
-                  status =
-                    'ERROR';
-                }
-
-                if (
+if (
                   inputUnit &&
                   normalizeComparableText(
                     inputUnit

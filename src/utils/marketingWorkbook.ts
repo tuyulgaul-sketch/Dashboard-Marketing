@@ -2,6 +2,7 @@ import type { User } from '@/types';
 import type ExcelJS from 'exceljs';
 
 export type SpreadsheetRow = Record<string, string>;
+export type MarketingTemplateRow = Record<string, string | number | boolean | null | undefined>;
 export type MarketingTemplateKind = 'target' | 'pipeline' | 'production';
 
 export const MARKETING_SHEETS = {
@@ -134,7 +135,7 @@ const getCellText = (value: ExcelJS.CellValue): string => {
   if (typeof value === 'object') {
     if ('formula' in value || 'sharedFormula' in value) {
       const result = value.result;
-      if (result === undefined || result === null || typeof result === 'object') {
+      if (result === undefined || result === null || (typeof result === 'object' && !(result instanceof Date))) {
         throw new Error('Sel formula tidak memiliki hasil tersimpan yang valid. Simpan ulang file setelah perhitungan Excel selesai.');
       }
       return getCellText(result);
@@ -142,7 +143,6 @@ const getCellText = (value: ExcelJS.CellValue): string => {
     if ('error' in value) throw new Error(`Sel Excel berisi error: ${value.error}`);
     if ('richText' in value) return value.richText.map(part => part.text).join('');
     if ('text' in value) return value.text;
-    if ('hyperlink' in value) return value.text;
   }
   throw new Error('Tipe sel Excel tidak didukung untuk data upload.');
 };
@@ -154,8 +154,9 @@ export const readNativeXlsxRows = async (
 ): Promise<SpreadsheetRow[]> => {
   const Excel = await loadExcelJS();
   const workbook = new Excel.Workbook();
-  await workbook.xlsx.load(new Uint8Array(binary instanceof Uint8Array ? binary : binary) as Parameters<typeof workbook.xlsx.load>[0]);
+  await workbook.xlsx.load(new Uint8Array(binary) as Parameters<typeof workbook.xlsx.load>[0]);
   const sheet = options.sheetName ? workbook.getWorksheet(options.sheetName) : workbook.worksheets[0];
+  if (sheet && (sheet.rowCount > 100001 || sheet.columnCount > 200)) throw new Error('Workbook melebihi batas 100.000 baris data atau 200 kolom.');
   if (!sheet) throw new Error(`Sheet data ${options.sheetName || 'pertama'} tidak ditemukan. Gunakan template XLSX terbaru.`);
   if (sheet.rowCount < 1) return [];
   const headerRow = sheet.getRow(1);
@@ -187,6 +188,7 @@ export const readMarketingSpreadsheet = async (
   options: { sheetName?: string; requiredHeaders?: string[] } = {}
 ): Promise<SpreadsheetRow[]> => {
   const extension = file.name.split('.').pop()?.toLowerCase();
+  if (file.size === 0) throw new Error('File kosong.');
   if (file.size > 15 * 1024 * 1024) throw new Error('Ukuran file maksimal 15 MB.');
   if (extension === 'xlsx') return readNativeXlsxRows(await file.arrayBuffer(), options);
   if (extension !== 'csv') throw new Error('Gunakan file XLSX asli atau CSV. Format XLS lama dan file yang hanya diganti ekstensinya tidak didukung.');
@@ -201,7 +203,7 @@ export const readMarketingSpreadsheet = async (
 
 export const buildMarketingWorkbook = async (
   kind: MarketingTemplateKind,
-  rows: SpreadsheetRow[],
+  rows: MarketingTemplateRow[],
   users: User[]
 ): Promise<Uint8Array> => {
   const directory = getMarketingDirectoryRows(users);
@@ -252,7 +254,7 @@ export const buildMarketingWorkbook = async (
 
 export const downloadMarketingWorkbook = async (
   kind: MarketingTemplateKind,
-  rows: SpreadsheetRow[],
+  rows: MarketingTemplateRow[],
   users: User[],
   filename: string
 ): Promise<void> => {

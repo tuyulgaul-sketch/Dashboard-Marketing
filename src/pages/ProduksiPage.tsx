@@ -786,7 +786,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
 
       try {
         const parsedData = await readMarketingSpreadsheet(uploadFile, { sheetName: MARKETING_SHEETS.production, requiredHeaders: REQUIRED_TEMPLATE_HEADERS });
-        const sourceHeaders = Array.from(new Set([...TEMPLATE_HEADERS, ...parsedData.flatMap(row => Object.keys(row))]));
+        const sourceHeaders = Array.from(new Set(parsedData.flatMap(row => Object.keys(row))));
         const parsedRows = [sourceHeaders, ...parsedData.map(row => sourceHeaders.map(header => getRowValue(row, header)))];
 
         if (
@@ -860,8 +860,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
             number
           >();
 
-        let ignoredRowCount =
-          0;
+        const ignoredRowCount = 0;
 
         let warningRowCount =
           0;
@@ -1951,7 +1950,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                     />
 
                     <p className="text-[11px] text-gray-500 mt-2">
-                      Gunakan 9 kolom sesuai template Dashboard (termasuk Nomor Polis dan Nama Nasabah), lalu Save As CSV. Sistem menerima delimiter titik-koma maupun koma. File UAT lama 7 kolom tetap diterima dan akan dibuatkan Nomor Polis dummy.
+                      Gunakan template XLSX terbaru dengan User ID Pemilik Realisasi wajib. Sheet Daftar User ID hanya referensi; sistem membaca Data Realisasi. CSV tetap diterima jika memiliki User ID. Nama PIC tidak digunakan untuk menentukan pemilik.
                     </p>
                   </div>
 
@@ -2251,7 +2250,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                 </CardTitle>
 
                 <CardDescription className="text-xs">
-                  Workflow pencatatan Polis/Invoice Core. Angka dashboard Realisasi Official berasal dari upload snapshot CSV.
+                  Workflow pencatatan Polis/Invoice Core. Angka dashboard Realisasi Official berasal dari upload snapshot XLSX.
                 </CardDescription>
               </CardHeader>
 

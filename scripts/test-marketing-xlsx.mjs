@@ -54,7 +54,7 @@ async function roundtrip(kind, input, required) {
   const ownerColumn = kind === 'target' ? 2 : kind === 'pipeline' ? 12 : 9;
   assert.equal(data.getColumn(ownerColumn).numFmt, '@');
   assert.ok(data.getCell(2, ownerColumn).dataValidation.formulae.includes('MarketingUserIDs'));
-  assert.equal(actual.definedNames.getRanges('MarketingUserIDs').length, 1);
+  assert.equal(actual.definedNames.getRanges('MarketingUserIDs').ranges.length, 1);
   const parsed = await workbook.readNativeXlsxRows(bytes, { sheetName: workbook.MARKETING_SHEETS[kind], requiredHeaders: required });
   assert.equal(parsed.length, input.length);
   if (input.length) for (const [key, value] of Object.entries(input[0])) assert.equal(parsed[0][key], String(value));
