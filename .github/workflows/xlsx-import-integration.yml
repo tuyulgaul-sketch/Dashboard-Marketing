@@ -16,8 +16,8 @@ on:
 permissions:
   contents: read
 jobs:
-  integrate:
-    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[xlsx-integrated]')
+  finalize:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[xlsx-finalize]')
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -32,19 +32,21 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
-          pnpm install --no-frozen-lockfile
-          pnpm add exceljs@4.4.0 --save-exact
-      - name: Integrate with verified source anchors
-        run: node scripts/integrate-xlsx-imports.mjs
-      - name: Commit generated changes to feature branch only
+          pnpm install --frozen-lockfile
+      - name: Apply one-time hardening and check native roundtrip
+        run: |
+          node scripts/finalize-xlsx-imports.mjs
+          node scripts/test-marketing-xlsx.mjs
+      - name: Commit verified source to isolated branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json pnpm-lock.yaml src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx src/utils/excelExport.ts
+          git add src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
           git diff --cached --check
-          git commit -m 'feat(xlsx): connect native readers and user ID validation [xlsx-integrated]'
+          git commit -m 'fix(xlsx): harden native imports and ownership checks [xlsx-integrated]'
           git push origin HEAD:feat/xlsx-user-id-imports
   verify:
+    if: github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[xlsx-integrated]') || contains(github.event.head_commit.message, '[xlsx-verify]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,8 +61,7 @@ jobs:
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
       - name: Native XLSX regression
-        run: |
-          if test -f scripts/test-marketing-xlsx.mjs; then node scripts/test-marketing-xlsx.mjs; fi
+        run: node scripts/test-marketing-xlsx.mjs
       - name: Existing business and navigation regressions
         run: |
           node --experimental-strip-types --test \
@@ -73,7 +74,7 @@ jobs:
             scripts/test-admin-product-search.mjs \
             scripts/test-marketing-tool-browse.mjs \
             scripts/test-document-handover-sort.mjs
-      - name: TypeScript diagnostics
+      - name: Reject new TypeScript diagnostics
         run: |
           pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/ts-current.txt 2>&1 || true
           git worktree add --detach /tmp/xlsx-baseline 6b087d9ceccd6a52fd1d83ea6dbaf27bdd9bbcbc
