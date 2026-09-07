@@ -28,13 +28,14 @@ const app = read('src/App.tsx');
 const sidebar = read('src/components/layout/AppSidebar.tsx');
 const auth = read('src/contexts/AuthContext.tsx');
 
-test('all ten restored collections are central and separate from the live bootstrap', () => {
+test('all ten restored collections are central and separate from live bootstrap', () => {
   const lite = evaluatedArray(service, 'LITE_BUSINESS_STORAGE_KEYS');
   const restored = evaluatedArray(service, 'RESTORED_BUSINESS_STORAGE_KEYS');
   assert.equal(lite.length, 8);
   assert.equal(restored.length, 10);
   assert.equal(new Set([...lite, ...restored]).size, 18);
   for (const key of ['pertalife_bookings','pertalife_pipelines','pertalife_appeals','pertalife_productions','pertalife_official_production_summaries','pertalife_official_production_batches','pertalife_official_policy_directory','pertalife_participants','pertalife_historical','pertalife_reimbursements']) assert(restored.includes(key));
+  assert(!restored.includes('pertalife_approver_delegations'));
   assert.match(read(runtime), /const bootstrapLegacyCollections[\s\S]*?for \([\s\S]*?LITE_BUSINESS_STORAGE_KEYS/);
   assert.doesNotMatch(read(runtime).split('const bootstrapLegacyCollections')[1].split('export const syncCentralBusinessRuntime')[0], /RESTORED_BUSINESS_STORAGE_KEYS|CENTRAL_BUSINESS_STORAGE_KEYS/);
 });
@@ -57,7 +58,7 @@ test('previously capped pages are restored without replacing live feature routes
   assert.match(app, /<ReleaseSyncBridge \/>/);
 });
 
-test('desktop and mobile navigation retain existing modules and restore the capped ones', () => {
+test('desktop and mobile navigation retain existing modules and restore capped ones', () => {
   for (const path of ['/target-rkap','/booking-pipeline','/produksi','/booking-ruang-meeting','/tanda-terima','/dokumen-pendukung?area=administration','/dokumen-pendukung?area=marketing-tools','/dokumen-pendukung?area=marcomm-requests']) assert(sidebar.includes(path));
   assert.match(sidebar, /canAccessFeature\(profile, 'DASHBOARD'\)/);
   assert.match(sidebar, /canSeeBooking \? \[/);
@@ -66,9 +67,11 @@ test('desktop and mobile navigation retain existing modules and restore the capp
   assert.match(sidebar, /mobile = false/);
 });
 
-test('master and target caches are initialized and cleared with auth identity', () => {
+test('central master and target caches initialize for every dashboard profile', () => {
   assert.match(auth, /syncCentralMasterRuntime\(authProfile\)/);
   assert.match(auth, /syncCentralTargetRuntime\(authProfile\.id\)/);
+  assert.match(auth, /canAccessFeature\(authProfile, 'DASHBOARD'\)/);
+  assert.doesNotMatch(auth, /canAccessFeature\(authProfile, 'TARGET_RKAP'\)/);
   assert.match(auth, /clearCentralMasterRuntime\(\)/);
   assert.match(auth, /clearCentralTargetRuntime\(\)/);
   assert.match(auth, /await loadRestoredBusiness\(authProfile\)/);
@@ -81,13 +84,10 @@ test('live never generates dummy business data or synthetic policy numbers', () 
   assert.match(text, /store\.getOfficialPolicyDirectory = \(\) => JSON\.parse/);
   assert.match(text, /store\.generateDummyData = \(\) =>/);
   assert.match(text, /Data dummy tidak tersedia/);
-  assert.doesNotMatch(read('src/contexts/AuthContext.tsx'), /bootstrapCentralBusinessCollection\(/);
+  assert.doesNotMatch(auth, /bootstrapCentralBusinessCollection\(/);
 });
 
-test('restoration does not change the existing security boundary', () => {
-  const files = readFileSync('/tmp/restore-preserved-files.json', 'utf8');
-  const snapshot = JSON.parse(files);
-  for (const [path, original] of Object.entries(snapshot)) {
-    assert.equal(read(path), original, `${path} must remain unchanged`);
-  }
+test('restoration preserves existing feature and security files byte for byte', () => {
+  const snapshot = JSON.parse(readFileSync('/tmp/restore-preserved-files.json', 'utf8'));
+  for (const [path, original] of Object.entries(snapshot)) assert.equal(read(path), original, `${path} must remain unchanged`);
 });
