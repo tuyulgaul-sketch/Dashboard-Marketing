@@ -1,0 +1,57 @@
+name: Administration product-first check
+on:
+  push:
+    branches: [feat/admin-documents-product-first]
+    paths:
+      - 'scripts/apply-admin-product-first.mjs'
+      - '.github/workflows/admin-product-first-check.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/admin-documents-product-first
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies using production package manager
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+      - name: Capture existing TypeScript baseline
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/admin-ts-baseline.txt 2>&1 || true
+      - name: Integrate legacy non-publisher view
+        run: node scripts/apply-admin-product-first.mjs
+      - name: Run document and RBAC regression tests
+        run: node --experimental-strip-types --test scripts/test-admin-document-reader.mjs scripts/test-admin-document-access.mjs scripts/test-admin-document-browse.mjs
+      - name: Verify production build
+        run: pnpm run build
+      - name: Reject new TypeScript errors
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/admin-ts-current.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const errors = path => readFileSync(path, 'utf8').split('\n')
+            .filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line))
+            .map(line => line.replace(/\(\d+,\d+\)/, ''));
+          const baseline = new Set(errors('/tmp/admin-ts-baseline.txt'));
+          const current = errors('/tmp/admin-ts-current.txt');
+          const added = current.filter(error => !baseline.has(error));
+          console.log(`TypeScript baseline: ${baseline.size} distinct errors; current: ${current.length}; new: ${added.length}.`);
+          if (added.length) { console.error(added.join('\n')); process.exit(1); }
+          console.log('No new TypeScript errors; pre-existing global errors are not claimed as passing.');
+          NODE
+      - name: Commit only reviewed application changes
+        run: |
+          git restore -- pnpm-lock.yaml
+          git add src/lib/adminDocumentBrowse.ts src/components/documents/AdminDocumentBrowser.tsx src/pages/DokumenAdministrasiReaderPage.tsx src/pages/DokumenPendukungPage.tsx scripts/test-admin-document-browse.mjs
+          git diff --cached --check
+          if git diff --cached --quiet; then echo 'Expected application integration was not staged.'; exit 1; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(docs): require product and category before browsing'
+          git push origin HEAD:refs/heads/feat/admin-documents-product-first
