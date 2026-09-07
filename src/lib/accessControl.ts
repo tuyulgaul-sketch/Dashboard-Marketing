@@ -75,6 +75,18 @@ export const isMarketingCommunicationProfile = (
         "marketing communication"
   );
 
+/** Cross-support access is read-only and does not require a legacy identity. */
+export const isCrossSupportAdminDocumentReader = (
+  profile?: AuthProfile | null
+) =>
+  Boolean(
+    profile &&
+      profile.active &&
+      !isSystemAdminProfile(profile) &&
+      (isMarketingCommunicationProfile(profile) ||
+        isDigitalAffinityProfile(profile))
+  );
+
 export const isBusinessMarketingProfile = (
   profile?: AuthProfile | null
 ) =>
@@ -143,6 +155,17 @@ export const canAccessFeature = (
     );
   }
 
+  // Marketing Communication and Digital & Affinity receive a separate
+  // read-only document library. Existing operator and marketing rights remain
+  // unchanged. No legacy identity fallback or approval permission is granted.
+  if (feature === "DOCUMENT_ADMIN") {
+    return (
+      isCrossSupportAdminDocumentReader(profile) ||
+      (hasLegacyBusinessIdentity(profile) &&
+        (business || supportRoot || marketingAdmin))
+    );
+  }
+
   // Modules below masih memakai identity legacy untuk menjaga kompatibilitas
   // business store lama. Jangan mengizinkan fallback identitas untuk modul ini.
   if (!hasLegacyBusinessIdentity(profile)) {
@@ -161,13 +184,6 @@ export const canAccessFeature = (
       );
 
     case "PRODUCTION":
-      return (
-        business ||
-        supportRoot ||
-        marketingAdmin
-      );
-
-    case "DOCUMENT_ADMIN":
       return (
         business ||
         supportRoot ||
