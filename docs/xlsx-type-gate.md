@@ -1,0 +1,1 @@
+Final isolated source check: native XLSX readback, baseline-aware lint and TypeScript, then production build. No live transaction or database modification.
