@@ -25,12 +25,14 @@ import {
   AppFeature,
   canAccessFeature,
   getDocumentFeatureFromSearch,
+  isCrossSupportAdminDocumentReader,
   isSystemAdminProfile,
 } from "@/lib/accessControl";
 
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
 import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
+import DokumenAdministrasiReaderPage from "./pages/DokumenAdministrasiReaderPage";
 import TandaTerimaV14Page from "./pages/TandaTerimaV14Page";
 import AdministrasiPage from "./pages/AdministrasiPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
@@ -74,6 +76,16 @@ const DocumentOnly: React.FC<{
         replace
       />
     );
+  }
+
+  // The existing legacy workflow is reserved for its original roles.
+  // Cross-support users read from the central service without assuming a
+  // legacy identity, receiving upload, approval or mutation privileges.
+  if (
+    feature === "DOCUMENT_ADMIN" &&
+    isCrossSupportAdminDocumentReader(profile)
+  ) {
+    return <DokumenAdministrasiReaderPage />;
   }
 
   return children;
