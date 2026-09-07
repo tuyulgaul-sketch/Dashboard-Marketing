@@ -38,24 +38,11 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { readFileSync, writeFileSync } from 'node:fs';
-          const replaceOnce = (path, before, after) => {
-            const source = readFileSync(path, 'utf8');
-            assert.equal(source.split(before).length, 2, `Unexpected patch anchor in ${path}`);
-            writeFileSync(path, source.replace(before, after));
-          };
-          replaceOnce('scripts/test-trm-photo-preview.mjs', 'new Module(filename, module)', 'new Module(filename)');
-          replaceOnce('scripts/test-trm-photo-preview.mjs', "require('esbuild')", "testRequire('esbuild')");
-          replaceOnce('scripts/test-trm-photo-preview.mjs', "      alias: { '@': resolve('src') },", `      plugins: [{
-                name: 'isolate-preview-dependencies',
-                setup(build) {
-                  build.onResolve({ filter: /^@\\// }, args =>
-                    Object.prototype.hasOwnProperty.call(mocks, args.path)
-                      ? { path: args.path, external: true }
-                      : { path: resolve('src', args.path.slice(2) + '.ts') }
-                  );
-                },
-              }],`);
-          replaceOnce('src/components/tandaTerima/HandoverEvidencePreview.tsx', '            aria-describedby={undefined}\n', '');
+          const path = 'src/components/tandaTerima/HandoverEvidencePreview.tsx';
+          const source = readFileSync(path, 'utf8');
+          const anchor = '            aria-describedby={undefined}\n';
+          assert.equal(source.split(anchor).length, 2);
+          writeFileSync(path, source.replace(anchor, ''));
           NODE
       - name: Run preview behavior and preservation tests
         run: node --experimental-strip-types --test scripts/test-trm-photo-preview.mjs
@@ -95,7 +82,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/TandaTerimaV14Page.tsx src/components/tandaTerima/HandoverEvidencePreview.tsx scripts/test-trm-photo-preview.mjs
+          git add src/pages/TandaTerimaV14Page.tsx src/components/tandaTerima/HandoverEvidencePreview.tsx
           git diff --cached --quiet && exit 0
           git commit -m 'feat(trm): integrate verified private photo lightbox'
           git push origin HEAD:feat/tanda-terima-photo-preview
