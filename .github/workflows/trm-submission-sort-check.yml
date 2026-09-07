@@ -1,0 +1,74 @@
+name: TRM submission sort verification
+on:
+  push:
+    branches: [feat/trm-submission-sort]
+    paths:
+      - 'scripts/apply-trm-submission-sort.mjs'
+      - '.github/workflows/trm-submission-sort-check.yml'
+concurrency:
+  group: trm-submission-sort
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/trm-submission-sort
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Capture existing diagnostic baseline
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/trm-ts-baseline.txt 2>&1 || true
+          pnpm exec eslint src/pages/TandaTerimaV14Page.tsx > /tmp/trm-lint-baseline.txt 2>&1 || true
+      - name: Integrate registry ordering
+        run: node scripts/apply-trm-submission-sort.mjs
+      - name: Run submission ordering regression tests
+        run: node --experimental-strip-types --test scripts/test-document-handover-sort.mjs
+      - name: Verify production build
+        run: pnpm run build
+      - name: Reject new TypeScript errors
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/trm-ts-current.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const errors = path => readFileSync(path, 'utf8').split('\n')
+            .filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line))
+            .map(line => line.replace(/\(\d+,\d+\)/, ''));
+          const baseline = new Set(errors('/tmp/trm-ts-baseline.txt'));
+          const current = errors('/tmp/trm-ts-current.txt');
+          const added = current.filter(error => !baseline.has(error));
+          console.log(`TypeScript baseline: ${baseline.size}; current: ${current.length}; new: ${added.length}.`);
+          if (added.length) { console.error(added.join('\n')); process.exit(1); }
+          console.log('No new TypeScript errors. Pre-existing global errors are not claimed as passing.');
+          NODE
+      - name: Lint new helper and reject new registry diagnostics
+        run: |
+          pnpm exec eslint src/lib/documentHandoverSort.ts
+          pnpm exec eslint src/pages/TandaTerimaV14Page.tsx > /tmp/trm-lint-current.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const lines = path => readFileSync(path, 'utf8').split('\n')
+            .filter(line => /^\s*\d+:\d+\s+(error|warning)\s+/.test(line))
+            .map(line => line.replace(/^\s*\d+:\d+/, ''));
+          const baseline = new Set(lines('/tmp/trm-lint-baseline.txt'));
+          const added = lines('/tmp/trm-lint-current.txt').filter(line => !baseline.has(line));
+          console.log(`New registry lint diagnostics: ${added.length}.`);
+          if (added.length) { console.error(added.join('\n')); process.exit(1); }
+          NODE
+      - name: Commit reviewed application changes only
+        run: |
+          git add src/lib/documentHandoverSort.ts src/pages/TandaTerimaV14Page.tsx scripts/test-document-handover-sort.mjs
+          git diff --cached --check
+          if git diff --cached --quiet; then echo 'Expected application integration was not staged.'; exit 1; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(trm): sort registry by latest submission'
+          git push origin HEAD:refs/heads/feat/trm-submission-sort
