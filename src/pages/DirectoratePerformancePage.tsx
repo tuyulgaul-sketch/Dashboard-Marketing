@@ -9,7 +9,7 @@ import { AlertCircle, BarChart3, Database, RefreshCw, Target, TrendingUp } from 
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatRupiah } from '@/utils/formatters';
 import {
-  buildPerformanceSummary, listDirectoratePerformance, matchesPerformanceScope,
+  buildPerformanceSummary, listDirectoratePerformance,
   normalizePerformanceScope, type BusinessTypeFilter, type DirectoratePerformanceSnapshot,
 } from '@/services/directoratePerformanceService';
 
@@ -108,8 +108,8 @@ const DirectoratePerformancePage: React.FC<{ view: 'target' | 'realization' }> =
   const scopeLabel = scope === 'ALL' ? 'Direktorat Marketing' : scope;
   const hasTarget = Boolean(summary?.targets.length);
   const monthly = summary?.monthly.map(row => ({ ...row, label: MONTHS[row.month - 1] })) || [];
-  const actualRows = summary?.productions || [];
-  const targetRows = summary?.targets || [];
+  const actualRows = useMemo(() => summary?.productions || [], [summary]);
+  const targetRows = useMemo(() => summary?.targets || [], [summary]);
   const breakdown = useMemo(() => {
     if (!summary) return [];
     const keys = new Set<string>();
@@ -158,7 +158,7 @@ const DirectoratePerformancePage: React.FC<{ view: 'target' | 'realization' }> =
             <div>
               <h1 className="text-xl font-bold text-slate-900">{title}</h1>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">{view === 'target' ? 'Target terdistribusi dan pencapaian berdasarkan data yang telah dipublikasikan.' : 'Realisasi Official seluruh Direktorat Marketing berdasarkan snapshot produksi terakhir yang dipublikasikan.'}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="outline">READ ONLY</Badge><span className="text-[11px] text-slate-500">{snapshot ? `Diperbarui ${formatTimestamp(snapshot.refreshedAt)}` : 'Data pusat'}</span></div>
+              <div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="outline">READ ONLY</Badge><span className="text-[11px] text-slate-500">{snapshot ? `Diperbarui ${formatTimestamp(snapshot.refreshedAt)}` : loading ? 'Memuat laporan pusat...' : 'Data pusat'}</span></div>
             </div>
           </div>
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void refresh()} disabled={refreshing}>

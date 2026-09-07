@@ -638,7 +638,8 @@ const periodLabel = (
   ]} ${year}`;
 };
 
-export const ProduksiPage: React.FC = () => {
+export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; publisherAuthorized?: boolean }> = ({ embedded = false, uploadOnly = false, publisherAuthorized = false }) => {
+  const PageLayout = embedded ? React.Fragment : AppLayout;
   const [
     currentUser,
     setCurrentUser,
@@ -792,7 +793,7 @@ export const ProduksiPage: React.FC = () => {
   );
 
   const isArianie =
-    currentUser.id ===
+    publisherAuthorized && currentUser.id ===
     'USR-000024';
 
   const isMS =
@@ -1944,10 +1945,10 @@ export const ProduksiPage: React.FC = () => {
     };
 
   return (
-    <AppLayout>
+    <PageLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div>
+        {!embedded && (<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          {!embedded && (<div>
             <h1 className="text-xl font-bold text-gray-900">
               Realisasi Produksi
             </h1>
@@ -1955,15 +1956,15 @@ export const ProduksiPage: React.FC = () => {
             <p className="text-xs text-gray-500 mt-1">
               Realisasi Official menggunakan snapshot laporan produksi CSV yang dipublikasikan oleh Team Leader Marketing Support.
             </p>
-          </div>
+          </div>)}
 
-        </div>
+        </div>)}
 
         <Tabs
-          defaultValue="official"
+          defaultValue={uploadOnly ? 'upload_official' : 'official'}
           className="w-full"
         >
-          <TabsList
+          {!embedded && (<TabsList
             className={`bg-white border border-gray-200 p-1 rounded-xl shadow-sm grid w-full ${
               isArianie
                 ? 'grid-cols-2 max-w-xl'
@@ -1985,7 +1986,7 @@ export const ProduksiPage: React.FC = () => {
                 Upload Realisasi
               </TabsTrigger>
             )}
-          </TabsList>
+          </TabsList>)}
 
           {/* ===================================================
               TAB OFFICIAL PRODUCTION
@@ -3086,7 +3087,7 @@ export const ProduksiPage: React.FC = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
+    </PageLayout>
   );
 };
 

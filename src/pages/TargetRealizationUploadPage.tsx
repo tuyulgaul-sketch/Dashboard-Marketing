@@ -31,9 +31,9 @@ const TargetRealizationUploadPage: React.FC = () => {
             <TabsTrigger value="bulk" className="gap-2 py-2.5 text-xs"><FileSpreadsheet className="h-4 w-4" /> Bulk Pipeline</TabsTrigger>
             <TabsTrigger value="realization" className="gap-2 py-2.5 text-xs"><FileSpreadsheet className="h-4 w-4" /> Upload Realisasi</TabsTrigger>
           </TabsList>
-          <TabsContent value="targets" className="mt-4"><TargetRkapPage key="targets" embedded initialUploadTab="targets" /></TabsContent>
-          <TabsContent value="bulk" className="mt-4"><TargetRkapPage key="bulk" embedded initialUploadTab="bulk" /></TabsContent>
-          <TabsContent value="realization" className="mt-4"><ProduksiPage embedded uploadOnly /></TabsContent>
+          <TabsContent value="targets" className="mt-4"><TargetRkapPage key="targets" embedded initialUploadTab="targets" publisherAuthorized={canPublish} /></TabsContent>
+          <TabsContent value="bulk" className="mt-4"><TargetRkapPage key="bulk" embedded initialUploadTab="bulk" publisherAuthorized={canPublish} /></TabsContent>
+          <TabsContent value="realization" className="mt-4"><ProduksiPage embedded uploadOnly publisherAuthorized={canPublish} /></TabsContent>
         </Tabs>
         <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs leading-relaxed text-blue-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>Setiap upload tetap menggunakan validasi, konfirmasi, dan mekanisme publish yang sudah ada. Perubahan ini hanya memindahkan tempat pengelolaannya; data existing tidak direset.</p></div>
       </div>

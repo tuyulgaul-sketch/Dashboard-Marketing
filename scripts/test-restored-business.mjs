@@ -63,7 +63,9 @@ test('desktop and mobile navigation retain existing modules and restore capped o
   assert.match(sidebar, /canAccessFeature\(profile, 'DASHBOARD'\)/);
   assert.match(sidebar, /canSeeBooking \? \[/);
   assert.match(sidebar, /canSeeProduction \? \[/);
-  assert.match(sidebar, /isSupportRoot \? 'Target & RKAP' : 'Target Kinerja'/);
+  assert.match(sidebar, /renderFlyoutGroup\('Target & Realisasi', Target, targetRealizationItems\)/);
+  assert.match(sidebar, /Upload Target dan Realisasi/);
+  assert.doesNotMatch(sidebar, /label: 'Produksi', path: '\/produksi'/);
   assert.match(sidebar, /mobile = false/);
 });
 
