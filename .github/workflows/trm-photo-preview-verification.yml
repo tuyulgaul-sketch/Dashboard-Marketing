@@ -31,7 +31,7 @@ jobs:
           pnpm install --no-frozen-lockfile
           git restore -- pnpm-lock.yaml
           mkdir -p /tmp/trm-preview-test
-          npm install --prefix /tmp/trm-preview-test --no-save --no-package-lock --ignore-scripts jsdom@26.1.0
+          npm install --prefix /tmp/trm-preview-test --no-save --no-package-lock --ignore-scripts jsdom@26.1.0 esbuild@0.27.7
       - name: Apply exact source integration
         run: |
           node scripts/integrate-trm-photo-preview.mjs
@@ -44,6 +44,7 @@ jobs:
             writeFileSync(path, source.replace(before, after));
           };
           replaceOnce('scripts/test-trm-photo-preview.mjs', 'new Module(filename, module)', 'new Module(filename)');
+          replaceOnce('scripts/test-trm-photo-preview.mjs', "require('esbuild')", "testRequire('esbuild')");
           replaceOnce('src/components/tandaTerima/HandoverEvidencePreview.tsx', '            aria-describedby={undefined}\n', '');
           NODE
       - name: Run preview behavior and preservation tests
