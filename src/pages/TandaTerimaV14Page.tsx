@@ -39,6 +39,7 @@ import {
   formatSlaDueDate,
   getSlaState,
 } from "@/utils/slaGovernance";
+import { getHandoverSubmissionTime, sortHandoversBySubmission } from "@/lib/documentHandoverSort";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -154,21 +155,18 @@ const formatDateOnly = (
 
 const formatDateTime = (
   value?: string
-) =>
-  value
-    ? new Date(
-        value
-      ).toLocaleString(
-        "id-ID",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      )
-    : "-";
+) => {
+  const timestamp = getHandoverSubmissionTime(value);
+  return timestamp === null
+    ? "-"
+    : new Date(timestamp).toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+};
 
 const statusClass = (
   status:
@@ -1622,7 +1620,7 @@ const TandaTerimaV14Page:
               .trim()
               .toLowerCase();
 
-          return receipts.filter(
+          return sortHandoversBySubmission(receipts.filter(
             receipt => {
               const pass =
                 filter === "ALL"
@@ -1693,7 +1691,7 @@ const TandaTerimaV14Page:
                   keyword
                 );
             }
-          );
+          ));
         },
         [
           receipts,
@@ -1804,7 +1802,7 @@ const TandaTerimaV14Page:
                     Daftar Tanda Terima
                   </CardTitle>
                   <p className="mt-1 text-xs text-gray-500">
-                    Cari berdasarkan nomor, pengirim, penerima, posisi/fungsi, atau dokumen. Journey eksternal tersimpan pada registry yang sama.
+                    Urutan berdasarkan tanggal submission terbaru. Cari berdasarkan nomor, pengirim, penerima, posisi/fungsi, atau dokumen. Journey eksternal tersimpan pada registry yang sama.
                   </p>
                 </div>
 
@@ -1830,7 +1828,7 @@ const TandaTerimaV14Page:
                   <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase text-gray-600">
                     <tr>
                       <th className="p-3">Nomor</th>
-                      <th className="p-3">Tanggal</th>
+                      <th className="p-3">Tanggal Submission ↓</th>
                       <th className="p-3">Pengirim</th>
                       <th className="p-3">Penerima</th>
                       <th className="p-3">Dokumen</th>
@@ -1867,9 +1865,16 @@ const TandaTerimaV14Page:
                             </td>
 
                             <td className="p-3 text-gray-700">
-                              {formatDateOnly(
-                                receipt.handoverDate
-                              )}
+                              <div className="font-medium">
+                                {formatDateTime(
+                                  receipt.submittedAt
+                                )}
+                              </div>
+                              <div className="mt-1 text-[10px] text-gray-400">
+                                Tanggal penyerahan: {formatDateOnly(
+                                  receipt.handoverDate
+                                )}
+                              </div>
                             </td>
 
                             <td className="p-3">
