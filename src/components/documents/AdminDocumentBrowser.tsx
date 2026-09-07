@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AdminProductPicker } from '@/components/documents/AdminProductPicker';
 import { ADMIN_DOCUMENT_CATEGORIES, getAdminDocumentCategoryLabel, type AdminDocumentCategory } from '@/lib/adminDocumentCategories';
 import { canDownloadAdminDocument, getAdminDocumentBrowseView, type AdminDocumentBrowseSelection } from '@/lib/adminDocumentBrowse';
 import { getAdminDocumentProductOptions } from '@/lib/adminDocumentReaderView';
@@ -70,18 +70,9 @@ export const AdminDocumentBrowser: React.FC<Props> = ({ documents, products, onD
     <div className="space-y-5">
       <div className="space-y-2">
         <label className="block text-xs font-bold text-gray-700" id="admin-document-product-label">1. Pilih produk</label>
-        <Select value={selection.product} onValueChange={changeProduct} disabled={busy}>
-          <SelectTrigger className="w-full text-xs sm:max-w-md" aria-labelledby="admin-document-product-label">
-            <SelectValue placeholder="Pilih Produk" />
-          </SelectTrigger>
-          <SelectContent className="z-[120] max-h-80">
-            <SelectItem value="ALL">Semua Produk</SelectItem>
-            {productOptions.map(productName => (
-              <SelectItem key={productName} value={productName}>{productName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-gray-500">Pilih produk yang sesuai sebelum membuka dokumen. Pilihan Semua Produk hanya menampilkan jumlah dokumen.</p>
+        <AdminProductPicker value={selection.product} options={productOptions} onChange={changeProduct}
+          disabled={busy} labelId="admin-document-product-label" />
+        <p className="text-xs text-gray-500">Cari dan pilih produk yang sesuai sebelum membuka dokumen. Pilihan Semua Produk hanya menampilkan jumlah dokumen.</p>
       </div>
 
       <div className="space-y-2">
