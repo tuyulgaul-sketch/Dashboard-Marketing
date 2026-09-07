@@ -36,13 +36,20 @@ await test('existing Tanda Terima page changes only at the two evidence buttons'
 await test('private photo modal loads, closes, cleans up and rejects foreign evidence', async () => {
   const testRequire = createRequire('/tmp/trm-preview-test/package.json');
   const { JSDOM } = testRequire('jsdom');
+  const { build } = testRequire('esbuild');
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/' });
   const originalGlobals = new Map();
   const install = (key, value) => {
     originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   };
-  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'MutationObserver', 'CustomEvent']) {
+  for (const key of [
+    'window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node',
+    'NodeFilter', 'Document', 'DocumentFragment', 'HTMLInputElement',
+    'HTMLButtonElement', 'HTMLTextAreaElement', 'HTMLSelectElement',
+    'SVGElement', 'MutationObserver', 'CustomEvent', 'Event', 'MouseEvent',
+    'KeyboardEvent', 'FocusEvent', 'ShadowRoot',
+  ]) {
     install(key, key === 'window' ? dom.window : dom.window[key]);
   }
   install('getComputedStyle', dom.window.getComputedStyle.bind(dom.window));
@@ -53,7 +60,6 @@ await test('private photo modal loads, closes, cleans up and rejects foreign evi
   const React = require('react');
   const { act } = React;
   const { createRoot } = require('react-dom/client');
-  const { build } = require('esbuild');
   const created = [];
   const revoked = [];
   const oldCreate = URL.createObjectURL;
@@ -92,12 +98,21 @@ await test('private photo modal loads, closes, cleans up and rejects foreign evi
       write: false,
       platform: 'node',
       format: 'cjs',
-      alias: { '@': resolve('src') },
+      plugins: [{
+        name: 'isolate-preview-dependencies',
+        setup(builder) {
+          builder.onResolve({ filter: /^@\// }, args =>
+            Object.prototype.hasOwnProperty.call(mocks, args.path)
+              ? { path: args.path, external: true }
+              : { path: resolve('src', args.path.slice(2) + '.ts') }
+          );
+        },
+      }],
       external: ['react', 'react-dom', '@radix-ui/react-dialog', 'lucide-react', ...Object.keys(mocks)],
     });
     const Module = require('node:module');
     const filename = resolve('src/components/tandaTerima/__preview_test_bundle.cjs');
-    const compiled = new Module(filename, module);
+    const compiled = new Module(filename);
     compiled.filename = filename;
     compiled.paths = Module._nodeModulePaths(resolve('.'));
     const normalRequire = compiled.require.bind(compiled);
@@ -122,7 +137,6 @@ await test('private photo modal loads, closes, cleans up and rejects foreign evi
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.deepEqual(revoked, ['blob:trm-preview-1']);
 
-    // A copied ID from another registry must never produce a preview URL.
     fetchEvidence = async () => ({ transactionId: 'TRM-OTHER', fileName: 'foreign.jpg', fileType: 'image/jpeg', blob: new Blob(['foreign']) });
     await click(open());
     assert.match(document.querySelector('[role="alert"]')?.textContent || '', /tidak terkait dengan registry/);
@@ -135,7 +149,6 @@ await test('private photo modal loads, closes, cleans up and rejects foreign evi
     assert.equal(created.length, 1);
     await click(close());
 
-    // Closing before a delayed download finishes cannot resurrect the viewer.
     let resolveDelayed;
     fetchEvidence = () => new Promise(resolvePromise => { resolveDelayed = resolvePromise; });
     await click(open());
@@ -144,7 +157,7 @@ await test('private photo modal loads, closes, cleans up and rejects foreign evi
     await act(async () => resolveDelayed({ transactionId: 'TRM-TEST-001', fileName: 'late.jpg', fileType: 'image/jpeg', blob: new Blob(['late']) }));
     assert.equal(created.length, 1);
     assert.equal(document.querySelector('[role="dialog"]'), null);
-    console.log('Actual React modal interaction, private fetch, close/revoke, wrong-registry, unsupported format and stale request passed.');
+    console.log('React DOM preview interaction, private fetch, close/revoke, wrong-registry, unsupported format and stale request passed.');
   } finally {
     if (root) await act(async () => root.unmount());
     URL.createObjectURL = oldCreate;
