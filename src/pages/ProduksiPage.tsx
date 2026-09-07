@@ -1,3 +1,4 @@
+import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner } from '@/utils/marketingWorkbook';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -65,32 +66,8 @@ interface ParsedProductionFile {
   issues: ValidationIssue[];
 }
 
-const TEMPLATE_HEADERS = [
-  'Tahun Produksi',
-  'Bulan Produksi',
-  'Nomor Polis',
-  'Nama Nasabah',
-  'Nama Produk',
-  'Realisasi Produksi (Rp)',
-  'Fungsi Marketing',
-  'Jenis Bisnis',
-  'PIC Marketing',
-];
-
-// Backward-compatible validator:
-// the two new lookup fields are shown in the downloaded template,
-// while old 7-column UAT files can still be validated. When Nomor
-// Polis is blank/missing the app generates a deterministic dummy
-// policy number for UAT and surfaces a warning.
-const REQUIRED_TEMPLATE_HEADERS = [
-  'Tahun Produksi',
-  'Bulan Produksi',
-  'Nama Produk',
-  'Realisasi Produksi (Rp)',
-  'Fungsi Marketing',
-  'Jenis Bisnis',
-  'PIC Marketing',
-];
+const TEMPLATE_HEADERS = getMarketingTemplateHeaders('production');
+const REQUIRED_TEMPLATE_HEADERS = ['Tahun Produksi', 'Bulan Produksi', 'Nama Produk', 'Realisasi Produksi (Rp)', 'Fungsi Marketing', 'Jenis Bisnis', 'User ID Pemilik Realisasi'];
 
 const normalizeHeader = (
   value: string
@@ -108,215 +85,6 @@ const normalizeHeader = (
       /[^a-z0-9]+/g,
       ''
     );
-
-const detectDelimiter = (
-  text: string
-) => {
-  const firstLine =
-    text
-      .split(
-        /\r?\n/
-      )[0] || '';
-
-  let semicolonCount =
-    0;
-
-  let commaCount =
-    0;
-
-  let inQuotes =
-    false;
-
-  for (
-    let index = 0;
-    index <
-    firstLine.length;
-    index += 1
-  ) {
-    const char =
-      firstLine[index];
-
-    if (
-      char === '"'
-    ) {
-      inQuotes =
-        !inQuotes;
-
-      continue;
-    }
-
-    if (
-      inQuotes
-    ) {
-      continue;
-    }
-
-    if (
-      char === ';'
-    ) {
-      semicolonCount +=
-        1;
-    }
-
-    if (
-      char === ','
-    ) {
-      commaCount +=
-        1;
-    }
-  }
-
-  return semicolonCount >=
-    commaCount
-    ? ';'
-    : ',';
-};
-
-const parseCsv = (
-  text: string
-): string[][] => {
-  const delimiter =
-    detectDelimiter(
-      text
-    );
-
-  const rows:
-    string[][] = [];
-
-  let row:
-    string[] = [];
-
-  let cell =
-    '';
-
-  let inQuotes =
-    false;
-
-  for (
-    let index = 0;
-    index <
-    text.length;
-    index += 1
-  ) {
-    const char =
-      text[index];
-
-    const next =
-      text[
-        index + 1
-      ];
-
-    if (
-      char === '"'
-    ) {
-      if (
-        inQuotes &&
-        next === '"'
-      ) {
-        cell +=
-          '"';
-
-        index +=
-          1;
-      } else {
-        inQuotes =
-          !inQuotes;
-      }
-
-      continue;
-    }
-
-    if (
-      char ===
-        delimiter &&
-      !inQuotes
-    ) {
-      row.push(
-        cell
-      );
-
-      cell =
-        '';
-
-      continue;
-    }
-
-    if (
-      (
-        char === '\n' ||
-        char === '\r'
-      ) &&
-      !inQuotes
-    ) {
-      if (
-        char === '\r' &&
-        next === '\n'
-      ) {
-        index +=
-          1;
-      }
-
-      row.push(
-        cell
-      );
-
-      const hasValue =
-        row.some(
-          value =>
-            String(
-              value
-            ).trim() !==
-            ''
-        );
-
-      if (
-        hasValue
-      ) {
-        rows.push(
-          row
-        );
-      }
-
-      row =
-        [];
-
-      cell =
-        '';
-
-      continue;
-    }
-
-    cell +=
-      char;
-  }
-
-  if (
-    cell.length >
-      0 ||
-    row.length >
-      0
-  ) {
-    row.push(
-      cell
-    );
-
-    if (
-      row.some(
-        value =>
-          String(
-            value
-          ).trim() !==
-          ''
-      )
-    ) {
-      rows.push(
-        row
-      );
-    }
-  }
-
-  return rows;
-};
 
 const parseProductionMonth = (
   value: string
@@ -682,6 +450,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
     File | null
   >(null);
 
+  const [validatedFile, setValidatedFile] = useState<File | null>(null);
   const [
     parsedUpload,
     setParsedUpload,
@@ -995,60 +764,12 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
   };
 
   const handleDownloadCsvTemplate =
-    () => {
-      const csv =
-        '\uFEFF' +
-        TEMPLATE_HEADERS
-          .map(
-            header =>
-              `"${header.replace(
-                /"/g,
-                '""'
-              )}"`
-          )
-          .join(
-            ';'
-          ) +
-        '\r\n';
-
-      const blob =
-        new Blob(
-          [
-            csv,
-          ],
-          {
-            type:
-              'text/csv;charset=utf-8;',
-          }
-        );
-
-      const url =
-        URL.createObjectURL(
-          blob
-        );
-
-      const anchor =
-        document.createElement(
-          'a'
-        );
-
-      anchor.href =
-        url;
-
-      anchor.download =
-        'Template_Upload_Realisasi_Produksi_Dashboard_9_Kolom.csv';
-
-      document.body.appendChild(
-        anchor
-      );
-
-      anchor.click();
-
-      anchor.remove();
-
-      URL.revokeObjectURL(
-        url
-      );
+    async () => {
+      try {
+        await downloadMarketingWorkbook('production', [], store.getUsers(), 'Template_Upload_Realisasi_Produksi');
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
+      }
     };
 
   const handleValidateUpload =
@@ -1059,25 +780,21 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
         return;
       }
 
-      setIsValidating(
-        true
-      );
+      setIsValidating(true);
+      setParsedUpload(null);
+      setValidatedFile(null);
 
       try {
-        const text =
-          await uploadFile.text();
-
-        const parsedRows =
-          parseCsv(
-            text
-          );
+        const parsedData = await readMarketingSpreadsheet(uploadFile, { sheetName: MARKETING_SHEETS.production, requiredHeaders: REQUIRED_TEMPLATE_HEADERS });
+        const sourceHeaders = Array.from(new Set([...TEMPLATE_HEADERS, ...parsedData.flatMap(row => Object.keys(row))]));
+        const parsedRows = [sourceHeaders, ...parsedData.map(row => sourceHeaders.map(header => getRowValue(row, header)))];
 
         if (
           parsedRows.length <
           2
         ) {
           throw new Error(
-            'CSV tidak memiliki baris data.'
+            'File tidak memiliki baris data.'
           );
         }
 
@@ -1114,7 +831,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
           0
         ) {
           throw new Error(
-            'Header CSV tidak sesuai Template Dashboard. Pastikan file berasal dari template Realisasi Produksi terbaru.'
+            'Header file tidak sesuai Template Dashboard. Pastikan file berasal dari template Realisasi Produksi terbaru.'
           );
         }
 
@@ -1209,32 +926,6 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                   'Realisasi Produksi (Rp)',
                   'TOTAL Piutang'
                 );
-
-              if (
-                amountRaw ===
-                ''
-              ) {
-                ignoredRowCount +=
-                  1;
-
-                if (
-                  issues.length <
-                  200
-                ) {
-                  issues.push({
-                    rowNumber,
-                    severity:
-                      'WARNING',
-                    message:
-                      'Nominal Realisasi Produksi kosong — row di-ignore saat publish.',
-                  });
-                }
-
-                warningRowCount +=
-                  1;
-
-                return;
-              }
 
               const amount =
                 parseRupiah(
@@ -1376,6 +1067,15 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                 );
               }
 
+              const picRaw = getRowValue(row, 'PIC Marketing', 'PIC');
+              const ownerId = getRowValue(row, 'User ID Pemilik Realisasi', 'PIC User ID');
+              const owner = resolveMarketingOwner(ownerId, users, { unit: functionValue || undefined, name: picRaw, production: true });
+              rowErrors.push(...owner.errors);
+              rowWarnings.push(...owner.warnings);
+              const picMatch = owner.user;
+              const picName = picMatch?.name || picRaw || 'Unassigned / Data Historis';
+              const department = picMatch?.department || 'Unassigned / Data Historis';
+
               if (
                 rowErrors.length >
                 0
@@ -1432,60 +1132,6 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                 rowWarnings.push(
                   `Produk "${productRaw}" tidak ditemukan di Product Master aktif; nama source tetap dipertahankan`
                 );
-              }
-
-              const picRaw =
-                getRowValue(
-                  row,
-                  'PIC Marketing',
-                  'PIC'
-                );
-
-              const picIsEmpty =
-                !picRaw ||
-                picRaw
-                  .trim()
-                  .toLowerCase() ===
-                  '#n/a';
-
-              const picMatch =
-                picIsEmpty
-                  ? undefined
-                  : users.find(
-                      user =>
-                        user.name
-                          .trim()
-                          .toLowerCase() ===
-                        picRaw
-                          .trim()
-                          .toLowerCase()
-                    );
-
-              const picName =
-                picIsEmpty
-                  ? 'Unassigned / Data Historis'
-                  : picRaw;
-
-              if (
-                !picIsEmpty &&
-                !picMatch
-              ) {
-                rowWarnings.push(
-                  `PIC "${picRaw}" tidak ditemukan di User Master; transaksi tetap dihitung tanpa PIC User ID`
-                );
-              }
-
-              let department =
-                'Unassigned / Data Historis';
-
-              if (
-                picMatch &&
-                picMatch.unit ===
-                  functionValue
-              ) {
-                department =
-                  picMatch.department ||
-                  'None';
               }
 
               if (
@@ -1557,12 +1203,13 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                     ? picMatch.name
                     : picName,
                 picUserId:
-                  picMatch?.id,
+                  picMatch!.id,
                 department,
               });
             }
           );
 
+        setValidatedFile(uploadFile);
         setParsedUpload({
           sourceRowCount:
             parsedRows.length -
@@ -1585,7 +1232,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
           error instanceof
             Error
             ? error.message
-            : 'Validasi CSV gagal.'
+            : 'Validasi file gagal.'
         );
 
         setParsedUpload(
@@ -1680,7 +1327,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
       if (
         !isArianie ||
         !uploadFile ||
-        !parsedUpload ||
+        !parsedUpload || validatedFile !== uploadFile ||
         parsedUpload.validRecords.length ===
           0
       ) {
@@ -1692,7 +1339,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
         0
       ) {
         alert(
-          'Masih ada row ERROR. Perbaiki source CSV lalu validasi ulang sebelum Publish.'
+          'Masih ada row ERROR. Perbaiki source XLSX lalu validasi ulang sebelum Publish.'
         );
 
         return;
@@ -1716,6 +1363,9 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
         return;
       }
 
+      const latestUsers = store.getUsers();
+      const invalidOwners = parsedUpload.validRecords.flatMap(record => resolveMarketingOwner(record.picUserId, latestUsers, { unit: record.marketingFunction, production: true }).errors);
+      if (invalidOwners.length) { alert('User Master berubah. Validasi ulang sebelum publish.\n' + [...new Set(invalidOwners)].join('\n')); return; }
       const now =
         new Date();
 
@@ -1954,7 +1604,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
             </h1>
 
             <p className="text-xs text-gray-500 mt-1">
-              Realisasi Official menggunakan snapshot laporan produksi CSV yang dipublikasikan oleh Team Leader Marketing Support.
+              Realisasi Official menggunakan snapshot laporan produksi XLSX yang dipublikasikan oleh Team Leader Marketing Support.
             </p>
           </div>)}
 
@@ -2270,7 +1920,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                       className="text-xs font-bold gap-2 bg-white"
                     >
                       <Download className="w-4 h-4" />
-                      Download Template CSV
+                      Download Template XLSX
                     </Button>
                   </div>
 
@@ -2281,7 +1931,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
 
                     <Input
                       type="file"
-                      accept=".csv,text/csv"
+                      accept={SPREADSHEET_ACCEPT}
                       onChange={
                         event => {
                           const file =

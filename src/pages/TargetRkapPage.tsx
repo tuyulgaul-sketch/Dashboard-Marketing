@@ -1,3 +1,4 @@
+import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { store, OfficialProductionSummary } from '@/services/store';
@@ -11,9 +12,7 @@ import {
 } from '@/types';
 import { formatRupiah } from '@/utils/formatters';
 import {
-  exportToExcel,
   getRowValue,
-  parseExcelOrCsvFile,
 } from '@/utils/excelExport';
 import {
   Card,
@@ -669,6 +668,10 @@ const getRupiahDifference = (
 
 export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: 'targets' | 'bulk'; publisherAuthorized?: boolean }> = ({ embedded = false, initialUploadTab = 'targets', publisherAuthorized = false }) => {
   const PageLayout = embedded ? React.Fragment : AppLayout;
+  const [targetValidatedFile, setTargetValidatedFile] = useState<File | null>(null);
+  const [targetValidatedYear, setTargetValidatedYear] = useState<number | null>(null);
+  const [bulkValidatedFile, setBulkValidatedFile] = useState<File | null>(null);
+  const [bulkValidatedYear, setBulkValidatedYear] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(
     store.getCurrentUser()
   );
@@ -1777,7 +1780,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
   // ============================================================
 
   const handleDownloadTargetTemplate =
-    () => {
+    async () => {
       const templateData =
         targetHolders.map(
           user => ({
@@ -1894,10 +1897,11 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           })
         );
 
-      exportToExcel(
-        templateData,
-        `Template_Target_${selectedTargetYear}`
-      );
+      try {
+        await downloadMarketingWorkbook('target', templateData, users, `Template_Target_${selectedTargetYear}`);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
+      }
     };
 
   const handleTargetFileChange = (
@@ -1907,9 +1911,9 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
       event.target.files &&
       event.target.files[0]
     ) {
-      setTargetFile(
-        event.target.files[0]
-      );
+      setTargetFile(event.target.files[0]);
+      setTargetValidatedFile(null);
+      setTargetValidatedYear(null);
 
       setTargetValidationExecuted(
         false
@@ -1925,17 +1929,18 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
     async () => {
       if (!targetFile) {
         alert(
-          'Pilih file CSV Target terlebih dahulu.'
+          'Pilih file XLSX Target terlebih dahulu.'
         );
 
         return;
       }
 
+      setTargetValidationExecuted(false);
+      setTargetValidatedFile(null);
+      setTargetValidatedYear(null);
       try {
         const parsed =
-          await parseExcelOrCsvFile(
-            targetFile
-          );
+          await readMarketingSpreadsheet(targetFile, { sheetName: MARKETING_SHEETS.target, requiredHeaders: ['Tahun', 'User ID Penerima', 'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN', 'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN'] });
 
         if (
           parsed.length === 0
@@ -2118,6 +2123,8 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
             };
           });
 
+        const unknownIds = parsed.map(row => normalizeMarketingUserId(getRowValue(row, 'User ID Penerima', 'User ID', 'UserID', 'ID'))).filter(id => !targetHolders.some(user => normalizeMarketingUserId(user.id) === id));
+        if (unknownIds.length) throw new Error(`User ID tidak terdaftar sebagai target holder aktif: ${[...new Set(unknownIds)].join(', ')}`);
         const duplicateUserIds =
           new Set<string>();
 
@@ -2673,20 +2680,23 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           validationList
         );
 
-        setTargetValidationExecuted(
-          true
-        );
+        setTargetValidatedFile(targetFile);
+        setTargetValidatedYear(selectedTargetYear);
+        setTargetValidationExecuted(true);
       } catch (error) {
         const message =
           error instanceof Error
             ? error.message
-            : 'Gagal membaca file CSV Target.';
+            : 'Gagal membaca file XLSX Target.';
 
+        setTargetValidationRows([]);
+        setTargetValidationExecuted(false);
         alert(message);
       }
     };
 
   const hasTargetBlockingErrors =
+    !targetValidationExecuted || targetValidatedFile !== targetFile || targetValidatedYear !== selectedTargetYear || targetValidationRows.length === 0 ||
     targetValidationRows.some(
       row => !row.isValid
     ) ||
@@ -2714,6 +2724,8 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
         return;
       }
 
+      const currentHolderIds = new Set(store.getUsers().filter(user => user.status === 'Active' && TARGET_HOLDER_ROLES.has(user.role)).map(user => normalizeMarketingUserId(user.id)));
+      if (targetValidationRows.some(row => !currentHolderIds.has(normalizeMarketingUserId(row.userId)))) { alert('User Master berubah. Validasi ulang Target sebelum publish.'); return; }
       const batchId =
         'BATCH-TRG-' +
         Date.now();
@@ -2779,7 +2791,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
 
               notes:
                 row.notes ||
-                'Published via CSV import',
+                'Published via XLSX import',
 
               publishedAt:
                 new Date().toISOString(),
@@ -2800,7 +2812,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
 
           filename:
             targetFile?.name ||
-            `Target_${selectedTargetYear}.csv`,
+            `Target_${selectedTargetYear}.xlsx`,
 
           uploadedBy:
             currentUser.name,
@@ -2842,97 +2854,13 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
   // ============================================================
 
   const handleDownloadBulkPipelineTemplate =
-    () => {
-      const eligiblePic =
-        targetHolders.find(
-          user =>
-            user.role ===
-            'STAFF_MARKETING'
-        ) ||
-        targetHolders[0] ||
-        currentUser;
-
-      const superior =
-        users.find(
-          user =>
-            user.id ===
-            eligiblePic.superiorId
-        );
-
-      const templateData = [
-        {
-          Tahun:
-            selectedBulkYear,
-
-          'Bulan Pipeline':
-            'Januari',
-
-          'Jenis Bisnis':
-            'New Business',
-
-          'Jenis Asuransi':
-            'Asuransi Kesehatan',
-
-          'Kategori Nasabah':
-            'Kumpulan',
-
-          Produk:
-            'TM GROUP MEDICARE PLAN',
-
-          'Nama Calon Nasabah':
-            '',
-
-          'Estimasi Premi':
-            '',
-
-          'Target Closing':
-            `${selectedBulkYear}-01-20`,
-
-          'Metode Pengadaan':
-            'Non-Tender',
-
-          'Distribution Channel':
-            'Direct Selling',
-
-          'PIC User ID':
-            eligiblePic.id,
-
-          'PIC Marketing':
-            eligiblePic.name,
-
-          Unit:
-            eligiblePic.unit,
-
-          Department:
-            eligiblePic.department,
-
-          'Direct Superior':
-            superior?.name || '',
-
-          Catatan:
-            '',
-
-          'Existing Policy Number':
-            '',
-
-          'Original Policy Year':
-            '',
-
-          'Coverage Start':
-            '',
-
-          'Coverage End':
-            '',
-
-          'Renewal Type':
-            '',
-        },
-      ];
-
-      exportToExcel(
-        templateData,
-        `Template_Bulk_Pipeline_${selectedBulkYear}`
-      );
+    async () => {
+      const templateData = [Object.fromEntries(getMarketingTemplateHeaders('pipeline').map(header => [header, header === 'Tahun' ? selectedBulkYear : '']))];
+      try {
+        await downloadMarketingWorkbook('pipeline', templateData, users, `Template_Bulk_Pipeline_${selectedBulkYear}`);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
+      }
     };
 
   const handleBulkFileChange = (
@@ -2942,9 +2870,9 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
       event.target.files &&
       event.target.files[0]
     ) {
-      setBulkFile(
-        event.target.files[0]
-      );
+      setBulkFile(event.target.files[0]);
+      setBulkValidatedFile(null);
+      setBulkValidatedYear(null);
 
       setBulkValidationExecuted(
         false
@@ -2960,17 +2888,18 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
     async () => {
       if (!bulkFile) {
         alert(
-          'Pilih file CSV Bulk Pipeline terlebih dahulu.'
+          'Pilih file XLSX Bulk Pipeline terlebih dahulu.'
         );
 
         return;
       }
 
+      setBulkValidationExecuted(false);
+      setBulkValidatedFile(null);
+      setBulkValidatedYear(null);
       try {
         const parsed =
-          await parseExcelOrCsvFile(
-            bulkFile
-          );
+          await readMarketingSpreadsheet(bulkFile, { sheetName: MARKETING_SHEETS.pipeline, requiredHeaders: ['Tahun', 'Bulan Pipeline', 'Jenis Bisnis', 'Produk', 'Nama Calon Nasabah', 'Estimasi Premi', 'Target Closing', 'PIC User ID'] });
 
         if (
           parsed.length === 0
@@ -3203,14 +3132,10 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                   'Notes'
                 );
 
-              const picUser =
-                users.find(
-                  user =>
-                    normalizeUserId(
-                      user.id
-                    ) ===
-                    picUserId
-                );
+              const owner = resolveMarketingOwner(picUserId, users, { name: inputPicName });
+              const picUser = owner.user;
+              if (owner.errors.length) { messages.push(...owner.errors); status = 'ERROR'; }
+              if (owner.warnings.length) { messages.push(...owner.warnings); if (status !== 'ERROR') status = 'WARNING'; }
 
               if (
                 year !==
@@ -3938,20 +3863,21 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           validationList
         );
 
-        setBulkValidationExecuted(
-          true
-        );
+        setBulkValidatedFile(bulkFile);
+        setBulkValidatedYear(selectedBulkYear);
+        setBulkValidationExecuted(true);
       } catch (error) {
         const message =
           error instanceof Error
             ? error.message
-            : 'Gagal membaca file CSV Bulk Pipeline.';
+            : 'Gagal membaca file XLSX Bulk Pipeline.';
 
         alert(message);
       }
     };
 
   const hasBulkBlockingErrors =
+    !bulkValidationExecuted || bulkValidatedFile !== bulkFile || bulkValidatedYear !== selectedBulkYear || bulkValidationRows.length === 0 ||
     bulkValidationRows.some(
       row =>
         row.status ===
@@ -3995,6 +3921,9 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
         return;
       }
 
+      const latestUsers = store.getUsers();
+      const invalidOwners = validRows.flatMap(row => resolveMarketingOwner(row.picUserId, latestUsers, { name: row.picName }).errors);
+      if (invalidOwners.length) { alert(invalidOwners.join('\n')); return; }
       validRows.forEach(
         (row, index) => {
           const pipelineId =
@@ -4973,7 +4902,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                     <FileSpreadsheet className="w-5 h-5 text-blue-600" />
 
                     <CardTitle className="text-sm font-bold text-gray-900">
-                      Workflow Setup Target RKAP (Excel-Compatible CSV)
+                      Workflow Setup Target RKAP (XLSX dengan Daftar User ID)
                     </CardTitle>
 
                   </div>
@@ -4988,7 +4917,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                 </div>
 
                 <CardDescription className="text-xs">
-                  Proses 6 Langkah: Pilih Tahun, Download Template CSV, Isi melalui Microsoft Excel, Upload CSV, Validasi Cascading, lalu Publish
+                  Proses 6 Langkah: Pilih Tahun, Download Template XLSX, Isi melalui Microsoft Excel, Upload XLSX, Validasi Cascading, lalu Publish
                 </CardDescription>
 
               </CardHeader>
@@ -5060,7 +4989,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                           <Download className="w-4 h-4 text-blue-600" />
 
                           <span>
-                            Download Template Target (.csv)
+                            Download Template Target (.xlsx)
                           </span>
 
                         </Button>
@@ -5070,12 +4999,12 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                       <div>
 
                         <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                          Step 3: Upload CSV Target
+                          Step 3: Upload XLSX Target
                         </label>
 
                         <Input
                           type="file"
-                          accept=".csv,text/csv"
+                          accept={SPREADSHEET_ACCEPT}
                           onChange={
                             handleTargetFileChange
                           }
@@ -5711,7 +5640,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                           <Download className="w-4 h-4 text-blue-600" />
 
                           <span>
-                            Download Template (.csv)
+                            Download Template (.xlsx)
                           </span>
 
                         </Button>
@@ -5721,12 +5650,12 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
                       <div>
 
                         <label className="text-[11px] font-bold text-gray-700 block mb-1">
-                          Upload CSV Pipeline
+                          Upload XLSX Pipeline
                         </label>
 
                         <Input
                           type="file"
-                          accept=".csv,text/csv"
+                          accept={SPREADSHEET_ACCEPT}
                           onChange={
                             handleBulkFileChange
                           }

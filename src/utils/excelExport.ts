@@ -1,3 +1,4 @@
+import { readNativeXlsxRows } from './marketingWorkbook';
 export const exportToExcel = (
   data: Record<string, any>[],
   filename: string,
@@ -666,9 +667,7 @@ export const parseExcelOrCsvFile = async (
       ?.toLowerCase() || '';
 
   if (extension === 'xlsx') {
-    throw new Error(
-      'File XLSX native tidak dapat diproses tanpa library tambahan. Gunakan template CSV yang diunduh dari aplikasi.'
-    );
+    return readNativeXlsxRows(await file.arrayBuffer());
   }
 
   const text = await file.text();
