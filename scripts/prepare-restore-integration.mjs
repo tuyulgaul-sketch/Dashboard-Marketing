@@ -6,8 +6,6 @@ const replace = (path, before, after) => {
   writeFileSync(path, source.replace(before, after));
 };
 
-// Use the complete import-list anchor rather than the FileText identifier,
-// which also appears in navigation items.
 const applyPath = 'scripts/apply-restore-capped.mjs';
 replace(applyPath,
   `replaceOnce(sidebar,\n  '  FileText,\\n',\n  '  FileText,\\n  LayoutDashboard,\\n  Target,\\n  TrendingUp,\\n');`,
@@ -15,8 +13,6 @@ replace(applyPath,
 
 await import('./apply-restore-capped.mjs');
 
-// Acting-approver delegation belongs to the existing live approval workflow.
-// It must not be included among the newly empty/restored datasets.
 const servicePath = 'src/services/centralBusinessService.ts';
 replace(servicePath, "  'pertalife_approver_delegations',\n", '');
 
@@ -29,4 +25,52 @@ replace(testPath,
   `      assert(ts.isArrayLiteralExpression(node.initializer));\n      value = node.initializer.elements.map(item => {`,
   `      const init = ts.isAsExpression(node.initializer) ? node.initializer.expression : node.initializer;\n      assert(ts.isArrayLiteralExpression(init));\n      value = init.elements.map(item => {`);
 
-console.log('Integration prepared; live delegation collection remains untouched.');
+// The original auth effect has a stable lifecycle. Memoize the new loader
+// and its dependent profile loader rather than suppressing exhaustive-deps.
+const authPath = 'src/contexts/AuthContext.tsx';
+replace(authPath, '  createContext,\n', '  createContext,\n  useCallback,\n');
+replace(authPath,
+  '    const loadRestoredBusiness = async (authProfile: AuthProfile) => {',
+  '    const loadRestoredBusiness = useCallback(async (authProfile: AuthProfile) => {');
+replace(authPath,
+  `        setRestoredBusinessError(message);
+      }
+    };
+
+    const loadProfile =`,
+  `        setRestoredBusinessError(message);
+      }
+    }, []);
+
+    const loadProfile =`);
+replace(authPath,
+  `    const loadProfile =
+      async (`,
+  `    const loadProfile =
+      useCallback(async (`);
+replace(authPath,
+  `        setProfile(
+          authProfile
+        );
+      };
+
+    useEffect(`,
+  `        setProfile(
+          authProfile
+        );
+      }, [loadRestoredBusiness]);
+
+    useEffect(`);
+replace(authPath,
+  `      },
+      []
+    );
+
+    useEffect(`,
+  `      },
+      [loadProfile]
+    );
+
+    useEffect(`);
+
+console.log('Integration prepared; live delegation and existing auth lifecycle remain intact.');
