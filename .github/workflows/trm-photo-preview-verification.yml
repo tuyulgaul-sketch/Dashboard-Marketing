@@ -45,6 +45,16 @@ jobs:
           };
           replaceOnce('scripts/test-trm-photo-preview.mjs', 'new Module(filename, module)', 'new Module(filename)');
           replaceOnce('scripts/test-trm-photo-preview.mjs', "require('esbuild')", "testRequire('esbuild')");
+          replaceOnce('scripts/test-trm-photo-preview.mjs', "      alias: { '@': resolve('src') },", `      plugins: [{
+                name: 'isolate-preview-dependencies',
+                setup(build) {
+                  build.onResolve({ filter: /^@\\// }, args =>
+                    Object.prototype.hasOwnProperty.call(mocks, args.path)
+                      ? { path: args.path, external: true }
+                      : { path: resolve('src', args.path.slice(2)) }
+                  );
+                },
+              }],`);
           replaceOnce('src/components/tandaTerima/HandoverEvidencePreview.tsx', '            aria-describedby={undefined}\n', '');
           NODE
       - name: Run preview behavior and preservation tests
