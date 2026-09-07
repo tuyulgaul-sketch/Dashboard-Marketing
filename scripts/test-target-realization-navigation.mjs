@@ -39,7 +39,14 @@ const profile = (unit, department = null, overrides = {}) => ({
 test('every intentional existing-source change is exactly the approved transform', () => {
   for (const [path, transform] of Object.entries(FINAL_TRANSFORMS)) {
     const original = git('show', `${NEW_BASES[path] || BASE}:${path}`);
-    assert.equal(read(path), transform(original), `${path} contains an unexpected change`);
+    // XLSX upload changes are a separately approved release. Pin the two
+    // changed upload pages to that release while retaining exact historical
+    // transforms for every other navigation, permission and reader file.
+    const xlsxBaseline = '76c655d4adadd42f0e5388e1729aa120afdb0c2d';
+    const expected = ['src/pages/TargetRkapPage.tsx', 'src/pages/ProduksiPage.tsx'].includes(path)
+      ? git('show', `${xlsxBaseline}:${path}`)
+      : transform(original);
+    assert.equal(read(path), expected, `${path} contains an unexpected change`);
   }
   for (const path of ['src/services/centralBusinessService.ts','src/services/centralBusinessStorageRuntime.ts','src/services/centralTargetRuntime.ts','src/services/targetService.ts','src/contexts/AuthContext.tsx','src/pages/BookingPipelinePage.tsx','src/pages/TandaTerimaV14Page.tsx','src/pages/DokumenPendukungPage.tsx','src/pages/DokumenAdministrasiReaderPage.tsx','src/pages/AktivitasUniversalPage.tsx','src/pages/MarketingMeetingRoomPage.tsx','src/services/documentHandoverFileStorage.ts']) {
     assert.equal(read(path), git('show', `${BASE}:${path}`), `${path} must remain byte-for-byte unchanged`);

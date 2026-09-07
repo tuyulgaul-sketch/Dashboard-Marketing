@@ -1,0 +1,55 @@
+name: XLSX upload regression
+on:
+  push:
+    branches: [feat/xlsx-user-id-imports]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/marketingWorkbook.ts'
+      - 'src/utils/excelExport.ts'
+      - 'src/pages/TargetRkapPage.tsx'
+      - 'src/pages/ProduksiPage.tsx'
+      - 'scripts/test-marketing-xlsx.mjs'
+      - 'scripts/check-xlsx-regression.mjs'
+      - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/prepare-restored-business-fixture.mjs'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/xlsx-upload-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Native XLSX and User ID regression
+        run: node scripts/test-marketing-xlsx.mjs
+      - name: Prepare and verify preserved live-feature fixture
+        run: node scripts/prepare-restored-business-fixture.mjs
+      - name: Existing business and navigation regressions
+        run: |
+          node --experimental-strip-types --test \
+            scripts/test-target-realization-navigation.mjs \
+            scripts/test-official-upload-upsert-guard.mjs \
+            scripts/test-restored-business.mjs \
+            scripts/test-admin-document-access.mjs \
+            scripts/test-admin-document-reader.mjs \
+            scripts/test-admin-document-browse.mjs \
+            scripts/test-admin-product-search.mjs \
+            scripts/test-marketing-tool-browse.mjs \
+            scripts/test-document-handover-sort.mjs
+      - name: Reject new TypeScript and ESLint diagnostics
+        run: node scripts/check-xlsx-regression.mjs
+      - name: Production build
+        run: pnpm run build
