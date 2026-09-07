@@ -16,7 +16,10 @@ export const useTargetRealizationPublisher = () => {
     profile.legacy_user_id?.trim().toUpperCase() === 'USR-000024'
   );
 
-  useEffect(() => store.subscribe(() => setActingUserId(store.getCurrentUser().id)), []);
+  useEffect(() => {
+    const unsubscribe = store.subscribe(() => setActingUserId(store.getCurrentUser().id));
+    return () => { unsubscribe(); };
+  }, []);
 
   useEffect(() => {
     let active = true;
