@@ -1,0 +1,108 @@
+name: Restore capped business modules verification
+on:
+  push:
+    branches: [feat/restore-capped-business-modules]
+    paths:
+      - 'scripts/apply-restore-capped.mjs'
+      - '.github/workflows/restore-verification.yml'
+concurrency:
+  group: restore-capped-business-modules
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/restore-capped-business-modules
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+          git restore -- pnpm-lock.yaml
+      - name: Capture production baseline and diagnostics
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const paths = [
+            'src/lib/accessControl.ts',
+            'src/pages/AktivitasUniversalPage.tsx',
+            'src/pages/MarketingMeetingRoomPage.tsx',
+            'src/pages/DokumenPendukungPage.tsx',
+            'src/pages/DokumenAdministrasiReaderPage.tsx',
+            'src/pages/TandaTerimaV14Page.tsx',
+            'src/pages/AdministrasiPage.tsx',
+            'src/components/common/ReleaseSyncBridge.tsx',
+            'src/services/centralUserRuntime.ts',
+            'src/services/targetService.ts',
+            'src/services/masterDataService.ts',
+            'src/services/businessFileStorage.ts',
+            'src/services/pipelineFileStorage.ts',
+          ];
+          writeFileSync('/tmp/restore-preserved-files.json', JSON.stringify(Object.fromEntries(paths.map(path => [path, readFileSync(path, 'utf8')]))));
+          NODE
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/restore-ts-before.txt 2>&1 || true
+          pnpm exec eslint src/App.tsx src/components/layout/AppSidebar.tsx src/contexts/AuthContext.tsx src/services/centralBusinessService.ts src/services/centralBusinessStorageRuntime.ts > /tmp/restore-lint-before.txt 2>&1 || true
+      - name: Apply reviewed additive integration
+        run: |
+          node scripts/apply-restore-capped.mjs
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = 'src/services/centralBusinessService.ts';
+          const source = readFileSync(path, 'utf8');
+          assert(source.includes("  'pertalife_approver_delegations',\n"));
+          writeFileSync(path, source.replace("  'pertalife_approver_delegations',\n", ''));
+          // Delegation is an existing live workflow, not a capped collection.
+          // Do not migrate or empty it as part of this release.
+          const testPath = 'scripts/test-restored-business.mjs';
+          let tests = readFileSync(testPath, 'utf8');
+          tests = tests.replace('assert.equal(restored.length, 11);', 'assert.equal(restored.length, 10);')
+            .replace('assert.equal(new Set([...lite, ...restored]).size, 19);', 'assert.equal(new Set([...lite, ...restored]).size, 18);')
+            .replace(",'pertalife_approver_delegations'", '');
+          writeFileSync(testPath, tests);
+          NODE
+      - name: Run restoration and existing document regressions
+        run: |
+          node --experimental-strip-types --test scripts/test-restored-business.mjs
+          files=()
+          for file in scripts/test-admin-document-access.mjs scripts/test-admin-document-reader.mjs scripts/test-admin-document-browse.mjs scripts/test-admin-product-search.mjs scripts/test-marketing-tool-browse.mjs scripts/test-tanda-terima-sort.mjs; do
+            if [ -f "$file" ]; then files+=("$file"); fi
+          done
+          if [ ${#files[@]} -gt 0 ]; then node --experimental-strip-types --test "${files[@]}"; fi
+      - name: Lint restored integration
+        run: pnpm exec eslint src/components/common/RestoredBusinessGuard.tsx src/App.tsx src/components/layout/AppSidebar.tsx src/contexts/AuthContext.tsx src/services/centralBusinessService.ts src/services/centralBusinessStorageRuntime.ts > /tmp/restore-lint-after.txt 2>&1 || true
+      - name: Verify production build
+        run: pnpm run build
+      - name: Reject new TypeScript and lint diagnostics
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/restore-ts-after.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const lines = p => readFileSync(p, 'utf8').split('\n');
+          const errors = p => lines(p).filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line)).map(line => line.replace(/\(\d+,\d+\)/, ''));
+          const before = errors('/tmp/restore-ts-before.txt');
+          const after = errors('/tmp/restore-ts-after.txt');
+          const added = after.filter(error => !new Set(before).has(error));
+          console.log(`TypeScript baseline: ${before.length}; current: ${after.length}; new: ${added.length}.`);
+          if (added.length) { console.error(added.join('\n')); process.exitCode = 1; }
+          const lint = p => lines(p).filter(line => /^\s*\d+:\d+\s+(error|warning)\s+/.test(line)).map(line => line.replace(/^\s*\d+:\d+/, ''));
+          const oldLint = new Set(lint('/tmp/restore-lint-before.txt'));
+          const newLint = lint('/tmp/restore-lint-after.txt').filter(line => !oldLint.has(line));
+          console.log(`New lint diagnostics: ${newLint.length}.`);
+          if (newLint.length) { console.error(newLint.join('\n')); process.exitCode = 1; }
+          NODE
+      - name: Commit verified application integration
+        run: |
+          git add src/App.tsx src/components/layout/AppSidebar.tsx src/contexts/AuthContext.tsx src/services/centralBusinessService.ts src/services/centralBusinessStorageRuntime.ts src/components/common/RestoredBusinessGuard.tsx scripts/test-restored-business.mjs
+          git diff --cached --check
+          if git diff --cached --quiet; then echo 'Expected integration was not staged.'; exit 1; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(restore): reconnect capped modules to central business runtime'
+          git push origin HEAD:refs/heads/feat/restore-capped-business-modules
