@@ -3,16 +3,33 @@ on:
   push:
     branches: [feat/admin-fact-finding]
     paths:
-      - 'scripts/inspect-admin-fact-finding.mjs'
+      - 'scripts/apply-admin-fact-finding.mjs'
       - '.github/workflows/admin-fact-finding-check.yml'
 jobs:
-  inspect:
+  apply:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/admin-fact-finding
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node scripts/inspect-admin-fact-finding.mjs
+      - name: Apply exact source edits
+        run: node scripts/apply-admin-fact-finding.mjs
+      - name: Run document and RBAC regression tests
+        run: node --experimental-strip-types --test scripts/test-admin-document-reader.mjs scripts/test-admin-document-access.mjs
+      - name: Install and verify production build
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+          pnpm exec tsc --noEmit -p tsconfig.app.json
+          pnpm run build
+      - name: Commit only reviewed application source changes
+        run: |
+          git add src/services/store.ts src/pages/DokumenPendukungPage.tsx src/pages/DokumenAdministrasiReaderPage.tsx
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(docs): integrate Fact Finding into administration workflow'
+          git push origin HEAD:refs/heads/feat/admin-fact-finding
