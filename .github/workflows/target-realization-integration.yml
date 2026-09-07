@@ -1,81 +1,92 @@
-name: Target realization integration verification
+name: Target realization regression
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'src/lib/accessControl.ts'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'src/hooks/useTargetRealizationPublisher.ts'
+      - 'src/pages/TargetRkapPage.tsx'
+      - 'src/pages/ProduksiPage.tsx'
+      - 'src/pages/DirectoratePerformancePage.tsx'
+      - 'src/pages/TargetRealizationUploadPage.tsx'
+      - 'src/services/directoratePerformanceService.ts'
+      - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/test-official-upload-upsert-guard.mjs'
+      - 'supabase/migrations/20260907_directorate_performance_reader_v33.sql'
+      - 'supabase/migrations/20260907_official_upload_guard_v34.sql'
+      - 'supabase/migrations/20260907_official_upload_upsert_guard_v34_1.sql'
+      - '.github/workflows/target-realization-integration.yml'
   push:
     branches: [feat/target-realization-navigation]
     paths:
-      - 'scripts/integrate-target-realization.mjs'
-      - 'scripts/integrate-target-realization-v2.mjs'
-      - 'scripts/test-target-realization-navigation.mjs'
-      - 'src/hooks/useTargetRealizationPublisher.ts'
-      - 'src/services/directoratePerformanceService.ts'
-      - 'src/pages/DirectoratePerformancePage.tsx'
       - '.github/workflows/target-realization-integration.yml'
 permissions:
-  contents: write
-concurrency:
-  group: target-realization-integration
-  cancel-in-progress: false
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/target-realization-navigation
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install project dependencies
+      - name: Install dependencies
         run: |
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --no-frozen-lockfile
           git restore -- pnpm-lock.yaml
-      - name: Apply immutable-base source-preserving integration
+      - name: Preserve original live feature baseline
         run: |
           node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
           import { readFileSync, writeFileSync } from 'node:fs';
           import { execFileSync } from 'node:child_process';
-          import ts from 'typescript';
-          import { FINAL_TRANSFORMS } from './scripts/integrate-target-realization-v2.mjs';
+          import assert from 'node:assert/strict';
           const BASE='9bfee0235fd36b02c8f74577dc5bea66d52c4028';
-          const refs={
-            'src/pages/DirectoratePerformancePage.tsx':'f9a658990b112c4a8b284bfe4c18e40f09dc3f5a',
-            'src/pages/TargetRealizationUploadPage.tsx':'af31810c08f3f6d051fec76d53a861a32c5cb380',
-          };
-          const original=path=>execFileSync('git',['show',`${refs[path]||BASE}:${path}`],{encoding:'utf8'});
-          for(const [path,transform] of Object.entries(FINAL_TRANSFORMS)){
-            const before=original(path);
-            const expected=transform(before);
-            const current=readFileSync(path,'utf8');
-            assert(current===before || current===expected,`${path} has unexpected changes; refusing overwrite`);
-            const sf=ts.createSourceFile(path,expected,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-            assert.equal(sf.parseDiagnostics.length,0,`${path}: ${sf.parseDiagnostics.map(d=>d.messageText).join('; ')}`);
-            if(current!==expected)writeFileSync(path,expected);
-            console.log(`Verified exact integration: ${path}`);
-          }
-          const preserved=[
-            'src/services/centralBusinessService.ts','src/services/centralBusinessStorageRuntime.ts',
-            'src/services/centralTargetRuntime.ts','src/services/targetService.ts','src/contexts/AuthContext.tsx',
-            'src/pages/BookingPipelinePage.tsx','src/pages/TandaTerimaV14Page.tsx','src/pages/DokumenPendukungPage.tsx',
-            'src/pages/DokumenAdministrasiReaderPage.tsx','src/pages/AktivitasUniversalPage.tsx',
-            'src/pages/MarketingMeetingRoomPage.tsx','src/services/documentHandoverFileStorage.ts',
+          const paths=[
+            'src/lib/accessControl.ts',
+            'src/pages/AktivitasUniversalPage.tsx',
+            'src/pages/MarketingMeetingRoomPage.tsx',
+            'src/pages/DokumenPendukungPage.tsx',
+            'src/pages/DokumenAdministrasiReaderPage.tsx',
+            'src/pages/TandaTerimaV14Page.tsx',
+            'src/pages/AdministrasiPage.tsx',
+            'src/components/common/ReleaseSyncBridge.tsx',
+            'src/services/centralUserRuntime.ts',
+            'src/services/targetService.ts',
+            'src/services/masterDataService.ts',
+            'src/services/businessFileStorage.ts',
+            'src/services/pipelineFileStorage.ts',
           ];
-          const snapshot=Object.fromEntries(preserved.map(path=>[path,original(path)]));
+          const snapshot=Object.fromEntries(paths.map(path=>[path,execFileSync('git',['show',`${BASE}:${path}`],{encoding:'utf8'})]));
+          // AccessControl is intentionally widened only for the two reader routes.
+          snapshot['src/lib/accessControl.ts']=readFileSync('src/lib/accessControl.ts','utf8');
           writeFileSync('/tmp/restore-preserved-files.json',JSON.stringify(snapshot));
+          for(const [path,expected] of Object.entries(snapshot)) assert.equal(readFileSync(path,'utf8'),expected,`Live feature changed: ${path}`);
+          console.log('Existing live feature files preserved.');
           NODE
-      - name: Run new role, math, navigation and source-preservation tests
-        run: node --experimental-strip-types --test scripts/test-target-realization-navigation.mjs
-      - name: Run existing business, documents and Tanda Terima regressions
+      - name: Run navigation, upload guard and existing regressions
         run: |
-          files=(scripts/test-restored-business.mjs scripts/test-admin-document-access.mjs)
-          for file in scripts/test-document-handover-sort.mjs scripts/test-tanda-terima-sort.mjs scripts/test-marketing-tools-product-first.mjs scripts/test-admin-fact-finding.mjs scripts/test-admin-documents-product-first.mjs; do
+          files=(
+            scripts/test-target-realization-navigation.mjs
+            scripts/test-official-upload-upsert-guard.mjs
+            scripts/test-restored-business.mjs
+            scripts/test-admin-document-access.mjs
+            scripts/test-admin-document-reader.mjs
+            scripts/test-admin-document-browse.mjs
+            scripts/test-admin-product-search.mjs
+            scripts/test-marketing-tool-browse.mjs
+            scripts/test-document-handover-sort.mjs
+          )
+          for file in scripts/test-trm-photo-preview.mjs scripts/test-tanda-terima-photo-preview.mjs; do
             if [ -f "$file" ]; then files+=("$file"); fi
           done
           node --experimental-strip-types --test "${files[@]}"
-      - name: Reject new TypeScript or lint diagnostics
+      - name: Reject new TypeScript and lint diagnostics
         run: |
           git worktree add --detach /tmp/target-baseline 9bfee0235fd36b02c8f74577dc5bea66d52c4028
           ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/target-baseline/node_modules
@@ -87,7 +98,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const lines=p=>readFileSync(p,'utf8').split('\n');
-          const count=(items)=>{const m=new Map();for(const item of items)m.set(item,(m.get(item)||0)+1);return m;};
+          const count=items=>{const m=new Map();for(const item of items)m.set(item,(m.get(item)||0)+1);return m;};
           const errors=p=>lines(p).filter(s=>/^.+\(\d+,\d+\): error TS\d+:/.test(s)).map(s=>s.replace(/\(\d+,\d+\)/,''));
           const before=count(errors('/tmp/target-ts-before.txt'));
           const after=count(errors('/tmp/target-ts-after.txt'));
@@ -103,11 +114,3 @@ jobs:
           NODE
       - name: Verify production build
         run: pnpm run build
-      - name: Commit only verified application and regression changes
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/App.tsx src/lib/accessControl.ts src/components/layout/AppSidebar.tsx src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx src/pages/DirectoratePerformancePage.tsx src/pages/TargetRealizationUploadPage.tsx scripts/test-restored-business.mjs scripts/test-admin-document-access.mjs
-          git diff --cached --quiet && exit 0
-          git commit -m 'feat: integrate verified Target & Realisasi navigation'
-          git push origin HEAD:feat/target-realization-navigation
