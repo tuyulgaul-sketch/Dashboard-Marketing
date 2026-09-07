@@ -143,7 +143,7 @@ export const listDirectoratePerformance = async (): Promise<DirectoratePerforman
       publishedAt: text(row.publishedAt) || null,
     };
   });
-  const summaries = rows(payload.summaries).map(value => {
+  const summaries = rows(payload.summaries).map((value): DirectorateProductionSummary => {
     const row = record(value);
     const businessType = text(row.businessType);
     if (businessType !== 'New Business' && businessType !== 'Renewal Business') throw new Error('Jenis bisnis laporan tidak valid.');
