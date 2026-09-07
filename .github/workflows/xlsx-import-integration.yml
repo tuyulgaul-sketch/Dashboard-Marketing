@@ -1,0 +1,98 @@
+name: XLSX import integration
+on:
+  push:
+    branches: [feat/xlsx-user-id-imports]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/marketingWorkbook.ts'
+      - 'src/utils/excelExport.ts'
+      - 'src/pages/TargetRkapPage.tsx'
+      - 'src/pages/ProduksiPage.tsx'
+      - 'scripts/test-marketing-xlsx.mjs'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/xlsx-import-integration.yml'
+permissions:
+  contents: read
+jobs:
+  integrate:
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[xlsx-integrated]')
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+          pnpm add exceljs@4.4.0 --save-exact
+      - name: Integrate with verified source anchors
+        run: node scripts/integrate-xlsx-imports.mjs
+      - name: Commit generated changes to feature branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json pnpm-lock.yaml src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx src/utils/excelExport.ts
+          git diff --cached --check
+          git commit -m 'feat(xlsx): connect native readers and user ID validation [xlsx-integrated]'
+          git push origin HEAD:feat/xlsx-user-id-imports
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Native XLSX regression
+        run: |
+          if test -f scripts/test-marketing-xlsx.mjs; then node scripts/test-marketing-xlsx.mjs; fi
+      - name: Existing business and navigation regressions
+        run: |
+          node --experimental-strip-types --test \
+            scripts/test-target-realization-navigation.mjs \
+            scripts/test-official-upload-upsert-guard.mjs \
+            scripts/test-restored-business.mjs \
+            scripts/test-admin-document-access.mjs \
+            scripts/test-admin-document-reader.mjs \
+            scripts/test-admin-document-browse.mjs \
+            scripts/test-admin-product-search.mjs \
+            scripts/test-marketing-tool-browse.mjs \
+            scripts/test-document-handover-sort.mjs
+      - name: TypeScript diagnostics
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/ts-current.txt 2>&1 || true
+          git worktree add --detach /tmp/xlsx-baseline 6b087d9ceccd6a52fd1d83ea6dbaf27bdd9bbcbc
+          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/xlsx-baseline/node_modules
+          (cd /tmp/xlsx-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/ts-before.txt 2>&1 || true)
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const errors = path => readFileSync(path, 'utf8').split('\n').filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line)).map(line => line.replace(/\(\d+,\d+\)/, ''));
+          const before = new Map();
+          for (const error of errors('/tmp/ts-before.txt')) before.set(error, (before.get(error) || 0) + 1);
+          const added = [];
+          for (const error of errors('/tmp/ts-current.txt')) {
+            const count = before.get(error) || 0;
+            if (count) before.set(error, count - 1); else added.push(error);
+          }
+          console.log('New TypeScript diagnostics:', added.length);
+          if (added.length) { console.error(added.join('\n')); process.exitCode = 1; }
+          NODE
+      - name: Lint changed source
+        run: pnpm exec eslint src/utils/marketingWorkbook.ts src/utils/excelExport.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
+      - name: Production build
+        run: pnpm run build
