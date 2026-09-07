@@ -10,6 +10,7 @@ import {
   AppLayout,
 } from '@/components/layout/AppLayout';
 import { AdminDocumentBrowser } from '@/components/documents/AdminDocumentBrowser';
+import { MarketingToolBrowser } from '@/components/documents/MarketingToolBrowser';
 import { ADMIN_DOCUMENT_CATEGORIES } from '@/lib/adminDocumentCategories';
 import {
   ManagedServiceDocument,
@@ -1275,6 +1276,9 @@ export const DokumenPendukungPage:
     const isKarina =
       currentUser.id ===
       'USR-000031';
+
+    // Preserve the existing publisher and final-approval workflow.
+    const isMarketingToolPublisher = isAndi || isKarina;
 
     const canManageMarcommStock =
       isArianie ||
@@ -3971,7 +3975,21 @@ export const DokumenPendukungPage:
           )}
 
           {area ===
-            'marketing-tools' && (
+            'marketing-tools' &&
+            !isMarketingToolPublisher && (
+            <MarketingToolBrowser
+              key={currentUser.id}
+              documents={publishedDocs}
+              products={products}
+              onDownload={document =>
+                handleDownload(document.id, document.fileName)
+              }
+            />
+          )}
+
+          {area ===
+            'marketing-tools' &&
+            isMarketingToolPublisher && (
             <>
               <div className="grid gap-3 md:grid-cols-3">
                 {MARKETING_TOOL_CATEGORIES.map(
