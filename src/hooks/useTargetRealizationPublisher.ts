@@ -33,9 +33,11 @@ export const useTargetRealizationPublisher = () => {
     return () => { active = false; };
   }, [authUserId, candidate]);
 
+  // A newly mounted publisher page must not redirect before its first check.
+  const loading = Boolean(candidate && (state.authUserId !== authUserId || state.loading));
   const identityMatches = candidate && actingUserId === 'USR-000024' && state.authUserId === authUserId;
   return {
-    canPublish: Boolean(identityMatches && state.allowed && !state.loading),
-    loading: Boolean(candidate && state.authUserId === authUserId && state.loading),
+    canPublish: Boolean(identityMatches && state.allowed && !loading),
+    loading,
   };
 };
