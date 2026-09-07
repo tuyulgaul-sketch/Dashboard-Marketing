@@ -51,7 +51,7 @@ jobs:
                   build.onResolve({ filter: /^@\\// }, args =>
                     Object.prototype.hasOwnProperty.call(mocks, args.path)
                       ? { path: args.path, external: true }
-                      : { path: resolve('src', args.path.slice(2)) }
+                      : { path: resolve('src', args.path.slice(2) + '.ts') }
                   );
                 },
               }],`);
