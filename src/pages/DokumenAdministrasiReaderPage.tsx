@@ -1,67 +1,79 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessFeature, isCrossSupportAdminDocumentReader } from "@/lib/accessControl";
-import { listCentralBusinessEntities } from "@/services/centralBusinessService";
+import { supabase } from "@/lib/supabase";
 import { downloadMarketingSupportFile } from "@/services/marketingSupportFileStorage";
 import type { ManagedServiceDocument } from "@/services/store";
 import { Download, FileText, RefreshCw } from "lucide-react";
 
-const formatDate = (value: string) => {
+const formatDate = (value?: string) => {
+  if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 };
 
-/** A separate reader avoids granting legacy operator/approval privileges to other departments. */
+/** Cross-support readers never enter the legacy upload/approval workflow. */
 export const DokumenAdministrasiReaderPage: React.FC = () => {
   const { profile } = useAuth();
+  const allowed = canAccessFeature(profile, "DOCUMENT_ADMIN") && isCrossSupportAdminDocumentReader(profile);
   const [documents, setDocuments] = useState<ManagedServiceDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
-  const allowed = canAccessFeature(profile, "DOCUMENT_ADMIN") && isCrossSupportAdminDocumentReader(profile);
-
-  const loadDocuments = async () => {
-    if (!allowed) return;
+  const loadDocuments = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    if (!allowed) {
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      const rows = await listCentralBusinessEntities(["pertalife_service_documents"]);
-      setDocuments(rows.map(row => row.payload as unknown as ManagedServiceDocument).filter(document =>
+      // The server checks the real Auth identity and returns only published
+      // Marketing Administration SPAJ/SPAK. Never fetch all business payloads.
+      const { data, error: queryError } = await supabase.rpc("list_published_admin_documents_v31");
+      if (queryError) throw queryError;
+      if (sequence !== requestSequence.current) return;
+      const rows = (data || []) as ManagedServiceDocument[];
+      setDocuments(rows.filter(document =>
         document.ownerArea === "MARKETING_ADMINISTRATION" &&
         document.status === "PUBLISHED" &&
         (document.category === "SPAJ" || document.category === "SPAK")
       ));
     } catch (cause) {
+      if (sequence !== requestSequence.current) return;
       setDocuments([]);
       setError(cause instanceof Error ? cause.message : "Dokumen belum dapat dimuat. Hubungi System Admin.");
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
-  };
+  }, [allowed, profile?.id]);
 
   useEffect(() => {
-    if (allowed) void loadDocuments();
-    // Re-fetch when the authenticated profile changes, never reuse another user's list.
-  }, [profile?.id, allowed]);
+    void loadDocuments();
+    return () => { requestSequence.current += 1; };
+  }, [loadDocuments]);
 
   const visibleDocuments = useMemo(() => {
     const query = search.trim().toLowerCase();
     return documents.filter(document =>
       !query || [document.title, document.category, document.productName, document.versionLabel, document.fileName]
         .filter(Boolean).join(" ").toLowerCase().includes(query)
-    ).sort((a, b) => (b.approvedAt || b.uploadedAt).localeCompare(a.approvedAt || a.uploadedAt));
+    ).sort((a, b) => (b.approvedAt || b.uploadedAt || "").localeCompare(a.approvedAt || a.uploadedAt || ""));
   }, [documents, search]);
 
   const handleDownload = async (document: ManagedServiceDocument) => {
     if (!allowed || downloadingId) return;
     setDownloadingId(document.id);
     try {
-      // Existing private-storage service enforces the server's file visibility policy.
+      // Metadata and private Storage SELECT are re-authorized server-side.
       await downloadMarketingSupportFile(document.id, document.fileName);
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : "File tidak dapat diunduh.");
