@@ -32,97 +32,60 @@ const replaceInitializer = (source, name, transform) => {
 };
 const addImport = (source, statement) => statement + '\n' + source;
 
-const transformExcel = source => {
-  let next = addImport(source, "import { readNativeXlsxRows } from './marketingWorkbook';");
-  next = replaceOnce(next,
-    `    throw new Error(\n      'File XLSX native tidak dapat diproses tanpa library tambahan. Gunakan template CSV yang diunduh dari aplikasi.'\n    );`,
-    `    return readNativeXlsxRows(await file.arrayBuffer());`);
-  return next;
-};
+const transformExcel = source => addImport(replaceOnce(source,
+  `    throw new Error(\n      'File XLSX native tidak dapat diproses tanpa library tambahan. Gunakan template CSV yang diunduh dari aplikasi.'\n    );`,
+  `    return readNativeXlsxRows(await file.arrayBuffer());`),
+  "import { readNativeXlsxRows } from './marketingWorkbook';");
 
 const transformTarget = source => {
   let next = addImport(source, `import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';`);
   next = replaceInitializer(next, 'handleDownloadTargetTemplate', init => {
     let result = replaceOnce(init, '() => {', 'async () => {');
-    result = replaceOnce(result, `      exportToExcel(\n        templateData,\n        \`Template_Target_\${selectedTargetYear}\`\n      );`,
+    return replaceOnce(result, `      exportToExcel(\n        templateData,\n        \`Template_Target_\${selectedTargetYear}\`\n      );`,
       `      try {\n        await downloadMarketingWorkbook('target', templateData, users, \`Template_Target_\${selectedTargetYear}\`);\n      } catch (error) {\n        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');\n      }`);
-    return result;
   });
-  next = replaceInitializer(next, 'handleDownloadBulkPipelineTemplate', init => {
-    let result = replaceOnce(init, '() => {', 'async () => {');
-    result = replaceOnce(result, `      exportToExcel(\n        templateData,\n        \`Template_Bulk_Pipeline_\${selectedBulkYear}\`\n      );`,
-      `      try {\n        await downloadMarketingWorkbook('pipeline', templateData, users, \`Template_Bulk_Pipeline_\${selectedBulkYear}\`);\n      } catch (error) {\n        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');\n      }`);
-    return result;
-  });
-  // The existing target template is prepopulated from the current user master.
-  // The bulk template keeps the exact column layout, but no longer invents an opportunity.
-  next = replaceInitializer(next, 'handleDownloadBulkPipelineTemplate', init => {
-    const start = `      const eligiblePic =`;
-    const end = `      try {\n        await downloadMarketingWorkbook`;
-    return replaceBetween(init, start, end,
-      `      const templateData = [Object.fromEntries(getMarketingTemplateHeaders('pipeline').map(header => [header, header === 'Tahun' ? selectedBulkYear : '']))];\n\n`);
-  });
-  // Read real OOXML sheets, not ZIP bytes interpreted as text.
+  next = replaceInitializer(next, 'handleDownloadBulkPipelineTemplate', init =>
+    `async () => {\n      const templateData = [Object.fromEntries(getMarketingTemplateHeaders('pipeline').map(header => [header, header === 'Tahun' ? selectedBulkYear : '']))];\n      try {\n        await downloadMarketingWorkbook('pipeline', templateData, users, \`Template_Bulk_Pipeline_\${selectedBulkYear}\`);\n      } catch (error) {\n        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');\n      }\n    }`);
   next = replaceInitializer(next, 'handleValidateTargetFile', init => {
     let result = replaceOnce(init, `await parseExcelOrCsvFile(\n            targetFile\n          )`,
-      `await readMarketingSpreadsheet(targetFile, { sheetName: MARKETING_SHEETS.target, requiredHeaders: getMarketingTemplateHeaders('target') })`);
-    result = replaceOnce(result, `        const rawRows =`, `        const rawRows =`);
-    return result;
-  });
-  next = replaceInitializer(next, 'handleValidateBulkFile', init => {
-    let result = replaceOnce(init, `await parseExcelOrCsvFile(\n            bulkFile\n          )`,
-      `await readMarketingSpreadsheet(bulkFile, { sheetName: MARKETING_SHEETS.pipeline, requiredHeaders: getMarketingTemplateHeaders('pipeline') })`);
-    // Existing PIC checks remain. Exact ID is now resolved by the shared authoritative validator.
-    result = replaceOnce(result,
-      `              const picUser =\n                users.find(\n                  user =>\n                    normalizeUserId(\n                      user.id\n                    ) ===\n                    picUserId\n                );`,
-      `              const owner = resolveMarketingOwner(picUserId, users, { name: inputPicName });\n              const picUser = owner.user;\n              if (owner.errors.length) { messages.push(...owner.errors); status = 'ERROR'; }\n              if (owner.warnings.length) { messages.push(...owner.warnings); if (status !== 'ERROR') status = 'WARNING'; }`);
-    return result;
-  });
-  // Preserve original import and publishing services, removing only unused CSV parser imports.
-  next = replaceOnce(next, `  exportToExcel,\n`, `  exportToExcel,\n`);
-  next = replaceOnce(next, `  parseExcelOrCsvFile,\n`, '');
-  next = replaceOnce(next, `  const PageLayout = embedded ? React.Fragment : AppLayout;`,
-    `  const PageLayout = embedded ? React.Fragment : AppLayout;\n  const [targetValidatedFile, setTargetValidatedFile] = useState<File | null>(null);\n  const [targetValidatedYear, setTargetValidatedYear] = useState<number | null>(null);\n  const [bulkValidatedFile, setBulkValidatedFile] = useState<File | null>(null);\n  const [bulkValidatedYear, setBulkValidatedYear] = useState<number | null>(null);\n  const [targetImportError, setTargetImportError] = useState('');`);
-  next = replaceInitializer(next, 'handleTargetFileChange', init => replaceOnce(init, `      setTargetFile(\n        event.target.files[0]\n      );`,
-    `      setTargetFile(event.target.files[0]);\n      setTargetValidatedFile(null);\n      setTargetValidatedYear(null);\n      setTargetImportError('');`));
-  next = replaceInitializer(next, 'handleBulkFileChange', init => replaceOnce(init, `      setBulkFile(\n        event.target.files[0]\n      );`,
-    `      setBulkFile(event.target.files[0]);\n      setBulkValidatedFile(null);\n      setBulkValidatedYear(null);`));
-  next = replaceInitializer(next, 'handleValidateTargetFile', init => {
-    let result = replaceOnce(init, `      try {\n        const parsed =`,
-      `      setTargetValidationExecuted(false);\n      setTargetValidatedFile(null);\n      setTargetValidatedYear(null);\n      setTargetImportError('');\n      try {\n        const parsed =`);
-    result = replaceOnce(result, `        const rawRows =\n          parsed.map(row => {`,
-      `        const rawRows =\n          parsed.map(row => {`);
+      `await readMarketingSpreadsheet(targetFile, { sheetName: MARKETING_SHEETS.target, requiredHeaders: ['Tahun', 'User ID Penerima', 'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN', 'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN'] })`);
+    result = replaceOnce(result, `      try {\n        const parsed =`,
+      `      setTargetValidationExecuted(false);\n      setTargetValidatedFile(null);\n      setTargetValidatedYear(null);\n      try {\n        const parsed =`);
     result = replaceOnce(result, `        const duplicateUserIds =`,
       `        const unknownIds = parsed.map(row => normalizeMarketingUserId(getRowValue(row, 'User ID Penerima', 'User ID', 'UserID', 'ID'))).filter(id => !targetHolders.some(user => normalizeMarketingUserId(user.id) === id));\n        if (unknownIds.length) throw new Error(\`User ID tidak terdaftar sebagai target holder aktif: \${[...new Set(unknownIds)].join(', ')}\`);\n        const duplicateUserIds =`);
     result = replaceOnce(result, `        setTargetValidationExecuted(\n          true\n        );`,
       `        setTargetValidatedFile(targetFile);\n        setTargetValidatedYear(selectedTargetYear);\n        setTargetValidationExecuted(true);`);
     result = replaceOnce(result, `        alert(message);\n      }`,
-      `        setTargetImportError(message);\n        setTargetValidationRows([]);\n        setTargetValidationExecuted(false);\n        alert(message);\n      }`);
+      `        setTargetValidationRows([]);\n        setTargetValidationExecuted(false);\n        alert(message);\n      }`);
     return result;
   });
   next = replaceInitializer(next, 'handleValidateBulkFile', init => {
-    let result = replaceOnce(init, `      try {\n        const parsed =`,
+    let result = replaceOnce(init, `await parseExcelOrCsvFile(\n            bulkFile\n          )`,
+      `await readMarketingSpreadsheet(bulkFile, { sheetName: MARKETING_SHEETS.pipeline, requiredHeaders: ['Tahun', 'Bulan Pipeline', 'Jenis Bisnis', 'Produk', 'Nama Calon Nasabah', 'Estimasi Premi', 'Target Closing', 'PIC User ID'] })`);
+    result = replaceOnce(result, `      try {\n        const parsed =`,
       `      setBulkValidationExecuted(false);\n      setBulkValidatedFile(null);\n      setBulkValidatedYear(null);\n      try {\n        const parsed =`);
+    result = replaceOnce(result,
+      `              const picUser =\n                users.find(\n                  user =>\n                    normalizeUserId(\n                      user.id\n                    ) ===\n                    picUserId\n                );`,
+      `              const owner = resolveMarketingOwner(picUserId, users, { name: inputPicName });\n              const picUser = owner.user;\n              if (owner.errors.length) { messages.push(...owner.errors); status = 'ERROR'; }\n              if (owner.warnings.length) { messages.push(...owner.warnings); if (status !== 'ERROR') status = 'WARNING'; }`);
     result = replaceOnce(result, `        setBulkValidationExecuted(\n          true\n        );`,
       `        setBulkValidatedFile(bulkFile);\n        setBulkValidatedYear(selectedBulkYear);\n        setBulkValidationExecuted(true);`);
     return result;
   });
+  next = replaceOnce(next, `  const PageLayout = embedded ? React.Fragment : AppLayout;`,
+    `  const PageLayout = embedded ? React.Fragment : AppLayout;\n  const [targetValidatedFile, setTargetValidatedFile] = useState<File | null>(null);\n  const [targetValidatedYear, setTargetValidatedYear] = useState<number | null>(null);\n  const [bulkValidatedFile, setBulkValidatedFile] = useState<File | null>(null);\n  const [bulkValidatedYear, setBulkValidatedYear] = useState<number | null>(null);`);
+  next = replaceInitializer(next, 'handleTargetFileChange', init => replaceOnce(init, `      setTargetFile(\n        event.target.files[0]\n      );`,
+    `      setTargetFile(event.target.files[0]);\n      setTargetValidatedFile(null);\n      setTargetValidatedYear(null);`));
+  next = replaceInitializer(next, 'handleBulkFileChange', init => replaceOnce(init, `      setBulkFile(\n        event.target.files[0]\n      );`,
+    `      setBulkFile(event.target.files[0]);\n      setBulkValidatedFile(null);\n      setBulkValidatedYear(null);`));
   next = replaceOnce(next, `  const hasTargetBlockingErrors =\n    targetValidationRows.some(`,
     `  const hasTargetBlockingErrors =\n    !targetValidationExecuted || targetValidatedFile !== targetFile || targetValidatedYear !== selectedTargetYear || targetValidationRows.length === 0 ||\n    targetValidationRows.some(`);
   next = replaceOnce(next, `  const hasBulkBlockingErrors =\n    bulkValidationRows.some(`,
     `  const hasBulkBlockingErrors =\n    !bulkValidationExecuted || bulkValidatedFile !== bulkFile || bulkValidatedYear !== selectedBulkYear || bulkValidationRows.length === 0 ||\n    bulkValidationRows.some(`);
-  next = replaceInitializer(next, 'handlePublishTarget', init => replaceOnce(init, `      if (\n        hasTargetBlockingErrors\n      )`,
-    `      if (\n        hasTargetBlockingErrors\n      )`));
-  next = replaceInitializer(next, 'handlePublishBulkPipeline', init => {
-    let result = replaceOnce(init, `      if (\n        hasBulkBlockingErrors\n      )`, `      if (\n        hasBulkBlockingErrors\n      )`);
-    result = replaceOnce(result, `      validRows.forEach(\n        (row, index) => {`,
-      `      const latestUsers = store.getUsers();\n      const invalidOwners = validRows.flatMap(row => resolveMarketingOwner(row.picUserId, latestUsers, { name: row.picName }).errors);\n      if (invalidOwners.length) { alert(invalidOwners.join('\\n')); return; }\n      validRows.forEach(\n        (row, index) => {`);
-    return result;
-  });
-  // Recheck target ownership before publishing, not just at file-validation time.
-  next = replaceInitializer(next, 'handlePublishTarget', init => replaceOnce(init,
-    `      const batchId =`,
+  next = replaceInitializer(next, 'handlePublishTarget', init => replaceOnce(init, `      const batchId =`,
     `      const currentHolderIds = new Set(store.getUsers().filter(user => user.status === 'Active' && TARGET_HOLDER_ROLES.has(user.role)).map(user => normalizeMarketingUserId(user.id)));\n      if (targetValidationRows.some(row => !currentHolderIds.has(normalizeMarketingUserId(row.userId)))) { alert('User Master berubah. Validasi ulang Target sebelum publish.'); return; }\n      const batchId =`));
+  next = replaceInitializer(next, 'handlePublishBulkPipeline', init => replaceOnce(init, `      validRows.forEach(\n        (row, index) => {`,
+    `      const latestUsers = store.getUsers();\n      const invalidOwners = validRows.flatMap(row => resolveMarketingOwner(row.picUserId, latestUsers, { name: row.picName }).errors);\n      if (invalidOwners.length) { alert(invalidOwners.join('\\n')); return; }\n      validRows.forEach(\n        (row, index) => {`));
+  // Keep all existing target, pipeline, duplicate, and publishing logic intact.
   next = next.replaceAll('Excel-Compatible CSV', 'XLSX dengan Daftar User ID');
   next = next.replaceAll('Download Template CSV, Isi melalui Microsoft Excel, Upload CSV', 'Download Template XLSX, Isi melalui Microsoft Excel, Upload XLSX');
   next = next.replaceAll('Download Template Target (.csv)', 'Download Template Target (.xlsx)');
@@ -134,37 +97,31 @@ const transformTarget = source => {
   next = next.replaceAll('via CSV import', 'via XLSX import');
   next = next.replaceAll('.csv`', '.xlsx`');
   next = next.replaceAll('accept=".csv,text/csv"', 'accept={SPREADSHEET_ACCEPT}');
-  next = replaceOnce(next, `  const isTLMS =`, `  const isTLMS =`);
-  // Names are never used for matching; remove the unused import only after all replacements.
-  next = next.replace(`  exportToExcel,\n`, '');
+  next = next.replace(`  exportToExcel,\n`, '').replace(`  parseExcelOrCsvFile,\n`, '');
   return next;
 };
 
 const transformProduction = source => {
   let next = addImport(source, `import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner } from '@/utils/marketingWorkbook';`);
-  next = replaceOnce(next, `  'PIC Marketing',\n];`, `  'User ID Pemilik Realisasi',\n  'PIC Marketing',\n];`);
-  // Production now requires the owner ID in every import format.
-  next = replaceOnce(next, `  'PIC Marketing',\n];\n\nconst normalizeHeader`, `  'User ID Pemilik Realisasi',\n  'PIC Marketing',\n];\n\nconst normalizeHeader`);
+  next = replaceBetween(next, `const TEMPLATE_HEADERS =`, `const normalizeHeader =`,
+    `const TEMPLATE_HEADERS = getMarketingTemplateHeaders('production');\nconst REQUIRED_TEMPLATE_HEADERS = ['Tahun Produksi', 'Bulan Produksi', 'Nama Produk', 'Realisasi Produksi (Rp)', 'Fungsi Marketing', 'Jenis Bisnis', 'User ID Pemilik Realisasi'];\n\n`);
   next = replaceBetween(next, `const detectDelimiter =`, `const parseProductionMonth =`, '');
   next = replaceInitializer(next, 'handleDownloadCsvTemplate', () =>
     `async () => {\n      try {\n        await downloadMarketingWorkbook('production', [], store.getUsers(), 'Template_Upload_Realisasi_Produksi');\n      } catch (error) {\n        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');\n      }\n    }`);
   next = replaceInitializer(next, 'handleValidateUpload', init => {
     let result = replaceOnce(init, `        const text =\n          await uploadFile.text();\n\n        const parsedRows =\n          parseCsv(\n            text\n          );`,
-      `        const parsedData = await readMarketingSpreadsheet(uploadFile, { sheetName: MARKETING_SHEETS.production, requiredHeaders: getMarketingTemplateHeaders('production') });\n        const parsedRows = [getMarketingTemplateHeaders('production'), ...parsedData.map(row => getMarketingTemplateHeaders('production').map(header => getRowValue(row, header)))];`);
+      `        const parsedData = await readMarketingSpreadsheet(uploadFile, { sheetName: MARKETING_SHEETS.production, requiredHeaders: REQUIRED_TEMPLATE_HEADERS });\n        const sourceHeaders = Array.from(new Set([...TEMPLATE_HEADERS, ...parsedData.flatMap(row => Object.keys(row))]));\n        const parsedRows = [sourceHeaders, ...parsedData.map(row => sourceHeaders.map(header => getRowValue(row, header)))];`);
     result = replaceBetween(result, `              if (\n                amountRaw ===`, `              const amount =`, '');
-    // Resolve the ID before row errors are checked, so invalid owners block the whole batch.
     const ownerBlock = `              const picRaw = getRowValue(row, 'PIC Marketing', 'PIC');\n              const ownerId = getRowValue(row, 'User ID Pemilik Realisasi', 'PIC User ID');\n              const owner = resolveMarketingOwner(ownerId, users, { unit: functionValue || undefined, name: picRaw, production: true });\n              rowErrors.push(...owner.errors);\n              rowWarnings.push(...owner.warnings);\n              const picMatch = owner.user;\n              const picName = picMatch?.name || picRaw || 'Unassigned / Data Historis';\n              const department = picMatch?.department || 'Unassigned / Data Historis';\n\n`;
     result = replaceOnce(result,
       `              if (\n                rowErrors.length >\n                0\n              ) {`,
       ownerBlock + `              if (\n                rowErrors.length >\n                0\n              ) {`);
     result = replaceBetween(result, `              const picRaw =\n                getRowValue(`, `              if (\n                rowWarnings.length >`, '');
     result = replaceOnce(result, `                picUserId:\n                  picMatch?.id,`, `                picUserId:\n                  picMatch!.id,`);
-    result = replaceOnce(result, `        setParsedUpload({`,
-      `        setValidatedFile(uploadFile);\n        setParsedUpload({`);
+    result = replaceOnce(result, `        setParsedUpload({`, `        setValidatedFile(uploadFile);\n        setParsedUpload({`);
     return result;
   });
-  next = replaceOnce(next, `  const [\n    parsedUpload,`,
-    `  const [validatedFile, setValidatedFile] = useState<File | null>(null);\n  const [\n    parsedUpload,`);
+  next = replaceOnce(next, `  const [\n    parsedUpload,`, `  const [validatedFile, setValidatedFile] = useState<File | null>(null);\n  const [\n    parsedUpload,`);
   next = replaceInitializer(next, 'handleValidateUpload', init => replaceOnce(init, `      setIsValidating(\n        true\n      );`,
     `      setIsValidating(true);\n      setParsedUpload(null);\n      setValidatedFile(null);`));
   next = replaceInitializer(next, 'handlePublishOfficial', init => {
@@ -178,15 +135,13 @@ const transformProduction = source => {
   next = next.replaceAll('Header CSV tidak sesuai', 'Header file tidak sesuai');
   next = next.replaceAll('Validasi CSV gagal.', 'Validasi file gagal.');
   next = next.replaceAll('source CSV', 'source XLSX');
-  next = next.replaceAll('Template_Upload_Realisasi_Produksi_Dashboard_9_Kolom.csv', 'Template_Upload_Realisasi_Produksi.xlsx');
   next = next.replaceAll('accept=".csv,text/csv"', 'accept={SPREADSHEET_ACCEPT}');
   next = next.replaceAll('Download Template CSV', 'Download Template XLSX');
   next = next.replaceAll('Upload CSV', 'Upload XLSX');
   next = next.replaceAll('Download Template (.csv)', 'Download Template (.xlsx)');
   next = next.replaceAll('Format CSV', 'Format XLSX');
-  next = replaceOnce(next, `  const uploadPeriodKeys =`, `  const uploadPeriodKeys =`);
-  // Clear validated snapshot on a new file, preventing stale publish after selection changes.
-  next = next.replaceAll(`setParsedUpload(null);`, `setParsedUpload(null);\n        setValidatedFile(null);`);
+  // A new file invalidates the preview, including after a prior successful validation.
+  next = next.replace(`setUploadFile(event.target.files[0]);`, `setUploadFile(event.target.files[0]);\n      setValidatedFile(null);`);
   return next;
 };
 
@@ -197,13 +152,18 @@ const changes = {
 };
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  const outputs = [];
   for (const [path, transform] of Object.entries(changes)) {
     const original = readFileSync(path, 'utf8');
     const next = transform(original);
     assert.notEqual(next, original);
     const sf = ts.createSourceFile(path, next, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     assert.equal(sf.parseDiagnostics.length, 0, `${path}: ${sf.parseDiagnostics.map(issue => issue.messageText).join('; ')}`);
-    writeFileSync(path, next);
+    outputs.push([path, next]);
+  }
+  // All anchors and syntax must pass before any source file is replaced.
+  for (const [path, content] of outputs) {
+    writeFileSync(path, content);
     console.log(`Updated ${path}`);
   }
 }
