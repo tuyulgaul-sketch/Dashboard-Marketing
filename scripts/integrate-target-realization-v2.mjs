@@ -37,10 +37,18 @@ const transformAdminDocumentRegression = source => {
   return next;
 };
 
+const transformPerformanceMemo = source => {
+  let next = TRANSFORMS['src/pages/DirectoratePerformancePage.tsx'](source);
+  next = replaceOnce(next, `  const actualRows = summary?.productions || [];\n  const targetRows = summary?.targets || [];`,
+    `  const actualRows = useMemo(() => summary?.productions || [], [summary]);\n  const targetRows = useMemo(() => summary?.targets || [], [summary]);`);
+  return next;
+};
+
 export const FINAL_TRANSFORMS = {
   ...TRANSFORMS,
   'src/pages/TargetRkapPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/TargetRkapPage.tsx'](source), 'Target & RKAP Directorate Marketing'),
   'src/pages/ProduksiPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/ProduksiPage.tsx'](source), 'Realisasi Official menggunakan snapshot laporan produksi CSV'),
+  'src/pages/DirectoratePerformancePage.tsx': transformPerformanceMemo,
   'scripts/test-restored-business.mjs': transformRestoredRegression,
   'scripts/test-admin-document-access.mjs': transformAdminDocumentRegression,
 };
