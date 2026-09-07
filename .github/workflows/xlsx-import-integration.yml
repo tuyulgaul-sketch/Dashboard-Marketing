@@ -4,15 +4,6 @@ on:
     branches: [feat/xlsx-user-id-imports]
   pull_request:
     branches: [main]
-    paths:
-      - 'src/utils/marketingWorkbook.ts'
-      - 'src/utils/excelExport.ts'
-      - 'src/pages/TargetRkapPage.tsx'
-      - 'src/pages/ProduksiPage.tsx'
-      - 'scripts/test-marketing-xlsx.mjs'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/xlsx-import-integration.yml'
 permissions:
   contents: read
 jobs:
@@ -33,14 +24,14 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
-      - name: Apply minimal source patch and run native roundtrip
-        run: |
-          node scripts/patch-xlsx-release.mjs
-          node scripts/test-marketing-xlsx.mjs
-      - name: Lint and production build before committing
-        run: |
-          pnpm exec eslint src/utils/marketingWorkbook.ts src/utils/excelExport.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
-          pnpm run build
+      - name: Apply minimal source patch
+        run: node scripts/patch-xlsx-release.mjs
+      - name: Native XLSX roundtrip
+        run: node scripts/test-marketing-xlsx.mjs
+      - name: Reject new lint and TypeScript diagnostics
+        run: node scripts/check-xlsx-regression.mjs
+      - name: Production build
+        run: pnpm run build
       - name: Commit verified source to isolated branch
         run: |
           git config user.name 'github-actions[bot]'
@@ -78,26 +69,7 @@ jobs:
             scripts/test-admin-product-search.mjs \
             scripts/test-marketing-tool-browse.mjs \
             scripts/test-document-handover-sort.mjs
-      - name: Reject new TypeScript diagnostics
-        run: |
-          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/ts-current.txt 2>&1 || true
-          git worktree add --detach /tmp/xlsx-baseline 6b087d9ceccd6a52fd1d83ea6dbaf27bdd9bbcbc
-          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/xlsx-baseline/node_modules
-          (cd /tmp/xlsx-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/ts-before.txt 2>&1 || true)
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const errors = path => readFileSync(path, 'utf8').split('\n').filter(line => /^.+\(\d+,\d+\): error TS\d+:/.test(line)).map(line => line.replace(/\(\d+,\d+\)/, ''));
-          const before = new Map();
-          for (const error of errors('/tmp/ts-before.txt')) before.set(error, (before.get(error) || 0) + 1);
-          const added = [];
-          for (const error of errors('/tmp/ts-current.txt')) {
-            const count = before.get(error) || 0;
-            if (count) before.set(error, count - 1); else added.push(error);
-          }
-          console.log('New TypeScript diagnostics:', added.length);
-          if (added.length) { console.error(added.join('\n')); process.exitCode = 1; }
-          NODE
-      - name: Lint changed source
-        run: pnpm exec eslint src/utils/marketingWorkbook.ts src/utils/excelExport.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
+      - name: Reject new lint and TypeScript diagnostics
+        run: node scripts/check-xlsx-regression.mjs
       - name: Production build
         run: pnpm run build
