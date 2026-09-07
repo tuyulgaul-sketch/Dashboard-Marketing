@@ -1,0 +1,47 @@
+name: Administration document reader regression
+on:
+  push:
+    branches: [feat/admin-documents-searchable-product]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/components/documents/**'
+      - 'src/lib/adminProductSearch.ts'
+      - 'src/lib/adminDocumentBrowse.ts'
+      - 'src/lib/adminDocumentReaderView.ts'
+      - 'scripts/test-admin-document*.mjs'
+      - 'scripts/test-admin-product-search.mjs'
+      - '.github/workflows/admin-document-search-check.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+      - name: Run document and RBAC regression tests
+        run: node --experimental-strip-types --test scripts/test-admin-document-reader.mjs scripts/test-admin-document-access.mjs scripts/test-admin-document-browse.mjs scripts/test-admin-product-search.mjs
+      - name: Lint changed application files
+        run: pnpm exec eslint src/components/documents/AdminProductPicker.tsx src/components/documents/AdminDocumentBrowser.tsx src/lib/adminProductSearch.ts
+      - name: Verify production build
+        run: pnpm run build
+      - name: Reject new TypeScript errors in changed files
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/admin-search-tsc.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const output = readFileSync('/tmp/admin-search-tsc.txt', 'utf8');
+          const changed = ['src/components/documents/AdminProductPicker.tsx', 'src/components/documents/AdminDocumentBrowser.tsx', 'src/lib/adminProductSearch.ts'];
+          const errors = output.split('\n').filter(line => changed.some(path => line.startsWith(path + '(')) && /error TS\d+:/.test(line));
+          if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
+          console.log('No TypeScript errors in changed application files.');
+          console.log('Pre-existing errors elsewhere are not claimed as passing.');
+          NODE
