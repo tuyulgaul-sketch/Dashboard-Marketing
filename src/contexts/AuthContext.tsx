@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -8,6 +9,9 @@ import React, {
 import type {
   Session,
 } from "@supabase/supabase-js";
+import { canAccessFeature } from '@/lib/accessControl';
+import { syncCentralMasterRuntime, clearCentralMasterRuntime } from '@/services/centralMasterRuntime';
+import { syncCentralTargetRuntime, clearCentralTargetRuntime } from '@/services/centralTargetRuntime';
 
 import {
   supabase,
@@ -49,6 +53,9 @@ type AuthContextValue = {
   profile: AuthProfile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  restoredBusinessReady: boolean;
+  restoredBusinessError: string | null;
+  retryRestoredBusiness: () => Promise<void>;
 };
 
 const AuthContext =
@@ -61,6 +68,8 @@ const clearLiteRuntime =
   () => {
     clearCentralBusinessRuntime();
     clearCentralUserRuntime();
+    clearCentralMasterRuntime();
+    clearCentralTargetRuntime();
   };
 
 export const AuthProvider:
@@ -92,12 +101,37 @@ export const AuthProvider:
     ] =
       useState(true);
 
+    const [restoredBusinessReady, setRestoredBusinessReady] = useState(false);
+    const [restoredBusinessError, setRestoredBusinessError] = useState<string | null>(null);
+
+    const loadRestoredBusiness = useCallback(async (authProfile: AuthProfile) => {
+      setRestoredBusinessReady(false);
+      setRestoredBusinessError(null);
+      try {
+        await syncCentralMasterRuntime(authProfile);
+        if (canAccessFeature(authProfile, 'TARGET_RKAP')) {
+          await syncCentralTargetRuntime(authProfile.id);
+        } else {
+          clearCentralTargetRuntime();
+        }
+        setRestoredBusinessReady(true);
+      } catch (error) {
+        clearCentralMasterRuntime();
+        clearCentralTargetRuntime();
+        const message = error instanceof Error ? error.message : 'Database pusat belum dapat dimuat.';
+        console.error('[Restored Business] Sinkronisasi gagal', error);
+        setRestoredBusinessError(message);
+      }
+    }, []);
+
     const loadProfile =
-      async (
+      useCallback(async (
         currentSession:
           Session | null
       ) => {
         if (!currentSession) {
+          setRestoredBusinessReady(false);
+          setRestoredBusinessError(null);
           clearLiteRuntime();
           setProfile(null);
           return;
@@ -162,6 +196,10 @@ export const AuthProvider:
             authProfile
           );
 
+          // Restored modules have their own readiness gate. A failure must
+          // not prevent the existing live service modules from loading.
+          await loadRestoredBusiness(authProfile);
+
           // Supabase Lite only syncs the whitelisted service-document,
           // marcomm, handover, audit and related notification collections.
           await syncCentralBusinessRuntime(
@@ -186,7 +224,7 @@ export const AuthProvider:
         setProfile(
           authProfile
         );
-      };
+      }, [loadRestoredBusiness]);
 
     useEffect(
       () => {
@@ -270,7 +308,7 @@ export const AuthProvider:
           clearLiteRuntime();
         };
       },
-      []
+      [loadProfile]
     );
 
     useEffect(
@@ -310,8 +348,14 @@ export const AuthProvider:
       [profile?.id]
     );
 
+    const retryRestoredBusiness = async () => {
+      if (profile) await loadRestoredBusiness(profile);
+    };
+
     const signOut =
       async () => {
+        setRestoredBusinessReady(false);
+        setRestoredBusinessError(null);
         clearLiteRuntime();
 
         await supabase
@@ -329,6 +373,9 @@ export const AuthProvider:
           profile,
           loading,
           signOut,
+          restoredBusinessReady,
+          restoredBusinessError,
+          retryRestoredBusiness,
         }}
       >
         {children}

@@ -4,6 +4,7 @@ import {
   applyCentralBusinessChanges,
   bootstrapCentralBusinessCollection,
   CENTRAL_BUSINESS_STORAGE_KEYS,
+  LITE_BUSINESS_STORAGE_KEYS,
   CentralBusinessStorageKey,
   CentralDeletePayload,
   CentralEntityRow,
@@ -966,7 +967,7 @@ const bootstrapLegacyCollections =
 
     for (
       const key of
-      CENTRAL_BUSINESS_STORAGE_KEYS
+      LITE_BUSINESS_STORAGE_KEYS
     ) {
       const rows =
         getLegacyLocalArray(
@@ -1015,6 +1016,15 @@ export const syncCentralBusinessRuntime =
       AuthProfile
   ) => {
     installCentralBusinessStorageInterceptor();
+
+    // Do not synthesize policy numbers or seed dummy transactions in live.
+    // The existing service-document, handover and activity methods are intact.
+    store.getOfficialPolicyDirectory = () => JSON.parse(
+      localStorage.getItem('pertalife_official_policy_directory') || '[]'
+    );
+    store.generateDummyData = () => {
+      throw new Error('Data dummy tidak tersedia pada Dashboard Marketing live.');
+    };
 
     if (
       activeProfileId !==

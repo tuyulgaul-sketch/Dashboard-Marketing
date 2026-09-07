@@ -10,7 +10,7 @@ import { supabase } from "@/lib/supabase";
  * Target/RKAP, Booking, Pipeline, Production, Policy Directory,
  * Historical Production, Participants and Reimbursement.
  */
-export const CENTRAL_BUSINESS_STORAGE_KEYS = [
+export const LITE_BUSINESS_STORAGE_KEYS = [
   "pertalife_service_documents",
   "pertalife_supporting_docs",
   "pertalife_marcomm_requests",
@@ -19,6 +19,25 @@ export const CENTRAL_BUSINESS_STORAGE_KEYS = [
   "pertalife_audit_logs",
   "pertalife_notifications",
   "pertalife_document_handovers",
+] as const;
+
+/** Previously capped collections. No automatic local-data migration. */
+export const RESTORED_BUSINESS_STORAGE_KEYS = [
+  'pertalife_bookings',
+  'pertalife_pipelines',
+  'pertalife_appeals',
+  'pertalife_productions',
+  'pertalife_official_production_summaries',
+  'pertalife_official_production_batches',
+  'pertalife_official_policy_directory',
+  'pertalife_participants',
+  'pertalife_historical',
+  'pertalife_reimbursements',
+] as const;
+
+export const CENTRAL_BUSINESS_STORAGE_KEYS = [
+  ...LITE_BUSINESS_STORAGE_KEYS,
+  ...RESTORED_BUSINESS_STORAGE_KEYS,
 ] as const;
 
 export type CentralBusinessStorageKey =
@@ -58,29 +77,24 @@ export async function listCentralBusinessEntities(
     CentralBusinessStorageKey[] =
       [...CENTRAL_BUSINESS_STORAGE_KEYS]
 ): Promise<CentralEntityRow[]> {
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from(
-        "central_business_entities"
-      )
-      .select(
-        "storage_key, entity_id, payload, relation_user_id, status, entity_year, dedupe_key, version, updated_at"
-      )
-      .in(
-        "storage_key",
-        storageKeys
-      );
-
-  if (error) {
-    throw error;
+  // Fetch every page. A truncated snapshot must never become the source of
+  // truth for a legacy read/write facade, or a later save could lose rows.
+  const result: CentralEntityRow[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('central_business_entities')
+      .select('storage_key, entity_id, payload, relation_user_id, status, entity_year, dedupe_key, version, updated_at')
+      .in('storage_key', storageKeys)
+      .order('storage_key', { ascending: true })
+      .order('entity_id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = (data || []) as CentralEntityRow[];
+    result.push(...page);
+    if (page.length < pageSize) break;
   }
-
-  return (
-    data || []
-  ) as CentralEntityRow[];
+  return result;
 }
 
 export async function bootstrapCentralBusinessCollection(
