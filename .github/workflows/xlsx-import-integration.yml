@@ -33,15 +33,19 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
-      - name: Apply one-time hardening and check native roundtrip
+      - name: Apply minimal source patch and run native roundtrip
         run: |
-          node scripts/finalize-xlsx-imports.mjs
+          node scripts/patch-xlsx-release.mjs
           node scripts/test-marketing-xlsx.mjs
+      - name: Lint and production build before committing
+        run: |
+          pnpm exec eslint src/utils/marketingWorkbook.ts src/utils/excelExport.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
+          pnpm run build
       - name: Commit verified source to isolated branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx
+          git add src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx scripts/test-marketing-xlsx.mjs
           git diff --cached --check
           git commit -m 'fix(xlsx): harden native imports and ownership checks [xlsx-integrated]'
           git push origin HEAD:feat/xlsx-user-id-imports
