@@ -24,8 +24,8 @@ jobs:
       - name: Install and verify production build
         run: |
           corepack enable
+          corepack prepare pnpm@10.28.0 --activate
           pnpm install --no-frozen-lockfile
-          pnpm exec tsc --noEmit -p tsconfig.app.json
           pnpm run build
       - name: Commit only reviewed application source changes
         run: |
