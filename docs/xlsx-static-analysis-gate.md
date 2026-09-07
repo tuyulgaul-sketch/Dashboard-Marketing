@@ -1,1 +1,0 @@
-The native XLSX roundtrip has passed with all three two-sheet templates. This checkpoint reruns the minimal source correction, baseline-aware static analysis and production build before committing the final source to the isolated feature branch. No production data is modified.

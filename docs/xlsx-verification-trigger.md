@@ -1,1 +1,0 @@
-Verification checkpoint for the isolated native XLSX implementation. No live data changes.
