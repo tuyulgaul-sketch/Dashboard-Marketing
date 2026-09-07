@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
+// Pure regression fixture: describes the only permitted changes to the live page.
+// It is not an application runtime or a source-writing migration.
 const replaceOnce = (source, before, after) => {
   assert.equal(source.split(before).length, 2, `Expected exactly one integration anchor: ${before.slice(0, 100)}`);
   return source.replace(before, after);
@@ -50,10 +49,3 @@ export const integrateTandaTerimaPhotoPreview = source => {
                               )}`);
   return next;
 };
-
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  const path = 'src/pages/TandaTerimaV14Page.tsx';
-  const source = readFileSync(path, 'utf8');
-  writeFileSync(path, integrateTandaTerimaPhotoPreview(source));
-  console.log('Photo preview added to journey and audit evidence; existing download and mutation handlers preserved.');
-}
