@@ -266,7 +266,27 @@ export interface PipelineOwnershipHistory {
   timestamp: string;
 }
 
+export interface RkapPremiumSchedule {
+  version: 1;
+  year: number;
+  sourceRow: string;
+  sourceFile: string;
+  sourceBatchId: string;
+  currency: string;
+  exchangeRate: string;
+  exchangeRateSource?: string;
+  exchangeRateDate?: string;
+  paymentMode?: string;
+  monthlyOriginal: string[];
+  monthlyIdr: number[];
+  totalOriginal: string;
+  totalIdr: number;
+  notes?: string;
+}
+
 export interface Pipeline {
+  /** Original RKAP premium distribution, distinct from operational closing and quotations. */
+  rkapPremiumSchedule?: RkapPremiumSchedule;
   id: string; // PL-YYYY-00001
   source: 'RKAP_BULK' | 'BOOKING_CASE';
   businessType: BusinessType;

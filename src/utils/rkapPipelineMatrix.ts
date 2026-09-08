@@ -39,6 +39,18 @@ const exactDate = (raw: unknown, label: string, required = false): string => {
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) fail(`${label} bukan tanggal kalender yang valid.`);
   return text;
 };
+const parseExchangeRate = (raw: unknown): bigint => {
+  const text = clean(raw).replace(/\s/g, '');
+  if (!text || /[eE-]/.test(text)) fail('Kurs ke IDR harus angka desimal positif tanpa notasi ilmiah.');
+  if (/^\d{1,3}[.,]\d{3}$/.test(text)) fail('Kurs ambigu. Isi tanpa pemisah ribuan, misalnya 16000.50.');
+  const normalized = text.replace(',', '.');
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) fail('Kurs ke IDR harus angka tanpa pemisah ribuan, maksimal 6 desimal.');
+  const [whole, fraction = ''] = normalized.split('.');
+  const units = BigInt(whole) * 1000000n + BigInt((fraction + '000000').slice(0, 6));
+  if (units <= 0n) fail('Kurs ke IDR harus positif.');
+  return units;
+};
+
 const numeric = (raw: unknown, label: string, scale: number, allowBlank = false): bigint => {
   let text = clean(raw).replace(/\s/g, '');
   if (!text && allowBlank) return 0n;
@@ -64,7 +76,7 @@ const decimalText = (value: bigint, scale: number): string => {
   const base = 10n ** BigInt(scale);
   return scale ? `${value / base}.${String(value % base).padStart(scale, '0')}` : String(value);
 };
-const normalizedCustomer = (value: string) => clean(value).toLowerCase().replace(/&/g, ' dan ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter(token => token && !['pt', 'persero', 'perseroan', 'terbatas', 'tbk', 'cv'].includes(token)).join(' ');
+export const normalizedCustomer = (value: string) => clean(value).toLowerCase().replace(/&/g, ' dan ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter(token => token && !['pt', 'persero', 'perseroan', 'terbatas', 'tbk', 'cv'].includes(token)).join(' ');
 export const pipelineMatrixIdentity = (year: number, customer: string, product: string): string => `${year}|${normalizedCustomer(customer)}|${keyOf(product)}`;
 export const isPipelineMatrix = (rows: MatrixRow[]): boolean => !!rows.length && ['companies', 'totalpremi', 'userid'].some(key => Object.keys(rows[0]).some(header => keyOf(header) === key));
 export const makePipelineMatrixTemplate = (year: number): MatrixRow[] => {
@@ -115,8 +127,10 @@ export const normalizePipelineMatrix = (rows: MatrixRow[], users: User[], produc
   for (const [index, row] of rows.entries()) {
     const rowNumber = index + 2;
     try {
-      const rowReference = valueOf(row, 'No.');
-      if (!/^\d+$/.test(rowReference) || BigInt(rowReference) <= 0n || seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');
+      const rawRowReference = valueOf(row, 'No.');
+      if (!/^\d+$/.test(rawRowReference) || BigInt(rawRowReference) <= 0n) fail('No. harus angka positif dan unik dalam file.');
+      const rowReference = BigInt(rawRowReference).toString();
+      if (seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');
       seenNumbers.add(rowReference);
       const rowYear = valueOf(row, 'Tahun');
       if (rowYear !== String(year)) fail(`Tahun harus ${year}.`);
@@ -153,19 +167,20 @@ export const normalizePipelineMatrix = (rows: MatrixRow[], users: User[], produc
       let exchangeRateDate = '';
       let rateUnits = 1000000n;
       if (currency !== 'IDR') {
-        rateUnits = numeric(valueOf(row, 'Kurs ke IDR'), 'Kurs ke IDR', 6);
+        rateUnits = parseExchangeRate(valueOf(row, 'Kurs ke IDR'));
         if (rateUnits <= 0n) fail('Kurs ke IDR wajib positif untuk mata uang selain IDR.');
         exchangeRate = decimalText(rateUnits, 6);
         exchangeRateSource = valueOf(row, 'Sumber Kurs');
         exchangeRateDate = exactDate(valueOf(row, 'Tanggal Kurs'), 'Tanggal Kurs', true);
         if (!exchangeRateSource) fail('Sumber Kurs wajib diisi untuk konversi mata uang asing.');
-      } else if (valueOf(row, 'Kurs ke IDR') && numeric(valueOf(row, 'Kurs ke IDR'), 'Kurs ke IDR', 6) !== 1000000n) fail('Kurs IDR ke IDR harus 1.');
+      } else if (valueOf(row, 'Kurs ke IDR') && parseExchangeRate(valueOf(row, 'Kurs ke IDR')) !== 1000000n) fail('Kurs IDR ke IDR harus 1.');
       const factor = 10n ** BigInt(scale);
       const converted = original.map(amount => currency === 'IDR' ? amount : (amount * rateUnits + factor * 500000n) / (factor * 1000000n));
       const totalIdr = sum(converted);
       const monthlyIdr = converted.map((amount, month) => safeNumber(amount, `Bulan ${month + 1}`));
       const warnings: string[] = [];
-      const paymentMode = valueOf(row, 'Cara Bayar');
+      const rawPaymentMode = valueOf(row, 'Cara Bayar');
+      const paymentMode = ({ kwartalan: 'Triwulanan', quarterly: 'Triwulanan', monthly: 'Bulanan', semiannual: 'Semesteran', annual: 'Tahunan', yearly: 'Tahunan', single: 'Single' } as Record<string, string>)[rawPaymentMode.toLowerCase()] || rawPaymentMode;
       if (paymentMode && !(MATRIX_PAYMENT_MODES as readonly string[]).includes(paymentMode)) fail('Cara Bayar tidak valid.');
       const populated = original.map((amount, month) => amount > 0n ? month + 1 : 0).filter(Boolean);
       if (paymentMode && paymentMode !== 'Lainnya') {
@@ -178,7 +193,7 @@ export const normalizePipelineMatrix = (rows: MatrixRow[], users: User[], produc
       if (!['Tender', 'Non Tender'].includes(procurement)) fail('Metode Pengadaan harus Tender atau Non Tender.');
       const existingPolicyNumber = valueOf(row, 'Existing Policy Number');
       const originalPolicyYearText = valueOf(row, 'Original Policy Year');
-      if (originalPolicyYearText && (!/^\d{4}$/.test(originalPolicyYearText) || Number(originalPolicyYearText) > year)) fail('Original Policy Year tidak valid.');
+      if (originalPolicyYearText && (!/^\d{4}$/.test(originalPolicyYearText) || Number(originalPolicyYearText) < 1900 || Number(originalPolicyYearText) > year)) fail('Original Policy Year tidak valid.');
       const coverageStart = exactDate(valueOf(row, 'Coverage Start'), 'Coverage Start');
       const coverageEnd = exactDate(valueOf(row, 'Coverage End'), 'Coverage End');
       if (coverageStart && coverageEnd && coverageEnd < coverageStart) fail('Coverage End tidak boleh lebih awal dari Coverage Start.');
@@ -197,10 +212,11 @@ export const normalizePipelineMatrix = (rows: MatrixRow[], users: User[], produc
 };
 
 export const getRkapMonthlyValue = (pipeline: Pipeline, year: number, month: number): number => {
+  if (!Number.isInteger(month) || month < 1 || month > 12) throw new Error('Bulan Pipeline harus 1–12.');
   const schedule = pipeline.rkapPremiumSchedule;
-  if (schedule && schedule.year === year) {
-    if (!Array.isArray(schedule.monthlyIdr) || schedule.monthlyIdr.length !== 12 || schedule.monthlyIdr.some(value => !Number.isSafeInteger(value) || value < 0)) return 0;
-    return schedule.monthlyIdr[month - 1] || 0;
+  if (schedule) {
+    if (!Array.isArray(schedule.monthlyIdr) || schedule.monthlyIdr.length !== 12 || schedule.monthlyIdr.some(value => !Number.isSafeInteger(value) || value < 0) || !Number.isSafeInteger(schedule.totalIdr) || !Number.isSafeInteger(schedule.monthlyIdr.reduce((total, value) => total + value, 0)) || schedule.monthlyIdr.reduce((total, value) => total + value, 0) !== schedule.totalIdr) throw new Error('Jadwal premi RKAP tersimpan tidak valid. Periksa integritas data sebelum menghitung laporan.');
+    return schedule.year === year ? schedule.monthlyIdr[month - 1] : 0;
   }
   const explicitYear = Number((pipeline as Pipeline & { pipelineYear?: number }).pipelineYear);
   const explicitMonth = Number((pipeline as Pipeline & { pipelineMonth?: number }).pipelineMonth);
@@ -208,4 +224,10 @@ export const getRkapMonthlyValue = (pipeline: Pipeline, year: number, month: num
   const fallbackYear = Number(date?.slice(0, 4));
   const fallbackMonth = Number(date?.slice(5, 7));
   return (Number.isInteger(explicitYear) && explicitYear > 0 ? explicitYear : fallbackYear) === year && (Number.isInteger(explicitMonth) && explicitMonth >= 1 && explicitMonth <= 12 ? explicitMonth : fallbackMonth) === month ? Number(pipeline.currentCommercialValue || 0) : 0;
+};
+
+export const getRkapWinMonthlyValue = (pipeline: Pipeline, year: number, month: number): number => {
+  if (pipeline.rkapPremiumSchedule) return getRkapMonthlyValue(pipeline, year, month);
+  const date = pipeline.winDate || pipeline.actualClosingDate || pipeline.currentTargetClosingDate;
+  return Number(date?.slice(0, 4)) === year && Number(date?.slice(5, 7)) === month ? Number(pipeline.winningQuotationAmount || pipeline.currentCommercialValue || 0) : 0;
 };

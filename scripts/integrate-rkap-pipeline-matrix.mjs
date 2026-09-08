@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 export const MATRIX_BASE = '9cf411d393b1acdfcbd98d34055e3a1750bc8b8e';
-const read = path => readFileSync(path, 'utf8');
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
 const once = (source, before, after, label) => {
   assert(source.includes(before), `Missing approved anchor: ${label}`);
   assert.equal(source.split(before).length, 2, `Non-unique approved anchor: ${label}`);
@@ -197,20 +191,3 @@ export const getRkapWinMonthlyValue = (pipeline: Pipeline, year: number, month: 
     return source;
   },
 };
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  assert.equal(git('branch', '--show-current').trim(), 'feat/rkap-pipeline-monthly-matrix');
-  for (const [path, transform] of Object.entries(matrixTransforms)) {
-    const original = git('show', `${MATRIX_BASE}:${path}`);
-    assert.equal(read(path), original, `${path} changed since the pinned production base`);
-    writeFileSync(path, transform(original));
-    console.log(`Integrated approved source: ${path}`);
-  }
-  for (const [path, transform] of Object.entries(matrixHelperTransforms)) {
-    const original = read(path);
-    const expected = transform(original);
-    assert.notEqual(expected, original, `${path} was not modified`);
-    writeFileSync(path, expected);
-    console.log(`Hardened approved helper: ${path}`);
-  }
-}

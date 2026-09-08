@@ -123,7 +123,7 @@ assert.equal(roundtrip.length, 1);
 assert.equal(matrix.normalizePipelineMatrix(roundtrip, users, products, 2026)[0].totalIdr, 400000000);
 // The importer must still reject an uncalculated formula rather than trust an absent cache.
 dataSheet.getCell('T2').value = { formula: 'SUM(H2:S2)' };
-await assert.rejects(() => marketing.readNativeXlsxRows(workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);
+await assert.rejects(async () => marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);
 // A stale numeric total cannot bypass exact source-versus-month validation.
 dataSheet.getCell('T2').value = 399999999;
 const staleRows = await marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' });

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { store } from '@/services/store';
-import type { BookingCase, Pipeline, ProductMaster, User } from '@/types';
+import type { BookingCase, Pipeline, ProductMaster, User, RkapPremiumSchedule } from '@/types';
 import { useTargetRealizationPublisher } from '@/hooks/useTargetRealizationPublisher';
 import { waitForCentralBusinessStorageSync } from '@/services/centralBusinessStorageRuntime';
 import { readMarketingSpreadsheet, SPREADSHEET_ACCEPT } from '@/utils/marketingWorkbook';
@@ -15,12 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Download, FileSpreadsheet, ShieldCheck } from 'lucide-react';
 
 type Review = { file: File; year: number; rows: MatrixRow[]; plans: MatrixPlan[]; warnings: string[]; signature: string };
-type StoredSchedule = {
-  version: 1; year: number; sourceRow: string; sourceFile: string; sourceBatchId: string;
-  currency: string; exchangeRate: string; exchangeRateSource?: string; exchangeRateDate?: string;
-  paymentMode?: string; monthlyOriginal: string[]; monthlyIdr: number[]; totalOriginal: string; totalIdr: number;
-};
-type ScheduledPipeline = Pipeline & { pipelineYear: number; pipelineMonth: number; rkapPremiumSchedule: StoredSchedule };
+
+type ScheduledPipeline = Pipeline & { pipelineYear: number; pipelineMonth: number; rkapPremiumSchedule: RkapPremiumSchedule };
 const identity = (row: { customerName: string; productName: string }, year: number) => pipelineMatrixIdentity(year, row.customerName, row.productName);
 const yearOf = (row: Pipeline | BookingCase): number => Number((row as Pipeline & { pipelineYear?: number }).pipelineYear) || Number(('currentTargetClosingDate' in row ? row.currentTargetClosingDate : row.targetClosingDate).slice(0, 4));
 const signatureOf = (plans: MatrixPlan[]) => JSON.stringify(plans.map(plan => ({ ...plan, owner: plan.owner.id })));
@@ -62,12 +58,11 @@ const RkapPipelineMatrixUpload: React.FC<{ publisherAuthorized: boolean }> = ({ 
   const [message, setMessage] = useState('');
   const [showLegacy, setShowLegacy] = useState(false);
   const [revision, setRevision] = useState(0);
-  useEffect(() => store.subscribe(() => setRevision(value => value + 1)), []);
+  useEffect(() => {
+    const unsubscribe = store.subscribe(() => setRevision(value => value + 1));
+    return () => { unsubscribe(); };
+  }, []);
   const authorized = publisherAuthorized && canPublish && !loading && store.getCurrentUser().role === 'TEAM_LEADER_MARKETING_SUPPORT';
-  const currentUsers = store.getUsers();
-  const currentProducts = store.getProducts();
-  const currentPipelines = store.getPipelines();
-  const currentBookings = store.getBookings();
   void revision;
   const validate = async () => {
     if (!file || !authorized) return;
@@ -106,7 +101,7 @@ const RkapPipelineMatrixUpload: React.FC<{ publisherAuthorized: boolean }> = ({ 
         rkapPremiumSchedule: { version: 1, year, sourceRow: plan.rowReference, sourceFile: review.file.name, sourceBatchId: batchId,
           currency: plan.currency, exchangeRate: plan.exchangeRate, exchangeRateSource: plan.exchangeRateSource,
           exchangeRateDate: plan.exchangeRateDate, paymentMode: plan.paymentMode, monthlyOriginal: plan.monthlyOriginal,
-          monthlyIdr: plan.monthlyIdr, totalOriginal: plan.totalOriginal, totalIdr: plan.totalIdr },
+          monthlyIdr: plan.monthlyIdr, totalOriginal: plan.totalOriginal, totalIdr: plan.totalIdr, notes: plan.notes },
       }));
       for (const record of records) store.addPipeline(record);
       await waitForCentralBusinessStorageSync('pertalife_pipelines');
