@@ -104,14 +104,23 @@ test('existing official target values and notes are loaded without mutation',()=
   assert.equal(setup.validateTargetSetup(users,seeded.draft,2026,seeded.baseline,seeded.confirmed).total,160000001);
 });
 
-test('on-screen is primary; existing Excel, pipeline, realization and archive remain',()=>{
+test('on-screen is primary; existing Excel, pipeline, realization and archive remain with safe workspace continuity',()=>{
   const navigation=readFileSync('src/pages/TargetRealizationUploadPage.tsx','utf8');
   const component=readFileSync('src/components/rkap/TargetOnScreenSetup.tsx','utf8');
-  assert.match(navigation,/useState<UploadTab>\('setup'\)/);
-  for(const value of ['setup','targets','bulk','realization','manage']) assert.match(navigation,new RegExp(`value="${value}"`));
-  assert.match(navigation,/TargetRkapPage key="targets"/);
+  assert.match(navigation,/useState<UploadTab>\(loadInitialTab\)/);
+  assert.match(navigation,/window\.sessionStorage\.getItem\(storageKey\('tab'\)\)/);
+  assert.match(navigation,/window\.sessionStorage\.setItem\(storageKey\('tab'\), tab\)/);
+  assert.match(navigation,/window\.sessionStorage\.setItem\(storageKey\('scroll'\)/);
+  assert.match(navigation,/pertalife:target-upload:\$\{userId\}:\$\{kind\}/);
+  assert.doesNotMatch(navigation,/localStorage/);
+  for(const value of ['setup','targets','bulk','realization','manage']) {
+    assert.match(navigation,new RegExp(`value="${value}"`));
+    assert.match(navigation,new RegExp(`value="${value}" forceMount`));
+  }
+  assert.match(navigation,/TargetRkapPage embedded initialUploadTab="targets"/);
   assert.match(navigation,/RkapPipelineMatrixUpload publisherAuthorized/);
   assert.match(navigation,/OfficialUploadArchiveManager/);
+  assert.match(navigation,/if \(!canPublish\) return <Navigate to="\/target-rkap" replace \/>/);
   assert.match(component,/actor\.id === 'USR-000024'/);
   assert.match(component,/useTargetRealizationPublisher/);
   assert.match(component,/await publishCentralTargetBatch\(/);
