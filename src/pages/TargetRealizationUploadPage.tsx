@@ -36,7 +36,7 @@ const TargetRealizationUploadPage: React.FC = () => {
             <TabsTrigger value="realization" className="gap-2 py-2.5 text-xs"><FileSpreadsheet className="h-4 w-4" /> Upload Realisasi</TabsTrigger>
             <TabsTrigger value="manage" className="gap-2 py-2.5 text-xs"><Archive className="h-4 w-4" /> Kelola / Hapus Upload</TabsTrigger>
           </TabsList>
-          <TabsContent value="setup" className="mt-4" forceMount hidden={tab !== 'setup'}><TargetOnScreenSetup publisherAuthorized={canPublish} /></TabsContent>
+          <TabsContent value="setup" forceMount className={tab === 'setup' ? 'mt-4' : 'hidden'}><TargetOnScreenSetup publisherAuthorized={canPublish} /></TabsContent>
           <TabsContent value="targets" className="mt-4"><TargetRkapPage key="targets" embedded initialUploadTab="targets" publisherAuthorized={canPublish} /></TabsContent>
           <TabsContent value="bulk" className="mt-4"><RkapPipelineMatrixUpload publisherAuthorized={canPublish} /></TabsContent>
           <TabsContent value="realization" className="mt-4"><ProduksiPage embedded uploadOnly publisherAuthorized={canPublish} /></TabsContent>
