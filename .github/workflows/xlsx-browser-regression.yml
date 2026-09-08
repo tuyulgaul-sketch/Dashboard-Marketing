@@ -1,0 +1,49 @@
+name: XLSX browser regression
+on:
+  push:
+    branches: [fix/target-xlsx-browser-loader]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/exceljsLoader.ts'
+      - 'src/utils/exceljsBrowser.ts'
+      - 'src/types/exceljs-browser.d.ts'
+      - 'src/utils/marketingWorkbook.ts'
+      - 'src/utils/rkapPipelineWorkbook.ts'
+      - 'vite.config.ts'
+      - 'scripts/fixtures/xlsx-browser-probe.ts'
+      - 'scripts/test-xlsx-browser.mjs'
+      - '.github/workflows/xlsx-browser-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Existing XLSX regression
+        run: node scripts/test-marketing-xlsx.mjs
+      - name: Install isolated browser test dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/xlsx-playwright" --no-save --ignore-scripts playwright@1.55.1
+          node "$RUNNER_TEMP/xlsx-playwright/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Production-bundled browser XLSX and cascading test
+        env:
+          XLSX_PLAYWRIGHT_DIR: ${{ runner.temp }}/xlsx-playwright
+        run: node scripts/test-xlsx-browser.mjs
+      - name: Reject new TypeScript and existing upload lint diagnostics
+        run: node scripts/check-xlsx-regression.mjs
+      - name: Lint browser adapter and test fixture
+        run: pnpm exec eslint src/utils/exceljsLoader.ts src/utils/exceljsBrowser.ts scripts/fixtures/xlsx-browser-probe.ts vite.config.ts
+      - name: Production build
+        run: pnpm run build

@@ -9,8 +9,9 @@ export default defineConfig(() => ({
   },
   plugins: [react()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: /^exceljs$/, replacement: path.resolve(__dirname, "./src/utils/exceljsBrowser.ts") },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
 }));
