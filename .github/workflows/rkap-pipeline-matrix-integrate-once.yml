@@ -38,6 +38,7 @@ jobs:
           node scripts/test-marketing-xlsx.mjs
       - name: Existing business, navigation and permission regressions
         run: |
+          node scripts/prepare-restored-business-fixture.mjs
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \
@@ -55,7 +56,7 @@ jobs:
           (cd /tmp/matrix-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/matrix-ts-before.txt 2>&1 || true)
           pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/matrix-ts-after.txt 2>&1 || true
           (cd /tmp/matrix-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/eslint" src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx src/types/index.ts > /tmp/matrix-lint-before.txt 2>&1 || true)
-          pnpm exec eslint src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx src/types/index.ts > /tmp/matrix-lint-after.txt 2>&1 || true
+          pnpm exec eslint src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx src/types/index.ts > /tmp/matrix-lint-after.txt 2>&1 || true)
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const count=items=>{const m=new Map();for(const item of items)m.set(item,(m.get(item)||0)+1);return m;};
