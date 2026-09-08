@@ -6,6 +6,7 @@ on:
       - '.github/workflows/rkap-pipeline-matrix-integrate-once.yml'
       - 'scripts/integrate-rkap-pipeline-matrix.mjs'
       - 'scripts/upgrade-rkap-matrix-regressions.mjs'
+      - 'src/utils/rkapPipelineWorkbook.ts'
 permissions:
   contents: write
 jobs:
