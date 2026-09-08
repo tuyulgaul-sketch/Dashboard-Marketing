@@ -11,6 +11,7 @@ on:
       - 'src/utils/rkapPipelineCompactImport.ts'
       - 'src/components/rkap/RkapPipelineMatrixUpload.tsx'
       - 'scripts/test-rkap-pipeline-compact.mjs'
+      - 'scripts/test-rkap-pipeline-matrix.mjs'
       - '.github/workflows/rkap-compact-v2-regression.yml'
 permissions:
   contents: read
@@ -35,7 +36,7 @@ jobs:
         run: |
           node scripts/test-rkap-pipeline-matrix.mjs
           node scripts/test-marketing-xlsx.mjs
-          node scripts/test-target-compact.mjs
+          node scripts/test-compact-target.mjs
       - name: TypeScript
         run: pnpm exec tsc --noEmit -p tsconfig.app.json
       - name: Lint changed source
