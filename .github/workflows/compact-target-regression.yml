@@ -1,0 +1,52 @@
+name: Compact target regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/targetCompact.ts'
+      - 'src/utils/marketingWorkbook.ts'
+      - 'src/pages/TargetRkapPage.tsx'
+      - 'scripts/test-compact-target.mjs'
+      - 'scripts/test-marketing-xlsx.mjs'
+      - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/integrate-compact-target.mjs'
+      - '.github/workflows/compact-target-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify compact and native XLSX contracts
+        run: |
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+      - name: Preserve existing live source and run regressions
+        run: |
+          node -e "const fs=require('fs'),cp=require('child_process');const paths=['src/services/centralBusinessService.ts','src/services/centralBusinessStorageRuntime.ts','src/services/centralTargetRuntime.ts','src/services/targetService.ts','src/contexts/AuthContext.tsx','src/pages/BookingPipelinePage.tsx','src/pages/TandaTerimaV14Page.tsx','src/pages/DokumenPendukungPage.tsx','src/pages/DokumenAdministrasiReaderPage.tsx','src/pages/AktivitasUniversalPage.tsx','src/pages/MarketingMeetingRoomPage.tsx','src/services/documentHandoverFileStorage.ts'];const result={};for(const p of paths)result[p]=cp.execFileSync('git',['show','9bfee0235fd36b02c8f74577dc5bea66d52c4028:'+p],{encoding:'utf8'});fs.writeFileSync('/tmp/restore-preserved-files.json',JSON.stringify(result));"
+          node --experimental-strip-types --test \
+            scripts/test-target-realization-navigation.mjs \
+            scripts/test-official-upload-upsert-guard.mjs \
+            scripts/test-restored-business.mjs \
+            scripts/test-admin-document-access.mjs \
+            scripts/test-admin-document-reader.mjs \
+            scripts/test-admin-document-browse.mjs \
+            scripts/test-admin-product-search.mjs \
+            scripts/test-marketing-tool-browse.mjs \
+            scripts/test-document-handover-sort.mjs
+      - name: Verify static analysis and production build
+        run: |
+          node scripts/check-xlsx-regression.mjs
+          pnpm exec eslint src/utils/targetCompact.ts
+          pnpm run build
