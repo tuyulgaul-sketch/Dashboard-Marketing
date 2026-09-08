@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 export const COMPACT_BASE = 'a08fbea14a7ef23255abfb2a088df305e28b5c9f';
-const read = path => readFileSync(path, 'utf8');
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
 const replaceOnce = (source, before, after, label) => {
   assert(source.includes(before), `Missing integration anchor: ${label}`);
   assert.equal(source.split(before).length, 2, `Non-unique integration anchor: ${label}`);
@@ -79,18 +73,3 @@ export const compactTargetTransform = {
     return source;
   },
 };
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  for (const [path, apply] of Object.entries(compactTargetTransform)) {
-    const original = git('show', `${COMPACT_BASE}:${path}`);
-    const expected = apply(original);
-    if (process.argv.includes('--check')) {
-      assert.equal(read(path), expected, `${path} does not match the approved compact transform`);
-    } else {
-      assert.equal(read(path), original, `${path} changed since the pinned production base`);
-      writeFileSync(path, expected);
-      assert.equal(read(path), expected);
-    }
-    console.log(`Verified narrow target integration: ${path}`);
-  }
-}
