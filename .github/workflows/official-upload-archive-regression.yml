@@ -10,6 +10,7 @@ on:
       - 'src/pages/TargetRealizationUploadPage.tsx'
       - 'supabase/migrations/20260908_official_upload_archive_v1.sql'
       - 'scripts/test-official-upload-archive.mjs'
+      - 'scripts/prepare-official-archive-regression.mjs'
       - '.github/workflows/official-upload-archive-regression.yml'
 permissions:
   contents: read
@@ -32,8 +33,10 @@ jobs:
         run: node scripts/test-official-upload-archive.mjs
       - name: Native XLSX and User ID regression
         run: node scripts/test-marketing-xlsx.mjs
-      - name: Prepare preserved business fixture
-        run: node scripts/prepare-restored-business-fixture.mjs
+      - name: Prepare preserved business fixture and exact archive extension
+        run: |
+          node scripts/prepare-restored-business-fixture.mjs
+          node scripts/prepare-official-archive-regression.mjs
       - name: Existing business and navigation regressions
         run: |
           node --experimental-strip-types --test \
