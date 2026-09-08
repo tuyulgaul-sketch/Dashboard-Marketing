@@ -90,7 +90,7 @@ jobs:
           source=source.slice(0,source.indexOf(marker));
           source=source.replace("import { readFileSync, writeFileSync } from 'node:fs';\n",'').replace("import { execFileSync } from 'node:child_process';\n",'').replace("import { resolve } from 'node:path';\n",'').replace("import { pathToFileURL } from 'node:url';\n",'');
           source=source.replace("const read = path => readFileSync(path, 'utf8');\n",'').replace("const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });\n",'');
-          writeFileSync(path,source);
+          writeFileSync(path,source.trimEnd()+'\n');
           NODE
           git rm .github/workflows/rkap-pipeline-matrix-integrate-once.yml scripts/upgrade-rkap-matrix-regressions.mjs
           git add src/types/index.ts src/pages/TargetRealizationUploadPage.tsx src/pages/TargetRkapPage.tsx src/utils/rkapPipelineMatrix.ts src/utils/rkapPipelineWorkbook.ts src/components/rkap/RkapPipelineMatrixUpload.tsx scripts/test-rkap-pipeline-matrix.mjs scripts/test-target-realization-navigation.mjs scripts/integrate-rkap-pipeline-matrix.mjs
