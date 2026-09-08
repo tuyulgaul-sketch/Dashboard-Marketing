@@ -1,3 +1,4 @@
+# One-time guarded integration. Full-year replacement requires all 24 NB/RN periods per active user.
 name: Compact target guarded integration
 on:
   push:
