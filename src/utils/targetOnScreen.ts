@@ -61,7 +61,6 @@ export const calculateTargetSetup = (users: User[], draft: TargetDraft, year: nu
   });
   const expanded = normalizeTargetUploadRows(rows, users, year);
   const byId = new Map(holders.map(user => [user.id, user]));
-  const now = new Date().toISOString();
   const entries: TargetEntry[] = expanded.map(row => {
     const user = byId.get(row['User ID Penerima'])!;
     const number = (key: string) => exact(row[key], `${user.name} ${key}`);
@@ -74,7 +73,7 @@ export const calculateTargetSetup = (users: User[], draft: TargetDraft, year: nu
       personalTargetNewBusiness: number('Target Pribadi NB'), personalTargetRenewal: number('Target Pribadi RN'),
       monthlyNewBusiness: TARGET_MONTHS.map(month => number(`${month} NB`)),
       monthlyRenewal: TARGET_MONTHS.map(month => number(`${month} RN`)),
-      notes: row.Catatan || undefined, publishedAt: now, publishedBy: '',
+      notes: row.Catatan || undefined, publishedAt: '', publishedBy: '',
     };
   });
   const director = entries.find(entry => byId.get(entry.userId)?.role === 'DIRECTOR_MARKETING');
