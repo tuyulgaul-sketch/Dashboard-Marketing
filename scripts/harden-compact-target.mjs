@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 
 const read = path => readFileSync(path, 'utf8');
 const replaceOnce = (source, before, after) => {
@@ -16,6 +15,9 @@ const changes = {
     source = replaceOnce(source,
       "  const director = holders.find(user => user.role === 'DIRECTOR_MARKETING');\n  if (!director) throw new Error('Direktur Marketing aktif tidak ditemukan.');",
       "  const directors = holders.filter(user => user.role === 'DIRECTOR_MARKETING');\n  if (directors.length !== 1) throw new Error('User Master harus memiliki tepat satu Direktur Marketing aktif untuk cascading.');\n  const director = directors[0];");
+    source = replaceOnce(source,
+      "      'Target Pribadi NB': String(personalNB), 'Target Pribadi RN': String(personalRN),\n      Catatan: [...own.notes].join(' | '),\n    };\n    MONTHS.forEach((month, index) => { output[`${month} NB`] = String(own.NB[index]); output[`${month} RN`] = String(own.RN[index]); });\n    return output;",
+      "      'Target Pribadi NB': String(personalNB), 'Target Pribadi RN': String(personalRN),\n    };\n    MONTHS.forEach((month, index) => { output[`${month} NB`] = String(own.NB[index]); output[`${month} RN`] = String(own.RN[index]); });\n    output.Catatan = [...own.notes].join(' | ');\n    return output;");
     return source;
   },
   'scripts/test-compact-target.mjs': source => {
@@ -28,7 +30,9 @@ const changes = {
     source = replaceOnce(source,
       "assert.throws(() => compact.expandCompactTargetRows(rows,[...users,users[0]],2026),/duplikat/);",
       "assert.throws(() => compact.expandCompactTargetRows(rows,[...users,users[0]],2026),/duplikat/);\nconst extraDirector = [...users, user('USR-000007','DIRECTOR_MARKETING',null)];\nconst extraRows = compact.buildCompactTargetTemplateRows(extraDirector,2026);\nassert.throws(() => compact.expandCompactTargetRows(extraRows,extraDirector,2026),/tepat satu Direktur/);");
-    return source;
+    const incorrect = source.match(/'109266190934'/g) || [];
+    assert.equal(incorrect.length, 2, 'Expected exactly two synthetic rollup assertions to correct.');
+    return source.replaceAll("'109266190934'", "'108267190934'");
   },
   'scripts/integrate-compact-target.mjs': source => replaceOnce(source,
     'buildCompactTargetTemplateRows(targetHolders, selectedTargetYear)',
