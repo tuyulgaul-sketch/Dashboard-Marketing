@@ -44,8 +44,38 @@ const transformPerformanceMemo = source => {
   return next;
 };
 
+/** Issue #44: exact additive navigation transform for Marketing Administration bulk master import. */
+const transformSidebarWithMasterBulk = source => {
+  let next = TRANSFORMS['src/components/layout/AppSidebar.tsx'](source);
+  next = replaceOnce(next, `  FileText,\n  LayoutDashboard,`, `  FileText,\n  FileUp,\n  LayoutDashboard,`);
+  next = replaceOnce(next,
+    `    const isExactActive = (\n      path: string\n    ) => {`,
+    `    const canBulkManageIntermediaryMaster = Boolean(\n      profile?.active &&\n      profile.unit.trim().toLowerCase() === 'marketing support' &&\n      (profile.department || '').trim().toLowerCase() === 'marketing administration'\n    );\n\n    const isExactActive = (\n      path: string\n    ) => {`);
+  next = replaceOnce(next,
+    `        ...(canSeeBooking ? [{ label: 'Booking & Pipeline', path: '/booking-pipeline', icon: Briefcase }] : []),`,
+    `        ...(canSeeBooking ? [{ label: 'Booking & Pipeline', path: '/booking-pipeline', icon: Briefcase }] : []),\n        ...(canBulkManageIntermediaryMaster ? [{ label: 'Import Agent & Broker', path: '/master-intermediary-import', icon: FileUp }] : []),`);
+  return next;
+};
+
+/** Issue #44: route remains a separate guarded surface; existing manual master pages are untouched. */
+const transformAppWithMasterBulk = source => {
+  let next = TRANSFORMS['src/App.tsx'](source);
+  next = replaceOnce(next,
+    `import BookingPipelinePage from './pages/BookingPipelinePage';`,
+    `import BookingPipelinePage from './pages/BookingPipelinePage';\nimport MasterIntermediaryBulkImportPage from './pages/MasterIntermediaryBulkImportPage';`);
+  next = replaceOnce(next,
+    `const DocumentOnly: React.FC<{`,
+    `const MarketingAdministrationOnly: React.FC<{\n  children: React.ReactElement;\n}> = ({ children }) => {\n  const { profile } = useAuth();\n  const allowed = Boolean(\n    profile?.active && (\n      isSystemAdminProfile(profile) || (\n        profile.unit.trim().toLowerCase() === 'marketing support' &&\n        (profile.department || '').trim().toLowerCase() === 'marketing administration'\n      )\n    )\n  );\n\n  if (!allowed) {\n    return <Navigate to=\"/booking-pipeline\" replace />;\n  }\n\n  return children;\n};\n\nconst DocumentOnly: React.FC<{`);
+  next = replaceOnce(next,
+    `    <Route path="/booking-pipeline" element={<Protected><RestoredBusinessGuard feature="BOOKING_PIPELINE"><BookingPipelinePage /></RestoredBusinessGuard></Protected>} />`,
+    `    <Route path="/booking-pipeline" element={<Protected><RestoredBusinessGuard feature="BOOKING_PIPELINE"><BookingPipelinePage /></RestoredBusinessGuard></Protected>} />\n    <Route path="/master-intermediary-import" element={<Protected><MarketingAdministrationOnly><MasterIntermediaryBulkImportPage /></MarketingAdministrationOnly></Protected>} />`);
+  return next;
+};
+
 export const FINAL_TRANSFORMS = {
   ...TRANSFORMS,
+  'src/components/layout/AppSidebar.tsx': transformSidebarWithMasterBulk,
+  'src/App.tsx': transformAppWithMasterBulk,
   'src/pages/TargetRkapPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/TargetRkapPage.tsx'](source), 'Target & RKAP Directorate Marketing'),
   'src/pages/ProduksiPage.tsx': source => hideOuterHeader(TRANSFORMS['src/pages/ProduksiPage.tsx'](source), 'Realisasi Official menggunakan snapshot laporan produksi CSV'),
   'src/pages/DirectoratePerformancePage.tsx': transformPerformanceMemo,

@@ -34,6 +34,7 @@ import TargetRkapPage from './pages/TargetRkapPage';
 import DirectoratePerformancePage from './pages/DirectoratePerformancePage';
 import TargetRealizationUploadPage from './pages/TargetRealizationUploadPage';
 import BookingPipelinePage from './pages/BookingPipelinePage';
+import MasterIntermediaryBulkImportPage from './pages/MasterIntermediaryBulkImportPage';
 import DigitalAffinityPage from './pages/DigitalAffinityPage';
 import RestoredBusinessGuard from './components/common/RestoredBusinessGuard';
 import { isDigitalAffinityProfile, isMarketingSupportProfile } from '@/lib/accessControl';
@@ -56,6 +57,26 @@ const FeatureOnly: React.FC<{
 
   if (!canAccessFeature(profile, feature)) {
     return <Navigate to="/aktivitas" replace />;
+  }
+
+  return children;
+};
+
+const MarketingAdministrationOnly: React.FC<{
+  children: React.ReactElement;
+}> = ({ children }) => {
+  const { profile } = useAuth();
+  const allowed = Boolean(
+    profile?.active && (
+      isSystemAdminProfile(profile) || (
+        profile.unit.trim().toLowerCase() === 'marketing support' &&
+        (profile.department || '').trim().toLowerCase() === 'marketing administration'
+      )
+    )
+  );
+
+  if (!allowed) {
+    return <Navigate to="/booking-pipeline" replace />;
   }
 
   return children;
@@ -163,6 +184,7 @@ const AppRoutes = () => (
 
     <Route path="/target-rkap" element={<Protected><FeatureOnly feature="TARGET_RKAP"><TargetViewRoute /></FeatureOnly></Protected>} />
     <Route path="/booking-pipeline" element={<Protected><RestoredBusinessGuard feature="BOOKING_PIPELINE"><BookingPipelinePage /></RestoredBusinessGuard></Protected>} />
+    <Route path="/master-intermediary-import" element={<Protected><MarketingAdministrationOnly><MasterIntermediaryBulkImportPage /></MarketingAdministrationOnly></Protected>} />
     <Route path="/produksi" element={<Protected><FeatureOnly feature="PRODUCTION"><DirectoratePerformancePage view="realization" /></FeatureOnly></Protected>} />
     <Route path="/target-realisasi/upload" element={<Protected><RestoredBusinessGuard feature="TARGET_RKAP"><TargetRealizationUploadPage /></RestoredBusinessGuard></Protected>} />
 
