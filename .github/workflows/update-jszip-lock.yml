@@ -1,0 +1,31 @@
+name: Refresh XLSX compatibility lock
+on:
+  push:
+    branches: [fix/xlsx-prefixed-namespace]
+    paths:
+      - package.json
+      - .github/workflows/update-jszip-lock.yml
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Generate lockfile for the declared dependency only
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Commit lockfile to the feature branch
+        run: |
+          git add pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build(xlsx): lock JSZip 3.10.1'
+            git push origin HEAD:fix/xlsx-prefixed-namespace
+          fi
