@@ -37,14 +37,17 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
   reference.getColumn(1).numFmt = '@';
   reference.autoFilter = { from: 'A1', to: `F${directory.length + 1}` };
   workbook.definedNames.add(`'Daftar User ID'!$A$2:$A$${directory.length + 1}`, 'MarketingUserIDs');
-  // Range validation does not create empty data rows or stale formula caches.
+  // ExcelJS supports range validation at runtime; its public Worksheet type omits the range manager.
+  // This narrow typed adapter retains real OOXML validation without creating empty rows.
+  const rangeValidation = data as typeof data & { dataValidations: { add: (address: string, rule: import('exceljs').DataValidation) => void } };
+  const addValidation = (address: string, rule: import('exceljs').DataValidation) => rangeValidation.dataValidations.add(address, rule);
   const validation = (column: string, values: readonly string[]) => {
-    data.dataValidations.add(`${column}2:${column}1001`, {
+    addValidation(`${column}2:${column}1001`, {
       type: 'list', allowBlank: false, formulae: [`"${values.join(',')}"`],
       showErrorMessage: true, errorTitle: 'Pilihan tidak valid', error: 'Gunakan pilihan yang tersedia.',
     });
   };
-  data.dataValidations.add('U2:U1001', {
+  addValidation('U2:U1001', {
     type: 'list', allowBlank: false, formulae: ['MarketingUserIDs'],
     showErrorMessage: true, errorTitle: 'User ID tidak valid', error: 'Pilih User ID dari sheet Daftar User ID.',
   });
@@ -58,14 +61,13 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
   for (let column = 8; column <= 19; column += 1) {
     const letter = String.fromCharCode(64 + column);
     data.getColumn(column).numFmt = '#,##0.##;[Red](#,##0.##)';
-    data.dataValidations.add(`${letter}2:${letter}1001`, {
+    addValidation(`${letter}2:${letter}1001`, {
       type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true,
       showErrorMessage: true, error: 'Premi tidak boleh negatif.',
     });
   }
   data.getColumn(20).numFmt = '#,##0.##;[Red](#,##0.##)';
-  // No formula is prefilled: an uncalculated formula must never block an empty template.
-  // The importer independently recomputes all 12 months and rejects a mismatched total.
+  // No uncalculated formula in the blank template. Import independently verifies the total.
   data.getCell('T2').value = 0;
   data.getCell('T2').font = { bold: true, color: { argb: 'FF163C72' } };
   for (const column of [25, 29, 30, 35]) data.getColumn(column).numFmt = 'yyyy-mm-dd';
@@ -90,5 +92,3 @@ export const downloadRkapPipelineWorkbook = async (users: User[], year: number):
   anchor.remove();
   URL.revokeObjectURL(url);
 };
-
-// Release verification: numeric-total workbook, no fabricated business records.
