@@ -13,6 +13,7 @@ on:
       - 'src/pages/TargetRealizationUploadPage.tsx'
       - 'src/services/directoratePerformanceService.ts'
       - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/prepare-official-archive-regression.mjs'
       - 'scripts/test-official-upload-upsert-guard.mjs'
       - 'supabase/migrations/20260907_directorate_performance_reader_v33.sql'
       - 'supabase/migrations/20260907_official_upload_guard_v34.sql'
@@ -63,18 +64,17 @@ jobs:
             'src/services/pipelineFileStorage.ts',
           ];
           const snapshot=Object.fromEntries(paths.map(path=>[path,execFileSync('git',['show',`${BASE}:${path}`],{encoding:'utf8'})]));
-          // AccessControl is intentionally widened only for the two reader routes.
           snapshot['src/lib/accessControl.ts']=readFileSync('src/lib/accessControl.ts','utf8');
           writeFileSync('/tmp/restore-preserved-files.json',JSON.stringify(snapshot));
           for(const [path,expected] of Object.entries(snapshot)) assert.equal(readFileSync(path,'utf8'),expected,`Live feature changed: ${path}`);
           console.log('Existing live feature files preserved, including Tanda Terima photo preview.');
           NODE
+      - name: Prepare approved archive navigation fixture
+        run: node scripts/prepare-official-archive-regression.mjs
       - name: Run navigation, upload guard and existing regressions
         run: |
-          # The historical photo-preview integration test requires its original
-          # unmodified source fixture and a separate jsdom setup. It is not a
-          # general regression test. Preserve that released feature byte-for-byte
-          # above rather than re-running its one-time integration against itself.
+          # Preserve the released photo-preview feature byte-for-byte; its
+          # one-time integration fixture requires a separate jsdom setup.
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \
