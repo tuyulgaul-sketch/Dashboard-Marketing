@@ -37,3 +37,12 @@ const corrected = once(testSource,
   "await assert.rejects(async () => marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);");
 writeFileSync(testPath, corrected);
 console.log(`Corrected async XLSX regression fixture: ${testPath}`);
+
+// Keep the existing subscription contract while making React's cleanup return void.
+const componentPath = 'src/components/rkap/RkapPipelineMatrixUpload.tsx';
+const component = readFileSync(componentPath, 'utf8');
+const fixedComponent = once(component,
+  '  useEffect(() => store.subscribe(() => setRevision(value => value + 1)), []);',
+  '  useEffect(() => {\n    const unsubscribe = store.subscribe(() => setRevision(value => value + 1));\n    return () => { unsubscribe(); };\n  }, []);');
+writeFileSync(componentPath, fixedComponent);
+console.log(`Corrected React cleanup: ${componentPath}`);
