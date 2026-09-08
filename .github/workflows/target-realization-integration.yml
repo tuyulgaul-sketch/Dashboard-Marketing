@@ -6,6 +6,7 @@ on:
       - 'src/App.tsx'
       - 'src/lib/accessControl.ts'
       - 'src/components/layout/AppSidebar.tsx'
+      - 'src/components/rkap/RkapPipelineMatrixUpload.tsx'
       - 'src/hooks/useTargetRealizationPublisher.ts'
       - 'src/pages/TargetRkapPage.tsx'
       - 'src/pages/ProduksiPage.tsx'
@@ -13,6 +14,7 @@ on:
       - 'src/pages/TargetRealizationUploadPage.tsx'
       - 'src/services/directoratePerformanceService.ts'
       - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/test-bulk-pipeline-single-workflow.mjs'
       - 'scripts/prepare-official-archive-regression.mjs'
       - 'scripts/test-official-upload-upsert-guard.mjs'
       - 'supabase/migrations/20260907_directorate_performance_reader_v33.sql'
@@ -73,6 +75,7 @@ jobs:
         run: node scripts/prepare-official-archive-regression.mjs
       - name: Run navigation, upload guard and existing regressions
         run: |
+          node scripts/test-bulk-pipeline-single-workflow.mjs
           # Preserve the released photo-preview feature byte-for-byte; its
           # one-time integration fixture requires a separate jsdom setup.
           node --experimental-strip-types --test \
@@ -93,7 +96,7 @@ jobs:
           pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/target-ts-after.txt 2>&1 || true
           paths=(src/App.tsx src/lib/accessControl.ts src/components/layout/AppSidebar.tsx src/pages/TargetRkapPage.tsx src/pages/ProduksiPage.tsx)
           (cd /tmp/target-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/eslint" "${paths[@]}" > /tmp/target-lint-before.txt 2>&1 || true)
-          pnpm exec eslint "${paths[@]}" src/pages/DirectoratePerformancePage.tsx src/pages/TargetRealizationUploadPage.tsx src/services/directoratePerformanceService.ts src/hooks/useTargetRealizationPublisher.ts > /tmp/target-lint-after.txt 2>&1 || true
+          pnpm exec eslint "${paths[@]}" src/pages/DirectoratePerformancePage.tsx src/pages/TargetRealizationUploadPage.tsx src/components/rkap/RkapPipelineMatrixUpload.tsx src/services/directoratePerformanceService.ts src/hooks/useTargetRealizationPublisher.ts > /tmp/target-lint-after.txt 2>&1 || true
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const lines=p=>readFileSync(p,'utf8').split('\n');

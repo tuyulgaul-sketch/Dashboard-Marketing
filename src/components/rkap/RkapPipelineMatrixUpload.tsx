@@ -9,7 +9,6 @@ import { COMPACT_PIPELINE_REQUIRED, normalizeCompactPipeline, type CompactMatrix
 import { makeCompactPipelineRecord } from '@/utils/rkapPipelineCompactImport';
 import { pipelineMatrixIdentity, type MatrixRow } from '@/utils/rkapPipelineMatrix';
 import { formatRupiah } from '@/utils/formatters';
-import TargetRkapPage from '@/pages/TargetRkapPage';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,7 +53,6 @@ const RkapPipelineMatrixUpload: React.FC<{ publisherAuthorized: boolean }> = ({ 
   const [review, setReview] = useState<Review | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [showLegacy, setShowLegacy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [rates, setRates] = useState<Record<string, BatchExchangeRate>>({});
@@ -105,16 +103,19 @@ const RkapPipelineMatrixUpload: React.FC<{ publisherAuthorized: boolean }> = ({ 
     finally { setBusy(false); }
   };
   return <div className="space-y-4">
-    <Card className="border-blue-200">
-      <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><FileSpreadsheet className="h-5 w-5 text-blue-700"/>Bulk Pipeline RKAP – Jadwal Premi Tahunan</CardTitle><CardDescription>Satu baris adalah satu opportunity, bukan 12 case. Format ringkas 23 kolom, dengan kategori produk dan grup pelaporan otomatis dari master pusat.</CardDescription></CardHeader>
+    <Card className="border-slate-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm"><FileSpreadsheet className="h-5 w-5 text-blue-700"/>Import Bulk Pipeline RKAP Terpusat</CardTitle>
+        <CardDescription>Pipeline yang telah disepakati saat RKAP dipublikasikan serentak tanpa melalui Booking Case. Satu baris adalah satu opportunity, dengan jadwal premi 12 bulan dan master pusat sebagai sumber kategori produk serta grup pelaporan.</CardDescription>
+      </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <label className="text-xs font-semibold text-slate-700">Tahun RKAP<select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={year} onChange={event => { setYear(Number(event.target.value)); setReview(null); }} disabled={busy}><option value={2026}>2026</option><option value={2027}>2027</option></select></label>
-          <div className="flex items-end"><Button variant="outline" className="w-full gap-2 text-xs" onClick={download} disabled={!authorized || busy}><Download className="h-4 w-4"/>Download Template XLSX</Button></div>
+          <label className="text-xs font-semibold text-slate-700">Tahun Bulk Pipeline<select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2" value={year} onChange={event => { setYear(Number(event.target.value)); setReview(null); }} disabled={busy}><option value={2026}>Tahun 2026</option><option value={2027}>Tahun 2027</option></select></label>
+          <div className="flex items-end"><Button variant="outline" className="w-full gap-2 text-xs" onClick={download} disabled={!authorized || busy}><Download className="h-4 w-4"/>Download Template (.xlsx)</Button></div>
           <label className="text-xs font-semibold text-slate-700">Upload XLSX / CSV<Input className="mt-1" type="file" accept={SPREADSHEET_ACCEPT} disabled={!authorized || busy} onChange={event => { setFile(event.target.files?.[0] || null); setReview(null); setMessage(''); setRates({}); setCurrencies([]); }}/></label>
           <div className="flex items-end"><Button className="w-full gap-2 text-xs" onClick={validate} disabled={!authorized || busy || !file}><ShieldCheck className="h-4 w-4"/>Validasi File</Button></div>
         </div>
-        <p className="text-xs leading-relaxed text-slate-600">Kolom: No., Companies, Product, Dist. Channel, Currency, NB/RN, Jenis Asuransi, 1–12, TOTAL PREMI, UserID, Tahun, Catatan (opsional). Cara Bayar, kategori nasabah, tanggal closing, pengadaan, referensi polis/coverage, dan kurs tidak diminta sebagai kolom. Jenis/kategori produk mengikuti Master Produk; grup Captive, Corporate & Retail, atau Advisor mengikuti User Master. Data operasional yang belum diketahui tidak ditebak dari bulan premi.</p>
+        <p className="text-xs leading-relaxed text-slate-600">Format ringkas 23 kolom: No., Companies, Product, Dist. Channel, Currency, NB/RN, Jenis Asuransi, 1–12, TOTAL PREMI, UserID, Tahun, dan Catatan (opsional). Cara Bayar, kategori nasabah, tanggal closing, pengadaan, referensi polis/coverage, dan kurs tidak diminta sebagai kolom. Jenis/kategori produk mengikuti Master Produk; grup Captive, Corporate & Retail, atau Advisor mengikuti User Master. Data operasional yang belum diketahui tidak ditebak dari bulan premi.</p>
         {currencies.length > 0 && <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-950">Kurs resmi untuk nilai non-IDR</p><p className="text-xs text-amber-900">Kurs tidak perlu diisi per baris Excel. Isi satu referensi kurs yang telah disetujui untuk setiap mata uang pada batch ini. Sistem tidak menebak kurs dan tidak menganggap mata uang asing sama dengan IDR.</p>{currencies.map(currency => <div className="grid grid-cols-1 gap-2 md:grid-cols-4" key={currency}><div className="flex items-center text-xs font-semibold">{currency} ke IDR</div><Input aria-label={`Kurs ${currency}`} placeholder="Kurs, contoh 16000.50" value={rates[currency]?.rate || ''} onChange={event => changeRate(currency, 'rate', event.target.value)} disabled={busy}/><Input aria-label={`Sumber kurs ${currency}`} placeholder="Sumber kurs disetujui" value={rates[currency]?.source || ''} onChange={event => changeRate(currency, 'source', event.target.value)} disabled={busy}/><Input aria-label={`Tanggal kurs ${currency}`} type="date" value={rates[currency]?.date || ''} onChange={event => changeRate(currency, 'date', event.target.value)} disabled={busy}/></div>)}</div>}
         {message && <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{message}</div>}
         {!authorized && <div className="flex gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-900"><AlertCircle className="h-4 w-4 shrink-0"/>Menunggu otoritas publisher resmi. Tidak ada akses publish tambahan.</div>}
@@ -126,7 +127,6 @@ const RkapPipelineMatrixUpload: React.FC<{ publisherAuthorized: boolean }> = ({ 
         </div>}
       </CardContent>
     </Card>
-    <div className="rounded-lg border border-slate-200 bg-white p-3"><Button variant="ghost" className="w-full justify-between text-xs" onClick={() => setShowLegacy(value => !value)}>{showLegacy ? 'Sembunyikan' : 'Buka'} format Bulk Pipeline operasional lama</Button>{showLegacy && <div className="mt-3"><TargetRkapPage embedded initialUploadTab="bulk" publisherAuthorized={authorized}/></div>}</div>
   </div>;
 };
 export default RkapPipelineMatrixUpload;
