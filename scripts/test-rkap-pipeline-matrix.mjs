@@ -107,7 +107,7 @@ assert.equal(bytes[0], 0x50); assert.equal(bytes[1], 0x4b);
 const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(bytes);
 assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ['Data Pipeline', 'Daftar User ID']);
 assert.deepEqual(workbook.worksheets[0].getRow(1).values.slice(1), matrix.RKAP_PIPELINE_HEADERS);
-assert.equal(workbook.worksheets[0].getCell('T2').value.formula, 'SUM(H2:S2)');
+assert.equal(workbook.worksheets[0].getCell('T2').value, 0);
 assert.equal(workbook.worksheets[0].getCell('U2').dataValidation.formulae[0], 'MarketingUserIDs');
 assert.equal(workbook.worksheets[0].getColumn(21).numFmt, '@');
 assert.equal(workbook.worksheets[1].getCell('A2').value, 'USR-000001');
@@ -116,11 +116,16 @@ assert.equal(workbook.worksheets[0].getCell('E2').value, 'IDR');
 assert.ok(workbook.worksheets[0].getCell('B2').value == null || workbook.worksheets[0].getCell('B2').value === '');
 const dataSheet = workbook.worksheets[0];
 for (const [key, value] of Object.entries(row())) dataSheet.getCell(2, matrix.RKAP_PIPELINE_HEADERS.indexOf(key) + 1).value = value;
-dataSheet.getCell('T2').value = { formula: 'SUM(H2:S2)', result: 400000000 };
+// A populated numeric total must survive a genuine OOXML write/read roundtrip.
+dataSheet.getCell('T2').value = 400000000;
 const roundtrip = await marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline', requiredHeaders: matrix.MATRIX_REQUIRED_HEADERS });
 assert.equal(roundtrip.length, 1);
 assert.equal(matrix.normalizePipelineMatrix(roundtrip, users, products, 2026)[0].totalIdr, 400000000);
-dataSheet.getCell('T2').value = { formula: 'SUM(H2:S2)', result: 0 };
+// The importer must still reject an uncalculated formula rather than trust an absent cache.
+dataSheet.getCell('T2').value = { formula: 'SUM(H2:S2)' };
+await assert.rejects(() => marketing.readNativeXlsxRows(workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);
+// A stale numeric total cannot bypass exact source-versus-month validation.
+dataSheet.getCell('T2').value = 399999999;
 const staleRows = await marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' });
 assert.throws(() => matrix.normalizePipelineMatrix(staleRows, users, products, 2026), /tidak sama/);
 const componentSource = readFileSync('src/components/rkap/RkapPipelineMatrixUpload.tsx', 'utf8');
