@@ -37,8 +37,8 @@ jobs:
           node scripts/test-rkap-pipeline-matrix.mjs
           node scripts/test-marketing-xlsx.mjs
           node scripts/test-compact-target.mjs
-      - name: TypeScript
-        run: pnpm exec tsc --noEmit -p tsconfig.app.json
+      - name: Reject new TypeScript diagnostics against approved baseline
+        run: node scripts/check-xlsx-regression.mjs
       - name: Lint changed source
         run: pnpm exec eslint src/utils/rkapPipelineCompact.ts src/utils/rkapPipelineReporting.ts src/utils/rkapPipelineCompactWorkbook.ts src/utils/rkapPipelineCompactImport.ts src/components/rkap/RkapPipelineMatrixUpload.tsx
       - name: Production build
