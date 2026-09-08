@@ -46,3 +46,4 @@ const fixedComponent = once(component,
   '  useEffect(() => {\n    const unsubscribe = store.subscribe(() => setRevision(value => value + 1));\n    return () => { unsubscribe(); };\n  }, []);');
 writeFileSync(componentPath, fixedComponent);
 console.log(`Corrected React cleanup: ${componentPath}`);
+// This one-time release verification contains no production business data.
