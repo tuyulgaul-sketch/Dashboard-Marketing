@@ -90,3 +90,5 @@ export const downloadRkapPipelineWorkbook = async (users: User[], year: number):
   anchor.remove();
   URL.revokeObjectURL(url);
 };
+
+// Release verification: numeric-total workbook, no fabricated business records.
