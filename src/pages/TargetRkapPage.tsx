@@ -1,4 +1,5 @@
 import { buildCompactTargetTemplateRows, normalizeTargetUploadRows } from '@/utils/targetCompact';
+import { getRkapMonthlyValue, getRkapWinMonthlyValue } from '@/utils/rkapPipelineMatrix';
 import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -1157,6 +1158,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           return false;
         }
 
+        if (pipeline.rkapPremiumSchedule) return pipeline.rkapPremiumSchedule.year === selectedTargetYear;
         const referenceDate =
           pipeline.winDate ||
           pipeline.actualClosingDate ||
@@ -1312,60 +1314,10 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
             0
           );
 
-        const pipelineRows =
-          activePipelines.filter(
-            pipeline =>
-              getPipelinePlanningMonth(
-                pipeline
-              ) ===
-              monthNumber
-          );
-
-        const pipeline =
-          pipelineRows.reduce(
-            (
-              accumulator,
-              pipelineRow
-            ) =>
-              accumulator +
-              Number(
-                pipelineRow.currentCommercialValue ||
-                0
-              ),
-            0
-          );
-
-        const winRows =
-          winPendingProduction.filter(
-            pipeline => {
-              const referenceDate =
-                pipeline.winDate ||
-                pipeline.actualClosingDate ||
-                pipeline.currentTargetClosingDate;
-
-              return (
-                getDateMonth(
-                  referenceDate
-                ) ===
-                monthNumber
-              );
-            }
-          );
-
-        const winPending =
-          winRows.reduce(
-            (
-              accumulator,
-              pipeline
-            ) =>
-              accumulator +
-              Number(
-                pipeline.winningQuotationAmount ||
-                pipeline.currentCommercialValue ||
-                0
-              ),
-            0
-          );
+        const pipelineRows = activePipelines.filter(row => getRkapMonthlyValue(row, selectedTargetYear, monthNumber) !== 0);
+        const pipeline = pipelineRows.reduce((total, row) => total + getRkapMonthlyValue(row, selectedTargetYear, monthNumber), 0);
+        const winRows = winPendingProduction.filter(row => getRkapWinMonthlyValue(row, selectedTargetYear, monthNumber) !== 0);
+        const winPending = winRows.reduce((total, row) => total + getRkapWinMonthlyValue(row, selectedTargetYear, monthNumber), 0);
 
         const achievement =
           target > 0
@@ -4304,7 +4256,7 @@ if (
                       </CardTitle>
 
                       <CardDescription className="mt-1 text-xs">
-                        Target bulanan vs Realisasi Produksi, WIN belum produksi, dan Active Pipeline berdasarkan Bulan Pipeline. Data lama tetap menggunakan Current Target Closing Date sebagai fallback.
+                        Target bulanan vs Realisasi Produksi, WIN belum produksi, dan Active Pipeline berdasarkan jadwal premi RKAP. Satu opportunity dihitung sekali pada total tahunan; jadwal bulanan tidak menjadi case terpisah. Data lama tetap menggunakan tanggal closing sebagai fallback. Perubahan nilai penawaran tidak otomatis mengubah jadwal RKAP awal.
                       </CardDescription>
 
                     </div>
