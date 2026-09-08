@@ -16,6 +16,7 @@ import {
   CalendarDays,
   ChevronRight,
   FileText,
+  FileUp,
   LayoutDashboard,
   Target,
   TrendingUp,
@@ -87,6 +88,12 @@ export const AppSidebar:
         "DOCUMENT_MARCOMM"
       );
 
+    const canBulkManageIntermediaryMaster = Boolean(
+      profile?.active &&
+      profile.unit.trim().toLowerCase() === 'marketing support' &&
+      (profile.department || '').trim().toLowerCase() === 'marketing administration'
+    );
+
     const isExactActive = (
       path: string
     ) => {
@@ -134,6 +141,7 @@ export const AppSidebar:
     const administrationItems:
       FlyoutItem[] = [
         ...(canSeeBooking ? [{ label: 'Booking & Pipeline', path: '/booking-pipeline', icon: Briefcase }] : []),
+        ...(canBulkManageIntermediaryMaster ? [{ label: 'Import Agent & Broker', path: '/master-intermediary-import', icon: FileUp }] : []),
         ...(canSeeMeetingRoom
           ? [{
               label:
