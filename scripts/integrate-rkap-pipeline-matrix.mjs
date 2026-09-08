@@ -12,12 +12,12 @@ const once = (source, before, after, label) => {
   assert.equal(source.split(before).length, 2, `Non-unique approved anchor: ${label}`);
   return source.replace(before, after);
 };
-const between = (source, start, end, replacement, label) => {
+const between = (source, start, end, replacement, label, consumeEnd = false) => {
   const a = source.indexOf(start);
   const b = source.indexOf(end, a + start.length);
   assert(a >= 0 && b > a, `Missing approved boundaries: ${label}`);
   assert.equal(source.indexOf(start, a + 1), -1, `Non-unique start boundary: ${label}`);
-  return source.slice(0, a) + replacement + source.slice(b);
+  return source.slice(0, a) + replacement + source.slice(b + (consumeEnd ? end.length : 0));
 };
 
 export const matrixTransforms = {
@@ -106,27 +106,31 @@ export interface Pipeline {
 export const matrixHelperTransforms = {
   'src/utils/rkapPipelineMatrix.ts': original => {
     let source = once(original,
-      "import type { Pipeline, ProductMaster, User } from '@/types';",
-      "import type { Pipeline, ProductMaster, User, RkapPremiumSchedule } from '@/types';",
-      'schedule type import');
-    source = once(source,
       'const normalizedCustomer = (value: string)',
       'export const normalizedCustomer = (value: string)',
       'customer identity export');
     source = once(source,
-      'const rowReference = valueOf(row, \'No.\');',
-      "const rowReference = valueOf(row, 'No.');",
-      'row reference anchor');
+      "const rowReference = valueOf(row, 'No.');\n      if (!/^\\d+$/.test(rowReference) || BigInt(rowReference) <= 0n || seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');\n      seenNumbers.add(rowReference);",
+      "const rawRowReference = valueOf(row, 'No.');\n      if (!/^\\d+$/.test(rawRowReference) || BigInt(rawRowReference) <= 0n) fail('No. harus angka positif dan unik dalam file.');\n      const rowReference = BigInt(rawRowReference).toString();\n      if (seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');\n      seenNumbers.add(rowReference);",
+      'canonical row reference');
     source = once(source,
-      'seenNumbers.add(rowReference);',
-      "seenNumbers.add(rowReference);",
-      'row number anchor');
+      'const numeric = (raw: unknown, label: string, scale: number, allowBlank = false): bigint => {',
+      `const parseExchangeRate = (raw: unknown): bigint => {
+  const text = clean(raw).replace(/\\s/g, '');
+  if (!text || /[eE-]/.test(text)) fail('Kurs ke IDR harus angka desimal positif tanpa notasi ilmiah.');
+  if (/^\\d{1,3}[.,]\\d{3}$/.test(text)) fail('Kurs ambigu. Isi tanpa pemisah ribuan, misalnya 16000.50.');
+  const normalized = text.replace(',', '.');
+  if (!/^\\d+(?:\\.\\d{1,6})?$/.test(normalized)) fail('Kurs ke IDR harus angka tanpa pemisah ribuan, maksimal 6 desimal.');
+  const [whole, fraction = ''] = normalized.split('.');
+  const units = BigInt(whole) * 1000000n + BigInt((fraction + '000000').slice(0, 6));
+  if (units <= 0n) fail('Kurs ke IDR harus positif.');
+  return units;
+};
+
+const numeric = (raw: unknown, label: string, scale: number, allowBlank = false): bigint => {`,
+      'unambiguous approved exchange rate parser');
     source = once(source,
-      "const rateUnits = 1000000n;",
-      "const rateUnits = 1000000n;",
-      'rate anchor');
-    source = once(source,
-      'rateUnits = numeric(valueOf(row, \'Kurs ke IDR\'), \'Kurs ke IDR\', 6);',
+      "rateUnits = numeric(valueOf(row, 'Kurs ke IDR'), 'Kurs ke IDR', 6);",
       "rateUnits = parseExchangeRate(valueOf(row, 'Kurs ke IDR'));",
       'explicit exchange rate');
     source = once(source,
@@ -142,25 +146,9 @@ export const matrixHelperTransforms = {
       "if (originalPolicyYearText && (!/^\\d{4}$/.test(originalPolicyYearText) || Number(originalPolicyYearText) < 1900 || Number(originalPolicyYearText) > year))",
       'original policy year bounds');
     source = once(source,
-      "const rowReference = valueOf(row, 'No.');\n      if (!/^\\d+$/.test(rowReference) || BigInt(rowReference) <= 0n || seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');\n      seenNumbers.add(rowReference);",
-      "const rawRowReference = valueOf(row, 'No.');\n      if (!/^\\d+$/.test(rawRowReference) || BigInt(rawRowReference) <= 0n) fail('No. harus angka positif dan unik dalam file.');\n      const rowReference = BigInt(rawRowReference).toString();\n      if (seenNumbers.has(rowReference)) fail('No. harus angka positif dan unik dalam file.');\n      seenNumbers.add(rowReference);",
-      'canonical row reference');
-    source = once(source,
-      "const numeric = (raw: unknown, label: string, scale: number, allowBlank = false): bigint => {",
-      `const parseExchangeRate = (raw: unknown): bigint => {
-  const text = clean(raw).replace(/\\s/g, '');
-  if (!text || /[eE-]/.test(text)) fail('Kurs ke IDR harus angka desimal positif tanpa notasi ilmiah.');
-  if (/^\\d{1,3}[.,]\\d{3}$/.test(text)) fail('Kurs ambigu. Isi tanpa pemisah ribuan, misalnya 16000.50.');
-  const normalized = text.replace(',', '.');
-  if (!/^\\d+(?:\\.\\d{1,6})?$/.test(normalized)) fail('Kurs ke IDR harus angka tanpa pemisah ribuan, maksimal 6 desimal.');
-  const [whole, fraction = ''] = normalized.split('.');
-  const units = BigInt(whole) * 1000000n + BigInt((fraction + '000000').slice(0, 6));
-  if (units <= 0n) fail('Kurs ke IDR harus positif.');
-  return units;
-};
-
-const numeric = (raw: unknown, label: string, scale: number, allowBlank = false): bigint => {`,
-      'unambiguous approved exchange rate parser');
+      "const factor = 10n ** BigInt(scale);",
+      "const factor = 10n ** BigInt(scale);",
+      'currency scale anchor');
     source = between(source,
       'export const getRkapMonthlyValue =',
       '\n};',
@@ -168,7 +156,7 @@ const numeric = (raw: unknown, label: string, scale: number, allowBlank = false)
   if (!Number.isInteger(month) || month < 1 || month > 12) throw new Error('Bulan Pipeline harus 1–12.');
   const schedule = pipeline.rkapPremiumSchedule;
   if (schedule) {
-    if (!Array.isArray(schedule.monthlyIdr) || schedule.monthlyIdr.length !== 12 || schedule.monthlyIdr.some(value => !Number.isSafeInteger(value) || value < 0) || !Number.isSafeInteger(schedule.totalIdr) || schedule.monthlyIdr.reduce((total, value) => total + value, 0) !== schedule.totalIdr) throw new Error('Jadwal premi RKAP tersimpan tidak valid. Periksa integritas data sebelum menghitung laporan.');
+    if (!Array.isArray(schedule.monthlyIdr) || schedule.monthlyIdr.length !== 12 || schedule.monthlyIdr.some(value => !Number.isSafeInteger(value) || value < 0) || !Number.isSafeInteger(schedule.totalIdr) || !Number.isSafeInteger(schedule.monthlyIdr.reduce((total, value) => total + value, 0)) || schedule.monthlyIdr.reduce((total, value) => total + value, 0) !== schedule.totalIdr) throw new Error('Jadwal premi RKAP tersimpan tidak valid. Periksa integritas data sebelum menghitung laporan.');
     return schedule.year === year ? schedule.monthlyIdr[month - 1] : 0;
   }
   const explicitYear = Number((pipeline as Pipeline & { pipelineYear?: number }).pipelineYear);
@@ -183,9 +171,7 @@ export const getRkapWinMonthlyValue = (pipeline: Pipeline, year: number, month: 
   if (pipeline.rkapPremiumSchedule) return getRkapMonthlyValue(pipeline, year, month);
   const date = pipeline.winDate || pipeline.actualClosingDate || pipeline.currentTargetClosingDate;
   return Number(date?.slice(0, 4)) === year && Number(date?.slice(5, 7)) === month ? Number(pipeline.winningQuotationAmount || pipeline.currentCommercialValue || 0) : 0;
-};`, 'validated monthly schedule and legacy fallback');
-    // The previous boundary replacement leaves the original closing brace;
-    // retain exactly one close for each exported function.
+};`, 'validated monthly schedule and legacy fallback', true);
     return source;
   },
   'src/components/rkap/RkapPipelineMatrixUpload.tsx': original => {
