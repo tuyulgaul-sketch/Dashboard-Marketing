@@ -10,7 +10,6 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
   const Excel = (await import('exceljs')).default;
   const workbook = new Excel.Workbook();
   workbook.creator = 'PertaLife Marketing Dashboard';
-  workbook.calcProperties.fullCalcOnLoad = true;
   const data = workbook.addWorksheet('Data Pipeline', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
   const reference = workbook.addWorksheet('Daftar User ID', { views: [{ state: 'frozen', ySplit: 1 }] });
   const styleHeader = (row: import('exceljs').Row) => {
@@ -38,9 +37,7 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
   reference.getColumn(1).numFmt = '@';
   reference.autoFilter = { from: 'A1', to: `F${directory.length + 1}` };
   workbook.definedNames.add(`'Daftar User ID'!$A$2:$A$${directory.length + 1}`, 'MarketingUserIDs');
-  // Configure future rows with range validation rather than creating 1,000
-  // empty formula rows. Empty formulas otherwise make a strict XLSX reader
-  // reject the workbook before a user has entered any business data.
+  // Range validation does not create empty data rows or stale formula caches.
   const validation = (column: string, values: readonly string[]) => {
     data.dataValidations.add(`${column}2:${column}1001`, {
       type: 'list', allowBlank: false, formulae: [`"${values.join(',')}"`],
@@ -67,14 +64,14 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
     });
   }
   data.getColumn(20).numFmt = '#,##0.##;[Red](#,##0.##)';
-  // Excel calculates the total for the one example row. Users can fill the
-  // formula down for additional rows; the server always recalculates all totals.
-  data.getCell('T2').value = { formula: 'SUM(H2:S2)', result: 0 };
+  // No formula is prefilled: an uncalculated formula must never block an empty template.
+  // The importer independently recomputes all 12 months and rejects a mismatched total.
+  data.getCell('T2').value = 0;
   data.getCell('T2').font = { bold: true, color: { argb: 'FF163C72' } };
   for (const column of [25, 29, 30, 35]) data.getColumn(column).numFmt = 'yyyy-mm-dd';
   data.getColumn(33).numFmt = '#,##0.000000';
   data.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1001, column: RKAP_PIPELINE_HEADERS.length } };
-  data.getCell('T1').note = 'Total premi dalam Currency asli. Salin formula SUM(H:S) ke baris tambahan. Sistem menghitung ulang dan menolak jika tidak sama.';
+  data.getCell('T1').note = 'Isi total angka dalam Currency asli. Sistem menghitung ulang SUM bulan 1–12 dan menolak selisih. Jika memakai formula Excel, simpan setelah kalkulasi agar hasil tersimpan.';
   data.getCell('Y1').note = 'Tanggal estimasi closing opportunity, bukan tanggal jatuh tempo masing-masing premi. Gunakan YYYY-MM-DD.';
   data.getCell('AG1').note = 'Untuk Currency selain IDR, isi kurs IDR per satu unit mata uang asing yang sudah disetujui, beserta sumber dan tanggalnya. Sistem tidak menebak kurs.';
   data.getCell('W1').note = 'Jadwal 1–12 diisi sesuai rencana pembayaran aktual. Cara Bayar tidak membuat premi otomatis dan tidak menggandakan opportunity.';
