@@ -103,10 +103,13 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
   const [agents, setAgents] = useState<AgentMaster[]>(() => store.getAgents());
   const [brokers, setBrokers] = useState<BrokerMaster[]>(() => store.getBrokers());
 
-  useEffect(() => store.subscribe(() => {
-    setAgents(store.getAgents());
-    setBrokers(store.getBrokers());
-  }), []);
+  useEffect(() => {
+    const unsubscribe = store.subscribe(() => {
+      setAgents(store.getAgents());
+      setBrokers(store.getBrokers());
+    });
+    return () => { unsubscribe(); };
+  }, []);
 
   const current = review?.value || null;
   const previewRows = useMemo(() => current?.rows.slice(0, 100) || [], [current]);
