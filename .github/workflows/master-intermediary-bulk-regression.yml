@@ -1,0 +1,45 @@
+name: Master intermediary bulk regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/utils/masterIntermediaryBulk.ts'
+      - 'src/services/masterIntermediaryBulkService.ts'
+      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
+      - 'src/App.tsx'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
+      - 'scripts/test-master-intermediary-bulk.mjs'
+      - '.github/workflows/master-intermediary-bulk-regression.yml'
+  push:
+    branches:
+      - feat/agent-broker-bulk-import
+    paths:
+      - 'src/utils/masterIntermediaryBulk.ts'
+      - 'src/services/masterIntermediaryBulkService.ts'
+      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
+      - 'src/App.tsx'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
+      - 'scripts/test-master-intermediary-bulk.mjs'
+      - '.github/workflows/master-intermediary-bulk-regression.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Sanitized Agent Broker regression
+        run: node --test scripts/test-master-intermediary-bulk.mjs
+      - name: Production build
+        run: pnpm run build
