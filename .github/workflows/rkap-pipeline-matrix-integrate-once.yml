@@ -1,0 +1,100 @@
+name: RKAP pipeline matrix guarded integration
+on:
+  push:
+    branches: [feat/rkap-pipeline-monthly-matrix]
+    paths:
+      - '.github/workflows/rkap-pipeline-matrix-integrate-once.yml'
+      - 'scripts/integrate-rkap-pipeline-matrix.mjs'
+      - 'scripts/upgrade-rkap-matrix-regressions.mjs'
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: contains(github.event.head_commit.message, '[matrix-integrate]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Integrate only approved source and regression fixtures
+        run: |
+          node scripts/integrate-rkap-pipeline-matrix.mjs
+          node scripts/upgrade-rkap-matrix-regressions.mjs
+          git diff --check
+          git diff --name-only
+      - name: Exact monthly matrix and native XLSX tests
+        run: |
+          node scripts/test-rkap-pipeline-matrix.mjs
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+      - name: Existing business, navigation and permission regressions
+        run: |
+          node --experimental-strip-types --test \
+            scripts/test-target-realization-navigation.mjs \
+            scripts/test-official-upload-upsert-guard.mjs \
+            scripts/test-restored-business.mjs \
+            scripts/test-admin-document-access.mjs \
+            scripts/test-admin-document-reader.mjs \
+            scripts/test-admin-document-browse.mjs \
+            scripts/test-admin-product-search.mjs \
+            scripts/test-marketing-tool-browse.mjs \
+            scripts/test-document-handover-sort.mjs
+      - name: Reject new TypeScript and lint diagnostics
+        run: |
+          git worktree add --detach /tmp/matrix-baseline 9cf411d393b1acdfcbd98d34055e3a1750bc8b8e
+          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/matrix-baseline/node_modules
+          (cd /tmp/matrix-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/matrix-ts-before.txt 2>&1 || true)
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/matrix-ts-after.txt 2>&1 || true
+          (cd /tmp/matrix-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/eslint" src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx src/types/index.ts > /tmp/matrix-lint-before.txt 2>&1 || true)
+          pnpm exec eslint src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx src/types/index.ts > /tmp/matrix-lint-after.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const count=items=>{const m=new Map();for(const item of items)m.set(item,(m.get(item)||0)+1);return m;};
+          const lines=p=>readFileSync(p,'utf8').split('\n');
+          const errors=p=>lines(p).filter(s=>/^.+\(\d+,\d+\): error TS\d+:/.test(s)).map(s=>s.replace(/\(\d+,\d+\)/,''));
+          const old=count(errors('/tmp/matrix-ts-before.txt'));
+          const now=count(errors('/tmp/matrix-ts-after.txt'));
+          const added=[...now].filter(([message,n])=>n>(old.get(message)||0));
+          console.log(`TypeScript baseline: ${[...old.values()].reduce((a,b)=>a+b,0)}; current: ${[...now.values()].reduce((a,b)=>a+b,0)}; new: ${added.length}.`);
+          if(added.length){console.error(added);process.exitCode=1;}
+          const lint=p=>lines(p).filter(s=>/^\s*\d+:\d+\s+(error|warning)\s+/.test(s)).map(s=>s.replace(/^\s*\d+:\d+/,''));
+          const before=count(lint('/tmp/matrix-lint-before.txt'));
+          const after=count(lint('/tmp/matrix-lint-after.txt'));
+          const addedLint=[...after].filter(([message,n])=>n>(before.get(message)||0));
+          console.log(`New legacy-file lint diagnostics: ${addedLint.length}.`);
+          if(addedLint.length){console.error(addedLint);process.exitCode=1;}
+          NODE
+          pnpm exec eslint src/utils/rkapPipelineMatrix.ts src/utils/rkapPipelineWorkbook.ts src/components/rkap/RkapPipelineMatrixUpload.tsx
+      - name: Production build
+        run: |
+          node scripts/check-xlsx-regression.mjs
+          pnpm run build
+      - name: Commit only verified source and remove temporary writer
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path='scripts/integrate-rkap-pipeline-matrix.mjs';
+          let source=readFileSync(path,'utf8');
+          const marker='if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {';
+          if(!source.includes(marker))throw new Error('Expected one-time integration entrypoint not found.');
+          source=source.slice(0,source.indexOf(marker));
+          source=source.replace("import { readFileSync, writeFileSync } from 'node:fs';\n",'').replace("import { execFileSync } from 'node:child_process';\n",'').replace("import { resolve } from 'node:path';\n",'').replace("import { pathToFileURL } from 'node:url';\n",'');
+          source=source.replace("const read = path => readFileSync(path, 'utf8');\n",'').replace("const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });\n",'');
+          writeFileSync(path,source);
+          NODE
+          git rm .github/workflows/rkap-pipeline-matrix-integrate-once.yml scripts/upgrade-rkap-matrix-regressions.mjs
+          git add src/types/index.ts src/pages/TargetRealizationUploadPage.tsx src/pages/TargetRkapPage.tsx src/utils/rkapPipelineMatrix.ts src/utils/rkapPipelineWorkbook.ts src/components/rkap/RkapPipelineMatrixUpload.tsx scripts/test-rkap-pipeline-matrix.mjs scripts/test-target-realization-navigation.mjs scripts/integrate-rkap-pipeline-matrix.mjs
+          git diff --cached --check
+          git diff --cached --name-only
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(pipeline): integrate one-opportunity annual premium matrix'
+          git push origin HEAD:feat/rkap-pipeline-monthly-matrix
