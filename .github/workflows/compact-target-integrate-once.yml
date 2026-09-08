@@ -24,8 +24,9 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
-      - name: Integrate only approved target source and regression fixtures
+      - name: Harden and integrate only approved target source
         run: |
+          node scripts/harden-compact-target.mjs
           node scripts/integrate-compact-target.mjs
           node scripts/upgrade-compact-target-regressions.mjs
           git diff --check
@@ -36,7 +37,6 @@ jobs:
           node scripts/test-marketing-xlsx.mjs
       - name: Existing business, navigation and security regressions
         run: |
-          git show a08fbea14a7ef23255abfb2a088df305e28b5c9f:src/services/centralBusinessService.ts >/tmp/compact-business-baseline.txt
           node -e "const fs=require('fs'),cp=require('child_process');const paths=['src/services/centralBusinessService.ts','src/services/centralBusinessStorageRuntime.ts','src/services/centralTargetRuntime.ts','src/services/targetService.ts','src/contexts/AuthContext.tsx','src/pages/BookingPipelinePage.tsx','src/pages/TandaTerimaV14Page.tsx','src/pages/DokumenPendukungPage.tsx','src/pages/DokumenAdministrasiReaderPage.tsx','src/pages/AktivitasUniversalPage.tsx','src/pages/MarketingMeetingRoomPage.tsx','src/services/documentHandoverFileStorage.ts'];const result={};for(const p of paths)result[p]=cp.execFileSync('git',['show','9bfee0235fd36b02c8f74577dc5bea66d52c4028:'+p],{encoding:'utf8'});fs.writeFileSync('/tmp/restore-preserved-files.json',JSON.stringify(result));"
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
@@ -57,9 +57,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx scripts/test-marketing-xlsx.mjs scripts/test-target-realization-navigation.mjs
+          git add src/utils/targetCompact.ts src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx scripts/integrate-compact-target.mjs scripts/test-compact-target.mjs scripts/test-marketing-xlsx.mjs scripts/test-target-realization-navigation.mjs
           git diff --cached --check
           git diff --cached --name-only
           git diff --cached --quiet && exit 0
-          git commit -m 'feat(target): integrate compact monthly upload with existing validation'
+          git commit -m 'feat(target): integrate complete compact monthly upload with existing validation'
           git push origin HEAD:feat/compact-target-import
