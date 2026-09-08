@@ -29,3 +29,11 @@ source = once(source,
           : transform(original);`);
 writeFileSync(path, source);
 console.log(`Updated approved regression fixture: ${path}`);
+
+const testPath = 'scripts/test-rkap-pipeline-matrix.mjs';
+const testSource = readFileSync(testPath, 'utf8');
+const corrected = once(testSource,
+  "await assert.rejects(() => marketing.readNativeXlsxRows(workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);",
+  "await assert.rejects(async () => marketing.readNativeXlsxRows(await workbook.xlsx.writeBuffer(), { sheetName: 'Data Pipeline' }), /hasil tersimpan/);");
+writeFileSync(testPath, corrected);
+console.log(`Corrected async XLSX regression fixture: ${testPath}`);
