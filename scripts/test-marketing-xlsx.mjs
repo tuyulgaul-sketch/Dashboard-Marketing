@@ -18,7 +18,8 @@ function loadTs(path, overrides = {}) {
   return mod.exports;
 }
 const csv = loadTs('src/utils/excelExport.ts', { './marketingWorkbook': { readNativeXlsxRows: () => { throw new Error('Not used by CSV fixture'); } } });
-const workbook = loadTs('src/utils/marketingWorkbook.ts', { './excelExport': csv });
+const compact = loadTs('src/utils/targetCompact.ts');
+const workbook = loadTs('src/utils/marketingWorkbook.ts', { './excelExport': csv, './targetCompact': compact });
 const users = [
   { id: 'USR-000025', name: 'Marketing A', role: 'STAFF_MARKETING', position: 'Staff Captive I', unit: 'Captive Marketing', department: 'Captive I', status: 'Active', superiorId: 'USR-000004' },
   { id: 'USR-000026', name: 'Marketing B', role: 'STAFF_MARKETING', position: 'Staff CRM I', unit: 'Corporate & Retail Marketing', department: 'CRM I', status: 'Active', superiorId: 'USR-000015' },
@@ -64,11 +65,13 @@ async function roundtrip(kind, input, required) {
 }
 const production = { 'Tahun Produksi': 2026, 'Bulan Produksi': 8, 'Nomor Polis': 'POL-0001', 'Nama Nasabah': 'PT Contoh', 'Nama Produk': 'PLife Shield', 'Realisasi Produksi (Rp)': 150000000, 'Fungsi Marketing': 'Captive Marketing', 'Jenis Bisnis': 'New Business', 'User ID Pemilik Realisasi': 'USR-000025', 'PIC Marketing': 'Marketing A' };
 const prod = await roundtrip('production', [production], workbook.getMarketingTemplateHeaders('production'));
-const target = Object.fromEntries(workbook.getMarketingTemplateHeaders('target').map(header => [header, header === 'Tahun' ? 2026 : '']));
-target['User ID Penerima'] = 'USR-000025';
-target['Nama Penerima'] = 'Marketing A';
-target['Target Tahunan'] = 150000000;
-await roundtrip('target', [target], workbook.getMarketingTemplateHeaders('target'));
+const target = { Tahun: 2026, 'User ID Penerima': 'USR-000025', Periode: 8, 'NB/RN': 'NB', 'Target (Rp)': 150000000 };
+const targetRoundtrip = await roundtrip('target', [target], workbook.getMarketingTemplateHeaders('target'));
+assert.equal(targetRoundtrip.actual.worksheets[0].getCell('C2').value, 8);
+assert.equal(targetRoundtrip.actual.worksheets[0].getCell('D2').value, 'NB');
+assert.equal(targetRoundtrip.actual.worksheets[0].getCell('E2').value, 150000000);
+assert.ok(targetRoundtrip.actual.worksheets[0].getCell('C2').dataValidation.formulae.length);
+assert.ok(targetRoundtrip.actual.worksheets[0].getCell('D2').dataValidation.formulae.length);
 const pipeline = Object.fromEntries(workbook.getMarketingTemplateHeaders('pipeline').map(header => [header, '']));
 pipeline.Tahun = 2026;
 pipeline['PIC User ID'] = 'USR-000025';

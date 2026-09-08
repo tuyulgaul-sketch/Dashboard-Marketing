@@ -119,8 +119,11 @@ export const expandCompactTargetRows = (
     if (note) current.notes.add(note);
     amounts.set(id, current);
   }
-  const missing = holders.filter(user => !amounts.has(idOf(user.id))).map(user => user.id);
-  if (missing.length) throw new Error(`User target aktif belum tercakup. Sertakan minimal satu baris (boleh nol) untuk: ${missing.join(', ')}.`);
+  // A full-year publication replaces the annual snapshot. Never interpret
+  // an omitted month as zero: that could silently erase an approved allocation.
+  const missing = holders.flatMap(user => MONTHS.flatMap((_, month) => ['NB', 'RN'].filter(kind => !seen.has(`${idOf(user.id)}|${month}|${kind}`)).map(kind => `${idOf(user.id)} / ${month + 1} / ${kind}`)));
+  if (missing.length) throw new Error(`Alokasi bulanan belum lengkap. Setiap user aktif wajib memiliki 12 bulan x NB/RN, termasuk nilai nol. Baris yang belum ada: ${missing.slice(0, 12).join(', ')}${missing.length > 12 ? `, dan ${missing.length - 12} lainnya` : ''}.`);
+  if (seen.size !== holders.length * 24) throw new Error('Jumlah alokasi tidak sesuai dengan 24 kombinasi per pemilik target aktif.');
 
   const children = new Map<string, string[]>();
   for (const user of holders) {
@@ -155,8 +158,9 @@ export const expandCompactTargetRows = (
     return total;
   };
   holders.forEach(user => calculate(idOf(user.id)));
-  const director = holders.find(user => user.role === 'DIRECTOR_MARKETING');
-  if (!director) throw new Error('Direktur Marketing aktif tidak ditemukan.');
+  const directors = holders.filter(user => user.role === 'DIRECTOR_MARKETING');
+  if (directors.length !== 1) throw new Error('User Master harus memiliki tepat satu Direktur Marketing aktif untuk cascading.');
+  const director = directors[0];
   const reachable = new Set<string>();
   const walk = (id: string) => { if (reachable.has(id)) return; reachable.add(id); children.get(id)!.forEach(walk); };
   walk(idOf(director.id));
@@ -175,9 +179,9 @@ export const expandCompactTargetRows = (
       'Target Tahunan NB': String(total.NB), 'Target Tahunan RN': String(total.RN),
       'Target Pribadi': String(safeSum([personalNB, personalRN], `${id} pribadi`)),
       'Target Pribadi NB': String(personalNB), 'Target Pribadi RN': String(personalRN),
-      Catatan: [...own.notes].join(' | '),
     };
     MONTHS.forEach((month, index) => { output[`${month} NB`] = String(own.NB[index]); output[`${month} RN`] = String(own.RN[index]); });
+    output.Catatan = [...own.notes].join(' | ');
     return output;
   });
 };

@@ -1,3 +1,4 @@
+import { buildCompactTargetTemplateRows, normalizeTargetUploadRows } from '@/utils/targetCompact';
 import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -1779,130 +1780,14 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
   // 1. MASTER TARGET RKAP
   // ============================================================
 
-  const handleDownloadTargetTemplate =
-    async () => {
-      const templateData =
-        targetHolders.map(
-          user => ({
-            Tahun:
-              selectedTargetYear,
-
-            'User ID Penerima':
-              user.id,
-
-            'Nama Penerima':
-              user.name,
-
-            Jabatan:
-              user.position,
-
-            'Department Umum':
-              user.unit,
-
-            'Department Sub':
-              user.department,
-
-            'Target Tahunan':
-              '',
-
-            'Target Tahunan NB':
-              '',
-
-            'Target Tahunan RN':
-              '',
-
-            'Target Pribadi':
-              '',
-
-            'Target Pribadi NB':
-              '',
-
-            'Target Pribadi RN':
-              '',
-
-            'Januari NB':
-              '',
-
-            'Januari RN':
-              '',
-
-            'Februari NB':
-              '',
-
-            'Februari RN':
-              '',
-
-            'Maret NB':
-              '',
-
-            'Maret RN':
-              '',
-
-            'April NB':
-              '',
-
-            'April RN':
-              '',
-
-            'Mei NB':
-              '',
-
-            'Mei RN':
-              '',
-
-            'Juni NB':
-              '',
-
-            'Juni RN':
-              '',
-
-            'Juli NB':
-              '',
-
-            'Juli RN':
-              '',
-
-            'Agustus NB':
-              '',
-
-            'Agustus RN':
-              '',
-
-            'September NB':
-              '',
-
-            'September RN':
-              '',
-
-            'Oktober NB':
-              '',
-
-            'Oktober RN':
-              '',
-
-            'November NB':
-              '',
-
-            'November RN':
-              '',
-
-            'Desember NB':
-              '',
-
-            'Desember RN':
-              '',
-
-            Catatan:
-              '',
-          })
-        );
-
-      try {
-        await downloadMarketingWorkbook('target', templateData, users, `Template_Target_${selectedTargetYear}`);
-      } catch (error) {
-        alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
-      }
-    };
+  const handleDownloadTargetTemplate = async () => {
+    const templateData = buildCompactTargetTemplateRows(users, selectedTargetYear);
+    try {
+      await downloadMarketingWorkbook('target', templateData, users, `Template_Target_${selectedTargetYear}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
+    }
+  };
 
   const handleTargetFileChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -1939,8 +1824,11 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
       setTargetValidatedFile(null);
       setTargetValidatedYear(null);
       try {
-        const parsed =
-          await readMarketingSpreadsheet(targetFile, { sheetName: MARKETING_SHEETS.target, requiredHeaders: ['Tahun', 'User ID Penerima', 'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN', 'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN'] });
+        const importedRows = await readMarketingSpreadsheet(targetFile, {
+          sheetName: MARKETING_SHEETS.target,
+          requiredHeaders: ['Tahun', 'User ID Penerima'],
+        });
+        const parsed = normalizeTargetUploadRows(importedRows, users, selectedTargetYear);
 
         if (
           parsed.length === 0

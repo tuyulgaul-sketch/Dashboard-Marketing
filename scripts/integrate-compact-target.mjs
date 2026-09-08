@@ -57,7 +57,7 @@ export const compactTargetTransform = {
       '  const handleDownloadTargetTemplate =',
       '  const handleTargetFileChange =',
       `  const handleDownloadTargetTemplate = async () => {
-    const templateData = buildCompactTargetTemplateRows(targetHolders, selectedTargetYear);
+    const templateData = buildCompactTargetTemplateRows(users, selectedTargetYear);
     try {
       await downloadMarketingWorkbook('target', templateData, users, \`Template_Target_\${selectedTargetYear}\`);
     } catch (error) {
@@ -74,7 +74,7 @@ export const compactTargetTransform = {
           sheetName: MARKETING_SHEETS.target,
           requiredHeaders: ['Tahun', 'User ID Penerima'],
         });
-        const parsed = normalizeTargetUploadRows(importedRows, targetHolders, selectedTargetYear);`,
+        const parsed = normalizeTargetUploadRows(importedRows, users, selectedTargetYear);`,
       'target validation adapter');
     return source;
   },

@@ -1,4 +1,5 @@
 import type { User } from '@/types';
+import { COMPACT_TARGET_HEADERS } from './targetCompact';
 import type ExcelJS from 'exceljs';
 
 export type SpreadsheetRow = Record<string, string>;
@@ -110,13 +111,7 @@ export const getMarketingTemplateHeaders = (kind: MarketingTemplateKind): string
     'Unit', 'Department', 'Direct Superior', 'Catatan', 'Existing Policy Number',
     'Original Policy Year', 'Coverage Start', 'Coverage End', 'Renewal Type',
   ];
-  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-  return [
-    'Tahun', 'User ID Penerima', 'Nama Penerima', 'Jabatan', 'Department Umum',
-    'Department Sub', 'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN',
-    'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN',
-    ...months.flatMap(month => [`${month} NB`, `${month} RN`]), 'Catatan',
-  ];
+  return [...COMPACT_TARGET_HEADERS];
 };
 
 const loadExcelJS = async () => (await import('exceljs')).default;
@@ -245,6 +240,21 @@ export const buildMarketingWorkbook = async (
       type: 'list', allowBlank: kind !== 'target', formulae: ['MarketingUserIDs'],
       showErrorMessage: true, errorTitle: 'User ID tidak valid', error: 'Pilih User ID dari Daftar User ID.',
     };
+  }
+  if (kind === 'target') {
+    [12, 22, 12, 12, 24].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+    sheet.getColumn(1).numFmt = '0';
+    sheet.getColumn(3).numFmt = '0';
+    for (let rowNumber = 2; rowNumber <= Math.max(1001, dataEnd); rowNumber += 1) {
+      sheet.getCell(rowNumber, 3).dataValidation = {
+        type: 'list', allowBlank: false, formulae: ['"1,2,3,4,5,6,7,8,9,10,11,12"'],
+        showErrorMessage: true, errorTitle: 'Periode tidak valid', error: 'Pilih bulan 1 sampai 12.',
+      };
+      sheet.getCell(rowNumber, 4).dataValidation = {
+        type: 'list', allowBlank: false, formulae: ['"NB,RN"'],
+        showErrorMessage: true, errorTitle: 'Jenis bisnis tidak valid', error: 'Pilih NB atau RN.',
+      };
+    }
   }
   const moneyHeaders = kind === 'production' ? ['Realisasi Produksi (Rp)'] : kind === 'pipeline' ? ['Estimasi Premi'] : headers.filter(header => header.startsWith('Target ') || / (NB|RN)$/.test(header));
   moneyHeaders.forEach(header => { const column = sheet.getColumn(headers.indexOf(header) + 1); column.numFmt = '#,##0;[Red](#,##0)'; });
