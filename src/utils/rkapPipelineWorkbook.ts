@@ -4,6 +4,7 @@ import { MATRIX_CHANNELS, MATRIX_CURRENCIES, MATRIX_PAYMENT_MODES, RKAP_PIPELINE
 
 /** Native OOXML workbook, never a CSV with a renamed extension. */
 export const buildRkapPipelineWorkbook = async (users: User[], year: number): Promise<Uint8Array> => {
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Error('Tahun RKAP tidak valid.');
   const directory = getMarketingDirectoryRows(users);
   if (!directory.length) throw new Error('User Master belum tersedia. Template tidak dapat dibuat.');
   const Excel = (await import('exceljs')).default;
@@ -37,41 +38,43 @@ export const buildRkapPipelineWorkbook = async (users: User[], year: number): Pr
   reference.getColumn(1).numFmt = '@';
   reference.autoFilter = { from: 'A1', to: `F${directory.length + 1}` };
   workbook.definedNames.add(`'Daftar User ID'!$A$2:$A$${directory.length + 1}`, 'MarketingUserIDs');
-  const list = (column: number, values: readonly string[], rowNumber: number) => {
-    data.getCell(rowNumber, column).dataValidation = {
+  // Configure future rows with range validation rather than creating 1,000
+  // empty formula rows. Empty formulas otherwise make a strict XLSX reader
+  // reject the workbook before a user has entered any business data.
+  const validation = (column: string, values: readonly string[]) => {
+    data.dataValidations.add(`${column}2:${column}1001`, {
       type: 'list', allowBlank: false, formulae: [`"${values.join(',')}"`],
       showErrorMessage: true, errorTitle: 'Pilihan tidak valid', error: 'Gunakan pilihan yang tersedia.',
-    };
+    });
   };
-  for (let rowNumber = 2; rowNumber <= 1001; rowNumber += 1) {
-    data.getCell(rowNumber, 21).dataValidation = {
-      type: 'list', allowBlank: false, formulae: ['MarketingUserIDs'],
-      showErrorMessage: true, errorTitle: 'User ID tidak valid', error: 'Pilih User ID dari sheet Daftar User ID.',
-    };
-    list(4, MATRIX_CHANNELS, rowNumber);
-    list(5, MATRIX_CURRENCIES, rowNumber);
-    list(6, ['NB', 'RN'], rowNumber);
-    list(7, ['Asuransi Jiwa', 'Asuransi Kesehatan'], rowNumber);
-    list(23, MATRIX_PAYMENT_MODES, rowNumber);
-    list(24, ['Individu', 'Kumpulan'], rowNumber);
-    list(26, ['Tender', 'Non Tender'], rowNumber);
-    for (let column = 8; column <= 19; column += 1) {
-      const cell = data.getCell(rowNumber, column);
-      cell.numFmt = '#,##0.##;[Red](#,##0.##)';
-      cell.dataValidation = { type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showErrorMessage: true, error: 'Premi tidak boleh negatif.' };
-    }
-    const total = data.getCell(rowNumber, 20);
-    total.numFmt = '#,##0.##;[Red](#,##0.##)';
-    total.value = { formula: `SUM(H${rowNumber}:S${rowNumber})`, result: 0 };
-    total.font = { bold: true, color: { argb: 'FF163C72' } };
-    data.getCell(rowNumber, 25).numFmt = 'yyyy-mm-dd';
-    data.getCell(rowNumber, 29).numFmt = 'yyyy-mm-dd';
-    data.getCell(rowNumber, 30).numFmt = 'yyyy-mm-dd';
-    data.getCell(rowNumber, 35).numFmt = 'yyyy-mm-dd';
-    data.getCell(rowNumber, 33).numFmt = '#,##0.000000';
+  data.dataValidations.add('U2:U1001', {
+    type: 'list', allowBlank: false, formulae: ['MarketingUserIDs'],
+    showErrorMessage: true, errorTitle: 'User ID tidak valid', error: 'Pilih User ID dari sheet Daftar User ID.',
+  });
+  validation('D', MATRIX_CHANNELS);
+  validation('E', MATRIX_CURRENCIES);
+  validation('F', ['NB', 'RN']);
+  validation('G', ['Asuransi Jiwa', 'Asuransi Kesehatan']);
+  validation('W', MATRIX_PAYMENT_MODES);
+  validation('X', ['Individu', 'Kumpulan']);
+  validation('Z', ['Tender', 'Non Tender']);
+  for (let column = 8; column <= 19; column += 1) {
+    const letter = String.fromCharCode(64 + column);
+    data.getColumn(column).numFmt = '#,##0.##;[Red](#,##0.##)';
+    data.dataValidations.add(`${letter}2:${letter}1001`, {
+      type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true,
+      showErrorMessage: true, error: 'Premi tidak boleh negatif.',
+    });
   }
+  data.getColumn(20).numFmt = '#,##0.##;[Red](#,##0.##)';
+  // Excel calculates the total for the one example row. Users can fill the
+  // formula down for additional rows; the server always recalculates all totals.
+  data.getCell('T2').value = { formula: 'SUM(H2:S2)', result: 0 };
+  data.getCell('T2').font = { bold: true, color: { argb: 'FF163C72' } };
+  for (const column of [25, 29, 30, 35]) data.getColumn(column).numFmt = 'yyyy-mm-dd';
+  data.getColumn(33).numFmt = '#,##0.000000';
   data.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1001, column: RKAP_PIPELINE_HEADERS.length } };
-  data.getCell('T1').note = 'Total premi dalam Currency asli. Formula menjumlahkan bulan 1–12. Sistem menghitung ulang dan menolak jika tidak sama.';
+  data.getCell('T1').note = 'Total premi dalam Currency asli. Salin formula SUM(H:S) ke baris tambahan. Sistem menghitung ulang dan menolak jika tidak sama.';
   data.getCell('Y1').note = 'Tanggal estimasi closing opportunity, bukan tanggal jatuh tempo masing-masing premi. Gunakan YYYY-MM-DD.';
   data.getCell('AG1').note = 'Untuk Currency selain IDR, isi kurs IDR per satu unit mata uang asing yang sudah disetujui, beserta sumber dan tanggalnya. Sistem tidak menebak kurs.';
   data.getCell('W1').note = 'Jadwal 1–12 diisi sesuai rencana pembayaran aktual. Cara Bayar tidak membuat premi otomatis dan tidak menggandakan opportunity.';
