@@ -1,0 +1,54 @@
+name: Official upload archive regression
+on:
+  push:
+    branches: [feat/official-upload-archive-v1]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/components/rkap/OfficialUploadArchiveManager.tsx'
+      - 'src/services/officialUploadArchiveService.ts'
+      - 'src/pages/TargetRealizationUploadPage.tsx'
+      - 'supabase/migrations/20260908_official_upload_archive_v1.sql'
+      - 'scripts/test-official-upload-archive.mjs'
+      - '.github/workflows/official-upload-archive-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Archive client and SQL contract tests
+        run: node scripts/test-official-upload-archive.mjs
+      - name: Native XLSX and User ID regression
+        run: node scripts/test-marketing-xlsx.mjs
+      - name: Prepare preserved business fixture
+        run: node scripts/prepare-restored-business-fixture.mjs
+      - name: Existing business and navigation regressions
+        run: |
+          node --experimental-strip-types --test \
+            scripts/test-target-realization-navigation.mjs \
+            scripts/test-official-upload-upsert-guard.mjs \
+            scripts/test-restored-business.mjs \
+            scripts/test-admin-document-access.mjs \
+            scripts/test-admin-document-reader.mjs \
+            scripts/test-admin-document-browse.mjs \
+            scripts/test-admin-product-search.mjs \
+            scripts/test-marketing-tool-browse.mjs \
+            scripts/test-document-handover-sort.mjs
+      - name: Reject new TypeScript and existing upload lint diagnostics
+        run: node scripts/check-xlsx-regression.mjs
+      - name: Lint new archive source
+        run: pnpm exec eslint src/components/rkap/OfficialUploadArchiveManager.tsx src/services/officialUploadArchiveService.ts src/pages/TargetRealizationUploadPage.tsx
+      - name: Production build
+        run: pnpm run build
