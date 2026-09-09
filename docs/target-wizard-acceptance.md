@@ -1,0 +1,1 @@
+Annual and monthly NB/RN cascading are both required. Every node must balance monthly budget against personal and direct-child allocations. The last sibling inherits the monthly remainder automatically; a leaf inherits its entire budget as personal target. Existing official monthly values must remain unchanged until explicitly edited and published.
