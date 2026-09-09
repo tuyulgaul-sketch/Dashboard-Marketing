@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { FINAL_TRANSFORMS } from './integrate-target-realization-v2.mjs';
 import { COMPACT_BASE, compactTargetTransform } from './integrate-compact-target.mjs';
 import { MATRIX_BASE, matrixTransforms } from './integrate-rkap-pipeline-matrix.mjs';
+import { advisorProductionPageTransform } from './approved-advisor-production-transform.mjs';
 
 const require = createRequire(import.meta.url);
 const read = path => readFileSync(path, 'utf8');
@@ -50,8 +51,10 @@ test('every intentional existing-source change is exactly the approved transform
       : path === 'src/pages/TargetRkapPage.tsx'
         ? compactTargetTransform[path](git('show', `${COMPACT_BASE}:${path}`))
         : path === 'src/pages/ProduksiPage.tsx'
-          ? git('show', `${xlsxBaseline}:${path}`)
-          : transform(original);
+          ? advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`))
+          : path === 'src/pages/TargetRealizationUploadPage.tsx'
+            ? git('show', `8120adfa0e9183843924b9fb43496abf7b028945:${path}`)
+            : transform(original);
     assert.equal(read(path), expected, `${path} contains an unexpected change`);
   }
   for (const path of ['src/services/centralBusinessService.ts','src/services/centralBusinessStorageRuntime.ts','src/services/centralTargetRuntime.ts','src/services/targetService.ts','src/contexts/AuthContext.tsx','src/pages/BookingPipelinePage.tsx','src/pages/TandaTerimaV14Page.tsx','src/pages/DokumenPendukungPage.tsx','src/pages/DokumenAdministrasiReaderPage.tsx','src/pages/AktivitasUniversalPage.tsx','src/pages/MarketingMeetingRoomPage.tsx','src/services/documentHandoverFileStorage.ts']) {
