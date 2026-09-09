@@ -1,0 +1,1 @@
+The target wizard includes annual and twelve-month NB/RN allocation for the directorate, every team, and every personal target. It validates the annual sums and each monthly parent-child balance. The last sibling and leaf allocations are automatic remainders. Existing official data remains unchanged until publication.
