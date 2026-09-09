@@ -1,0 +1,1 @@
+Annual and twelve-month NB/RN setup must be completed for each hierarchy level. Every monthly team budget equals personal plus direct-child allocations. The final sibling and leaf receive exact remainders, and official targets are preserved until explicitly validated and published.
