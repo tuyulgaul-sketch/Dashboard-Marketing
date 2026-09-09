@@ -4,6 +4,7 @@ on:
     branches: [fix/workspace-focus-continuity]
     paths:
       - 'scripts/harden-workspace-continuity.mjs'
+      - 'scripts/repair-workspace-regressions.mjs'
       - 'scripts/test-workspace-continuity.mjs'
       - '.github/workflows/prepare-workspace-continuity.yml'
 permissions:
@@ -18,11 +19,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Apply exact source hardening
+      - name: Apply exact source and regression changes
         run: |
           node --check scripts/harden-workspace-continuity.mjs
-          node --check scripts/test-workspace-continuity.mjs
+          node --check scripts/repair-workspace-regressions.mjs
           node scripts/harden-workspace-continuity.mjs
+          node scripts/repair-workspace-regressions.mjs
       - name: Install locked dependencies
         run: |
           corepack enable
@@ -63,10 +65,10 @@ jobs:
           pnpm exec eslint src/contexts/AuthContext.tsx src/components/common/ReleaseSyncBridge.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
       - name: Production build
         run: pnpm run build
-      - name: Commit verified runtime changes
+      - name: Commit verified runtime and regression changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/contexts/AuthContext.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
+          git add src/contexts/AuthContext.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx scripts/test-workspace-continuity.mjs scripts/prepare-restored-business-fixture.mjs .github/workflows/restored-business-regression.yml
           git commit -m 'fix(marketing): harden focus and year-scoped draft continuity'
           git push origin HEAD:fix/workspace-focus-continuity
