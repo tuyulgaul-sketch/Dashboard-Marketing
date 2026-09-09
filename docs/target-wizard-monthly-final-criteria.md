@@ -1,0 +1,1 @@
+The guided setup must allocate annual and twelve monthly NB/RN targets at every hierarchy level. Monthly parent budgets reconcile with personal and child allocations, final siblings and leaves inherit exact remainders, and approved targets remain unchanged until explicit validated publication.
