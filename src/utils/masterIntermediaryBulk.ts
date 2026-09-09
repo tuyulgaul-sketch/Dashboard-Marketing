@@ -66,7 +66,6 @@ export type BrokerBulkCandidate = {
   fax: string;
   email: string;
   website: string;
-  status: MasterBulkStatus;
   disposition: MasterBulkDisposition;
   issues: MasterBulkIssue[];
 };
@@ -100,19 +99,11 @@ const isoFromParts = (year: number, month: number, day: number): string | null =
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
   if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return null;
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) return null;
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
   return date.toISOString().slice(0, 10);
 };
 
-/**
- * Accepts ISO dates, Indonesian DD/MM/YYYY variants, or an Excel 1900-system
- * serial number. The serial conversion intentionally uses 1899-12-30 so the
- * historical Excel leap-year bug is handled consistently.
- */
+/** Accept ISO, DD/MM/YYYY variants, or an Excel 1900-system serial date. */
 export const normalizeMasterDate = (raw: unknown): string => {
   const value = clean(raw);
   if (!value) return '';
@@ -164,6 +155,11 @@ const sameAgent = (candidate: AgentBulkCandidate, existing: AgentMaster): boolea
   key(candidate.email) === key(existing.email) &&
   candidate.status === existing.status;
 
+/**
+ * Broker equality deliberately excludes the legacy `status` compatibility field.
+ * Broker licensing/authorization is determined by OJK, not by a PertaLife
+ * Active/Inactive flag. Source identity and contact fields remain exact.
+ */
 const sameBroker = (candidate: BrokerBulkCandidate, existing: BrokerMaster): boolean =>
   key(candidate.companyName) === key(existing.companyName) &&
   key(candidate.licenseNumber) === key(existing.licenseNumber) &&
@@ -175,8 +171,7 @@ const sameBroker = (candidate: BrokerBulkCandidate, existing: BrokerMaster): boo
   clean(candidate.phone2) === clean(existing.phone2) &&
   clean(candidate.fax) === clean(existing.fax) &&
   key(candidate.email) === key(existing.email) &&
-  key(candidate.website) === key(existing.website) &&
-  candidate.status === existing.status;
+  key(candidate.website) === key(existing.website);
 
 const summarize = <T extends { disposition: MasterBulkDisposition; issues: MasterBulkIssue[] }>(rows: T[]): MasterBulkReview<T> => ({
   rows,
@@ -271,8 +266,7 @@ export const reviewAgentBulkRows = (
 
 export const reviewBrokerBulkRows = (
   sourceRows: SpreadsheetRow[],
-  existingBrokers: BrokerMaster[],
-  batchStatus: MasterBulkStatus | null
+  existingBrokers: BrokerMaster[]
 ): MasterBulkReview<BrokerBulkCandidate> => {
   const rows: BrokerBulkCandidate[] = sourceRows.map((source, index) => {
     const rowNumber = index + 2;
@@ -289,7 +283,6 @@ export const reviewBrokerBulkRows = (
       fax: clean(source['Nomor Fax']),
       email: clean(source['Alamat Email']),
       website: clean(source.Website),
-      status: batchStatus || 'Inactive',
       disposition: 'ADD',
       issues: [],
     };
@@ -301,7 +294,6 @@ export const reviewBrokerBulkRows = (
       const issue = safeTextIdentity(value, field);
       if (issue) addIssue(candidate, rowNumber, field, issue);
     }
-    if (!batchStatus) addIssue(candidate, rowNumber, 'Status Batch', 'File Broker tidak memiliki kolom status. Pilih status batch secara eksplisit setelah verifikasi sumber; sistem tidak boleh mengasumsikan izin masih aktif.');
     try { candidate.licenseDate = normalizeMasterDate(source['Tanggal Izin Usaha']); }
     catch (error) { addIssue(candidate, rowNumber, 'Tanggal Izin Usaha', error instanceof Error ? error.message : 'Tanggal izin tidak valid.'); }
     if (!validEmail(candidate.email)) addIssue(candidate, rowNumber, 'Alamat Email', 'Format email tidak valid.');

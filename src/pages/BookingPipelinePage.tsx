@@ -367,9 +367,6 @@ export const BookingPipelinePage: React.FC = () => {
   const [brokerSearch, setBrokerSearch] =
     useState('');
 
-  const [brokerStatusFilter, setBrokerStatusFilter] =
-    useState<'ALL' | 'Active' | 'Inactive'>('ALL');
-
   const [editingBroker, setEditingBroker] =
     useState<BrokerMaster | null>(null);
 
@@ -466,8 +463,6 @@ export const BookingPipelinePage: React.FC = () => {
         '',
       website:
         '',
-      status:
-        'Active',
       sourcePeriod:
         'Manual Update',
       sourceName:
@@ -476,13 +471,6 @@ export const BookingPipelinePage: React.FC = () => {
 
   const filteredBrokers =
     brokers
-      .filter(
-        broker =>
-          brokerStatusFilter ===
-            'ALL' ||
-          broker.status ===
-            brokerStatusFilter
-      )
       .filter(
         broker => {
           const query =
@@ -1094,17 +1082,14 @@ export const BookingPipelinePage: React.FC = () => {
               .getBrokers()
               .find(
                 broker =>
-                  broker.id ===
-                    selectedBroker.id &&
-                  broker.status ===
-                    'Active'
+                  broker.id === selectedBroker.id
               );
 
           if (
             !latestBroker
           ) {
             alert(
-              'Broker yang dipilih sudah tidak aktif / tidak tersedia di Master Broker. Pilih broker aktif lainnya.'
+              'Broker yang dipilih sudah tidak tersedia di Master Broker. Pilih broker lainnya.'
             );
 
             return false;
@@ -3788,11 +3773,7 @@ export const BookingPipelinePage: React.FC = () => {
                   variant="outline"
                   className="border-blue-200 bg-blue-50 px-1.5 py-0 text-[9px] font-bold text-blue-700"
                 >
-                  {brokers.filter(
-                    broker =>
-                      broker.status ===
-                      'Active'
-                  ).length}
+                  {brokers.length}
                 </Badge>
               </TabsTrigger>
             )}
@@ -7174,7 +7155,7 @@ export const BookingPipelinePage: React.FC = () => {
                               )}
 
                               <p className="mt-1 text-[10px] text-gray-500">
-                                Daftar hanya menampilkan broker berstatus Active pada Master Broker yang dikelola System Admin.
+                                Daftar broker mengikuti Master Broker. Status perizinan Broker tidak ditetapkan atau dipelihara oleh PertaLife.
                               </p>
 
                             </div>
@@ -7716,7 +7697,7 @@ export const BookingPipelinePage: React.FC = () => {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+                  <div>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                       <Input
@@ -7731,43 +7712,11 @@ export const BookingPipelinePage: React.FC = () => {
                       />
                     </div>
 
-                    <select
-                      value={brokerStatusFilter}
-                      onChange={event =>
-                        setBrokerStatusFilter(
-                          event.target.value as
-                            | 'ALL'
-                            | 'Active'
-                            | 'Inactive'
-                        )
-                      }
-                      className="h-10 rounded-md border border-gray-200 bg-white px-3 text-xs font-semibold"
-                    >
-                      <option value="ALL">Semua Status</option>
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                    <Badge variant="outline">
-                      {filteredBrokers.length} tampil
-                    </Badge>
-                    <span>
-                      {brokers.filter(
-                        broker =>
-                          broker.status ===
-                          'Active'
-                      ).length} Active
-                    </span>
-                    <span>•</span>
-                    <span>
-                      {brokers.filter(
-                        broker =>
-                          broker.status ===
-                          'Inactive'
-                      ).length} Inactive
-                    </span>
+                    <Badge variant="outline">{filteredBrokers.length} broker tampil</Badge>
+                    <span>Status perizinan mengikuti sumber OJK dan tidak dikelola PertaLife.</span>
                   </div>
 
                   <div className="max-h-[620px] overflow-auto rounded-xl border border-gray-200">
@@ -7780,7 +7729,6 @@ export const BookingPipelinePage: React.FC = () => {
                           <th className="p-3">Kota</th>
                           <th className="p-3">Telepon</th>
                           <th className="p-3">Email</th>
-                          <th className="p-3">Status</th>
                           <th className="p-3 text-right">Aksi</th>
                         </tr>
                       </thead>
@@ -7821,19 +7769,6 @@ export const BookingPipelinePage: React.FC = () => {
                                 {broker.email || '-'}
                               </td>
 
-                              <td className="p-3">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    broker.status ===
-                                    'Active'
-                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                                      : 'border-gray-300 bg-gray-100 text-gray-600'
-                                  }
-                                >
-                                  {broker.status}
-                                </Badge>
-                              </td>
 
                               <td className="p-3 text-right">
                                 <div className="flex justify-end gap-1">
@@ -7852,26 +7787,6 @@ export const BookingPipelinePage: React.FC = () => {
                                     Edit
                                   </Button>
 
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      store.setBrokerStatus(
-                                        broker.id,
-                                        broker.status ===
-                                          'Active'
-                                          ? 'Inactive'
-                                          : 'Active'
-                                      )
-                                    }
-                                    className="h-7 text-[10px]"
-                                  >
-                                    {broker.status ===
-                                    'Active'
-                                      ? 'Nonaktifkan'
-                                      : 'Aktifkan'}
-                                  </Button>
 
                                   <Button
                                     type="button"
@@ -7902,7 +7817,7 @@ export const BookingPipelinePage: React.FC = () => {
                   </div>
 
                   <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[10px] text-blue-900">
-                    Perubahan Master Broker tercatat pada Audit Trail. Booking Case hanya menampilkan broker berstatus Active.
+                    Perubahan Master Broker tercatat pada Audit Trail. Status perizinan Broker mengikuti sumber OJK dan tidak ditetapkan oleh PertaLife.
                   </div>
                 </CardContent>
               </Card>
@@ -8230,33 +8145,6 @@ export const BookingPipelinePage: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Status
-                  </label>
-
-                  <select
-                    value={editingBroker.status}
-                    onChange={event =>
-                      setEditingBroker(
-                        previous =>
-                          previous
-                            ? {
-                                ...previous,
-                                status:
-                                  event.target.value as
-                                    | 'Active'
-                                    | 'Inactive',
-                              }
-                            : previous
-                      )
-                    }
-                    className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-xs"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
 
                 <div>
                   <label className="mb-1 block text-xs font-bold text-gray-700">

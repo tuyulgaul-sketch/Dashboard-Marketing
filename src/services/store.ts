@@ -1594,9 +1594,9 @@ class StoreService {
       'BrokerMaster',
       newBroker.id,
       undefined,
-      newBroker.status,
       undefined,
-      `Added broker ${newBroker.companyName}`
+      undefined,
+      `Added broker ${newBroker.companyName}; regulatory status is not maintained by PertaLife`
     );
 
     this.notify();
@@ -1689,41 +1689,15 @@ class StoreService {
       'UPDATE',
       'BrokerMaster',
       updated.id,
-      previous.status,
-      updated.status,
       undefined,
-      `Updated broker ${updated.companyName}`
+      undefined,
+      undefined,
+      `Updated broker ${updated.companyName}; regulatory status is not maintained by PertaLife`
     );
 
     this.notify();
   }
 
-  public setBrokerStatus(
-    brokerId: string,
-    status:
-      | 'Active'
-      | 'Inactive'
-  ) {
-    const broker =
-      this.getBrokers().find(
-        item =>
-          item.id ===
-          brokerId
-      );
-
-    if (
-      !broker
-    ) {
-      throw new Error(
-        'Broker tidak ditemukan.'
-      );
-    }
-
-    this.updateBroker({
-      ...broker,
-      status,
-    });
-  }
 
   public deleteBroker(
     brokerId: string
@@ -1762,10 +1736,10 @@ class StoreService {
       'DELETE',
       'BrokerMaster',
       brokerId,
-      broker.status,
       undefined,
       undefined,
-      `Deleted broker ${broker.companyName}`
+      undefined,
+      `Deleted broker ${broker.companyName}; regulatory status is not maintained by PertaLife`
     );
 
     this.notify();

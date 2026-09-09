@@ -11,7 +11,8 @@ export interface BrokerMaster {
   fax: string;
   email: string;
   website: string;
-  status: 'Active' | 'Inactive';
+  /** Legacy compatibility only; not a PertaLife or OJK license determination. */
+  status?: 'Active' | 'Inactive';
   sourcePeriod: string;
   sourceName: string;
   createdAt?: string;

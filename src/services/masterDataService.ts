@@ -37,7 +37,8 @@ type BrokerRow = {
   fax: string | null;
   email: string | null;
   website: string | null;
-  status: BrokerMaster["status"];
+  /** Legacy compatibility only; never an OJK/PertaLife authorization decision. */
+  status: 'Active' | 'Inactive' | null;
   source_period: string | null;
   source_name: string | null;
   created_at: string;
@@ -88,7 +89,9 @@ const brokerFromRow = (
   fax: row.fax || "",
   email: row.email || "",
   website: row.website || "",
-  status: row.status,
+  // Temporary adapter for the legacy BrokerMaster TypeScript surface only.
+  // UI/business logic must not display or filter on this value.
+  status: row.status || 'Active',
   sourcePeriod: row.source_period || "",
   sourceName: row.source_name || "",
   createdAt: row.created_at,
@@ -117,326 +120,177 @@ export async function listCentralProducts() {
   const { data, error } = await supabase
     .from("master_products")
     .select("*")
-    .order("product_name", {
-      ascending: true,
-    });
-
+    .order("product_name", { ascending: true });
   if (error) throw error;
-
-  return ((data || []) as ProductRow[]).map(
-    productFromRow
-  );
+  return ((data || []) as ProductRow[]).map(productFromRow);
 }
 
 export async function listCentralBrokers() {
   const { data, error } = await supabase
     .from("master_brokers")
     .select("*")
-    .order("company_name", {
-      ascending: true,
-    });
-
+    .order("company_name", { ascending: true });
   if (error) throw error;
-
-  return ((data || []) as BrokerRow[]).map(
-    brokerFromRow
-  );
+  return ((data || []) as BrokerRow[]).map(brokerFromRow);
 }
 
 export async function listCentralAgents() {
   const { data, error } = await supabase
     .from("master_agents")
     .select("*")
-    .order("agent_name", {
-      ascending: true,
-    });
-
+    .order("agent_name", { ascending: true });
   if (error) throw error;
-
-  return ((data || []) as AgentRow[]).map(
-    agentFromRow
-  );
+  return ((data || []) as AgentRow[]).map(agentFromRow);
 }
 
 export async function ensureCentralBrokerBaseline() {
-  const { count, error: countError } =
-    await supabase
-      .from("master_brokers")
-      .select("id", {
-        count: "exact",
-        head: true,
-      });
-
+  const { count, error: countError } = await supabase
+    .from("master_brokers")
+    .select("id", { count: "exact", head: true });
   if (countError) throw countError;
+  if ((count || 0) > 0) return { bootstrapped: false, inserted: 0 };
 
-  if ((count || 0) > 0) {
-    return {
-      bootstrapped: false,
-      inserted: 0,
-    };
-  }
-
-  const { data, error } = await supabase.rpc(
-    "bootstrap_broker_master",
-    {
-      p_rows: BASELINE_BROKERS,
-    }
-  );
-
+  const { data, error } = await supabase.rpc("bootstrap_broker_master", { p_rows: BASELINE_BROKERS });
   if (error) throw error;
-
-  return {
-    bootstrapped: true,
-    inserted: Number(data || 0),
-  };
+  return { bootstrapped: true, inserted: Number(data || 0) };
 }
 
 export async function replaceCentralBrokerBaseline() {
-  const { data, error } = await supabase.rpc(
-    "replace_broker_master_baseline",
-    {
-      p_rows: BASELINE_BROKERS,
-    }
-  );
-
+  const { data, error } = await supabase.rpc("replace_broker_master_baseline", { p_rows: BASELINE_BROKERS });
   if (error) throw error;
-
   return Number(data || 0);
 }
 
-export async function saveCentralProduct(
-  product: ProductMaster
-) {
+export async function saveCentralProduct(product: ProductMaster) {
   const { data, error } = await supabase
     .from("master_products")
-    .upsert(
-      {
-        id: product.id,
-        product_code: product.productCode,
-        product_name: product.productName,
-        insurance_type: product.insuranceType,
-        customer_category:
-          product.customerCategory,
-        status: product.status,
-        effective_date:
-          product.effectiveDate || null,
-        notes: product.notes || null,
-      },
-      {
-        onConflict: "id",
-      }
-    )
+    .upsert({
+      id: product.id,
+      product_code: product.productCode,
+      product_name: product.productName,
+      insurance_type: product.insuranceType,
+      customer_category: product.customerCategory,
+      status: product.status,
+      effective_date: product.effectiveDate || null,
+      notes: product.notes || null,
+    }, { onConflict: "id" })
     .select("*")
     .single();
-
   if (error) throw error;
-
-  return productFromRow(
-    data as ProductRow
-  );
+  return productFromRow(data as ProductRow);
 }
 
-export async function createCentralBroker(
-  broker: BrokerMaster
-) {
+export async function createCentralBroker(broker: BrokerMaster) {
   const { data, error } = await supabase
     .from("master_brokers")
     .insert({
       id: broker.id,
       company_name: broker.companyName,
-      license_number:
-        broker.licenseNumber || null,
-      license_date:
-        broker.licenseDate || null,
+      license_number: broker.licenseNumber || null,
+      license_date: broker.licenseDate || null,
       address: broker.address || null,
       city: broker.city || null,
-      postal_code:
-        broker.postalCode || null,
+      postal_code: broker.postalCode || null,
       phone1: broker.phone1 || null,
       phone2: broker.phone2 || null,
       fax: broker.fax || null,
       email: broker.email || null,
       website: broker.website || null,
-      status: broker.status,
-      source_period:
-        broker.sourcePeriod || null,
-      source_name:
-        broker.sourceName || null,
+      source_period: broker.sourcePeriod || null,
+      source_name: broker.sourceName || null,
     })
     .select("*")
     .single();
-
   if (error) throw error;
-
-  return brokerFromRow(
-    data as BrokerRow
-  );
+  return brokerFromRow(data as BrokerRow);
 }
 
-export async function updateCentralBroker(
-  broker: BrokerMaster
-) {
+export async function updateCentralBroker(broker: BrokerMaster) {
   const { data, error } = await supabase
     .from("master_brokers")
     .update({
       company_name: broker.companyName,
-      license_number:
-        broker.licenseNumber || null,
-      license_date:
-        broker.licenseDate || null,
+      license_number: broker.licenseNumber || null,
+      license_date: broker.licenseDate || null,
       address: broker.address || null,
       city: broker.city || null,
-      postal_code:
-        broker.postalCode || null,
+      postal_code: broker.postalCode || null,
       phone1: broker.phone1 || null,
       phone2: broker.phone2 || null,
       fax: broker.fax || null,
       email: broker.email || null,
       website: broker.website || null,
-      status: broker.status,
-      source_period:
-        broker.sourcePeriod || null,
-      source_name:
-        broker.sourceName || null,
+      source_period: broker.sourcePeriod || null,
+      source_name: broker.sourceName || null,
     })
     .eq("id", broker.id)
     .select("*")
     .single();
-
   if (error) throw error;
-
-  return brokerFromRow(
-    data as BrokerRow
-  );
+  return brokerFromRow(data as BrokerRow);
 }
 
-export async function deleteCentralBroker(
-  brokerId: string
-) {
-  const { error } = await supabase
-    .from("master_brokers")
-    .delete()
-    .eq("id", brokerId);
-
+export async function deleteCentralBroker(brokerId: string) {
+  const { error } = await supabase.from("master_brokers").delete().eq("id", brokerId);
   if (error) throw error;
 }
 
-export async function createCentralAgent(
-  agent: AgentMaster
-) {
+export async function createCentralAgent(agent: AgentMaster) {
   const { data, error } = await supabase
     .from("master_agents")
     .insert({
       id: agent.id,
       agent_code: agent.agentCode,
       agent_name: agent.agentName,
-      insurance_company:
-        agent.insuranceCompany,
-      license_number:
-        agent.licenseNumber || null,
-      license_date:
-        agent.licenseDate || null,
-      license_expiry_date:
-        agent.licenseExpiryDate || null,
+      insurance_company: agent.insuranceCompany,
+      license_number: agent.licenseNumber || null,
+      license_date: agent.licenseDate || null,
+      license_expiry_date: agent.licenseExpiryDate || null,
       email: agent.email || null,
       status: agent.status,
-      source_period:
-        agent.sourcePeriod || null,
-      source_name:
-        agent.sourceName || null,
+      source_period: agent.sourcePeriod || null,
+      source_name: agent.sourceName || null,
     })
     .select("*")
     .single();
-
   if (error) throw error;
-
-  return agentFromRow(
-    data as AgentRow
-  );
+  return agentFromRow(data as AgentRow);
 }
 
-export async function updateCentralAgent(
-  agent: AgentMaster
-) {
+export async function updateCentralAgent(agent: AgentMaster) {
   const { data, error } = await supabase
     .from("master_agents")
     .update({
       agent_code: agent.agentCode,
       agent_name: agent.agentName,
-      insurance_company:
-        agent.insuranceCompany,
-      license_number:
-        agent.licenseNumber || null,
-      license_date:
-        agent.licenseDate || null,
-      license_expiry_date:
-        agent.licenseExpiryDate || null,
+      insurance_company: agent.insuranceCompany,
+      license_number: agent.licenseNumber || null,
+      license_date: agent.licenseDate || null,
+      license_expiry_date: agent.licenseExpiryDate || null,
       email: agent.email || null,
       status: agent.status,
-      source_period:
-        agent.sourcePeriod || null,
-      source_name:
-        agent.sourceName || null,
+      source_period: agent.sourcePeriod || null,
+      source_name: agent.sourceName || null,
     })
     .eq("id", agent.id)
     .select("*")
     .single();
-
   if (error) throw error;
-
-  return agentFromRow(
-    data as AgentRow
-  );
+  return agentFromRow(data as AgentRow);
 }
 
-export async function deleteCentralAgent(
-  agentId: string
-) {
-  const { error } = await supabase
-    .from("master_agents")
-    .delete()
-    .eq("id", agentId);
-
+export async function deleteCentralAgent(agentId: string) {
+  const { error } = await supabase.from("master_agents").delete().eq("id", agentId);
   if (error) throw error;
 }
 
-export function subscribeCentralMasterData(
-  onChange: () => void
-) {
+export function subscribeCentralMasterData(onChange: () => void) {
   const channel = supabase
-    .channel(
-      `central-master-data-${crypto.randomUUID()}`
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "master_products",
-      },
-      onChange
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "master_brokers",
-      },
-      onChange
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "master_agents",
-      },
-      onChange
-    )
+    .channel(`central-master-data-${crypto.randomUUID()}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "master_products" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "master_brokers" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "master_agents" }, onChange)
     .subscribe();
 
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return () => { void supabase.removeChannel(channel); };
 }

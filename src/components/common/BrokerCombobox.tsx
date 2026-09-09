@@ -29,44 +29,20 @@ export const BrokerCombobox:
     placeholder =
       'Ketik atau pilih broker...',
   }) => {
-    const [
-      brokers,
-      setBrokers,
-    ] = useState<BrokerMaster[]>(
-      store
-        .getBrokers()
-        .filter(
-          broker =>
-            broker.status ===
-            'Active'
-        )
-    );
+    const [brokers, setBrokers] =
+      useState<BrokerMaster[]>(store.getBrokers());
 
-    const [
-      query,
-      setQuery,
-    ] = useState('');
+    const [query, setQuery] =
+      useState('');
 
-    const [
-      open,
-      setOpen,
-    ] = useState(false);
+    const [open, setOpen] =
+      useState(false);
 
     const rootRef =
       useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-      const refresh = () =>
-        setBrokers(
-          store
-            .getBrokers()
-            .filter(
-              broker =>
-                broker.status ===
-                'Active'
-            )
-        );
-
+      const refresh = () => setBrokers(store.getBrokers());
       refresh();
       return store.subscribe(refresh);
     }, []);
@@ -209,7 +185,7 @@ export const BrokerCombobox:
             </div>
 
             <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 text-[10px] text-gray-500">
-              {brokers.length} broker aktif tersedia • baseline OJK Triwulan III 2025
+              {brokers.length} broker tersedia • data izin mengikuti sumber OJK
             </div>
           </div>
         )}
