@@ -1,0 +1,1 @@
+The wizard must collect annual and twelve-month NB/RN allocations throughout the hierarchy. Each monthly parent budget equals personal plus direct-child allocations. The final sibling and leaf inherit exact remaining monthly amounts. Existing official targets must remain unchanged until explicit publication.
