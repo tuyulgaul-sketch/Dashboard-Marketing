@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { AgentBulkCandidate, BrokerBulkCandidate, MasterBulkStatus } from '@/utils/masterIntermediaryBulk';
+import type { AgentBulkCandidate, BrokerBulkCandidate } from '@/utils/masterIntermediaryBulk';
 
 export type MasterBulkImportResult = {
   inserted: number;
@@ -47,7 +47,6 @@ export const bulkAddCentralAgents = async (
 
 export const bulkAddCentralBrokers = async (
   rows: BrokerBulkCandidate[],
-  batchStatus: MasterBulkStatus,
   sourceName: string,
   sourcePeriod: string
 ): Promise<MasterBulkImportResult> => {
@@ -69,7 +68,6 @@ export const bulkAddCentralBrokers = async (
 
   const { data, error } = await supabase.rpc('bulk_add_master_brokers', {
     p_rows: payload,
-    p_status: batchStatus,
     p_source_name: sourceName,
     p_source_period: sourcePeriod,
   });
