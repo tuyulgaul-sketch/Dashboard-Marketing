@@ -1,0 +1,85 @@
+name: Finalize Broker OJK correction
+
+on:
+  push:
+    branches: [fix/broker-ojk-status-semantics]
+    paths: [.github/workflows/finalize-broker-ojk-correction.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/broker-ojk-status-semantics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Remove Broker status semantics from manual workflow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_exact(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} occurrence(s), found {actual}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, count))
+
+          page = 'src/pages/BookingPipelinePage.tsx'
+          replace_exact(page, "  const [brokerStatusFilter, setBrokerStatusFilter] =\n    useState<'ALL' | 'Active' | 'Inactive'>('ALL');\n\n", "")
+          replace_exact(page, "      status:\n        'Active',\n", "", 1)
+          replace_exact(page, "  const filteredBrokers =\n    brokers\n      .filter(\n        broker =>\n          brokerStatusFilter ===\n            'ALL' ||\n          broker.status ===\n            brokerStatusFilter\n      )\n      .filter(\n        broker => {", "  const filteredBrokers =\n    brokers\n      .filter(\n        broker => {")
+          replace_exact(page, "'Broker yang dipilih sudah tidak aktif / tidak tersedia di Master Broker. Pilih broker aktif lainnya.'", "'Broker yang dipilih sudah tidak tersedia di Master Broker. Pilih broker lainnya.'")
+          replace_exact(page, "Daftar hanya menampilkan broker berstatus Active pada Master Broker yang dikelola System Admin.", "Daftar broker mengikuti Master Broker. Status perizinan Broker tidak ditetapkan atau dipelihara oleh PertaLife.")
+          replace_exact(page, "                  {brokers.filter(\n                    broker =>\n                      broker.status ===\n                      'Active'\n                  ).length}", "                  {brokers.length}")
+          replace_exact(page, "                  <div className=\"grid gap-3 md:grid-cols-[1fr_220px]\">", "                  <div>", 1)
+          old_filter = '''\n                    <select\n                      value={brokerStatusFilter}\n                      onChange={event =>\n                        setBrokerStatusFilter(\n                          event.target.value as\n                            | 'ALL'\n                            | 'Active'\n                            | 'Inactive'\n                        )\n                      }\n                      className=\"h-10 rounded-md border border-gray-200 bg-white px-3 text-xs font-semibold\"\n                    >\n                      <option value=\"ALL\">Semua Status</option>\n                      <option value=\"Active\">Active</option>\n                      <option value=\"Inactive\">Inactive</option>\n                    </select>'''
+          replace_exact(page, old_filter, '')
+          old_summary = '''                  <div className=\"flex flex-wrap items-center gap-2 text-[11px] text-gray-500\">\n                    <Badge variant=\"outline\">\n                      {filteredBrokers.length} tampil\n                    </Badge>\n                    <span>\n                      {brokers.filter(\n                        broker =>\n                          broker.status ===\n                          'Active'\n                      ).length} Active\n                    </span>\n                    <span>•</span>\n                    <span>\n                      {brokers.filter(\n                        broker =>\n                          broker.status ===\n                          'Inactive'\n                      ).length} Inactive\n                    </span>\n                  </div>'''
+          new_summary = '''                  <div className=\"flex flex-wrap items-center gap-2 text-[11px] text-gray-500\">\n                    <Badge variant=\"outline\">{filteredBrokers.length} broker tampil</Badge>\n                    <span>Status perizinan mengikuti sumber OJK dan tidak dikelola PertaLife.</span>\n                  </div>'''
+          replace_exact(page, old_summary, new_summary)
+          replace_exact(page, "                          <th className=\"p-3\">Status</th>\n", "", 1)
+          old_badge = '''\n                              <td className=\"p-3\">\n                                <Badge\n                                  variant=\"outline\"\n                                  className={\n                                    broker.status ===\n                                    'Active'\n                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'\n                                      : 'border-gray-300 bg-gray-100 text-gray-600'\n                                  }\n                                >\n                                  {broker.status}\n                                </Badge>\n                              </td>\n'''
+          replace_exact(page, old_badge, '\n')
+          old_toggle = '''\n                                  <Button\n                                    type=\"button\"\n                                    variant=\"outline\"\n                                    size=\"sm\"\n                                    onClick={() =>\n                                      store.setBrokerStatus(\n                                        broker.id,\n                                        broker.status ===\n                                          'Active'\n                                          ? 'Inactive'\n                                          : 'Active'\n                                      )\n                                    }\n                                    className=\"h-7 text-[10px]\"\n                                  >\n                                    {broker.status ===\n                                    'Active'\n                                      ? 'Nonaktifkan'\n                                      : 'Aktifkan'}\n                                  </Button>\n'''
+          replace_exact(page, old_toggle, '\n')
+          replace_exact(page, "Perubahan Master Broker tercatat pada Audit Trail. Booking Case hanya menampilkan broker berstatus Active.", "Perubahan Master Broker tercatat pada Audit Trail. Status perizinan Broker mengikuti sumber OJK dan tidak ditetapkan oleh PertaLife.")
+          old_modal_status = '''\n                <div>\n                  <label className=\"mb-1 block text-xs font-bold text-gray-700\">\n                    Status\n                  </label>\n\n                  <select\n                    value={editingBroker.status}\n                    onChange={event =>\n                      setEditingBroker(\n                        previous =>\n                          previous\n                            ? {\n                                ...previous,\n                                status:\n                                  event.target.value as\n                                    | 'Active'\n                                    | 'Inactive',\n                              }\n                            : previous\n                      )\n                    }\n                    className=\"h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-xs\"\n                  >\n                    <option value=\"Active\">Active</option>\n                    <option value=\"Inactive\">Inactive</option>\n                  </select>\n                </div>\n'''
+          replace_exact(page, old_modal_status, '\n')
+
+          broker_data = 'src/data/brokerMasterData.ts'
+          replace_exact(broker_data, "  status: 'Active' | 'Inactive';", "  /** Legacy compatibility only; not a PertaLife or OJK license determination. */\n  status?: 'Active' | 'Inactive';")
+
+          store = 'src/services/store.ts'
+          replace_exact(store, "      newBroker.status,\n      undefined,\n      `Added broker ${newBroker.companyName}`", "      undefined,\n      undefined,\n      `Added broker ${newBroker.companyName}; regulatory status is not maintained by PertaLife`")
+          replace_exact(store, "      previous.status,\n      updated.status,\n      undefined,\n      `Updated broker ${updated.companyName}`", "      undefined,\n      undefined,\n      undefined,\n      `Updated broker ${updated.companyName}; regulatory status is not maintained by PertaLife`")
+          old_method = '''\n  public setBrokerStatus(\n    brokerId: string,\n    status:\n      | 'Active'\n      | 'Inactive'\n  ) {\n    const broker =\n      this.getBrokers().find(\n        item =>\n          item.id ===\n          brokerId\n      );\n\n    if (\n      !broker\n    ) {\n      throw new Error(\n        'Broker tidak ditemukan.'\n      );\n    }\n\n    this.updateBroker({\n      ...broker,\n      status,\n    });\n  }\n'''
+          replace_exact(store, old_method, '\n')
+          replace_exact(store, "      broker.status,\n      undefined,\n      undefined,\n      `Deleted broker ${broker.companyName}`", "      undefined,\n      undefined,\n      undefined,\n      `Deleted broker ${broker.companyName}; regulatory status is not maintained by PertaLife`")
+
+          test = 'scripts/test-master-intermediary-bulk.mjs'
+          p = Path(test)
+          text = p.read_text()
+          anchor = "const masterService = readFileSync('src/services/masterDataService.ts', 'utf8');\n"
+          if "const bookingPage =" not in text:
+              text = text.replace(anchor, anchor + "const bookingPage = readFileSync('src/pages/BookingPipelinePage.tsx', 'utf8');\nconst legacyStore = readFileSync('src/services/store.ts', 'utf8');\nconst brokerData = readFileSync('src/data/brokerMasterData.ts', 'utf8');\n")
+          marker = "  assert.doesNotMatch(page, /Daftar Agent\\.xlsx|Daftar Broker\\.xlsx/);\n});"
+          replacement = """  assert.doesNotMatch(page, /Daftar Agent\\.xlsx|Daftar Broker\\.xlsx/);\n  assert.doesNotMatch(bookingPage, /brokerStatusFilter|setBrokerStatus|editingBroker\\.status|broker\\.status ===/);\n  assert.doesNotMatch(bookingPage, /Broker.*berstatus Active|broker berstatus Active/i);\n  assert.doesNotMatch(legacyStore, /public setBrokerStatus\\(/);\n  assert.match(brokerData, /Legacy compatibility only; not a PertaLife or OJK license determination/);\n});"""
+          if marker not in text:
+              raise SystemExit('test assertion anchor not found')
+          p.write_text(text.replace(marker, replacement, 1))
+
+          Path('.github/workflows/finalize-broker-ojk-correction.yml').unlink()
+      - name: Commit finalized correction
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/BookingPipelinePage.tsx src/services/store.ts src/data/brokerMasterData.ts scripts/test-master-intermediary-bulk.mjs .github/workflows/finalize-broker-ojk-correction.yml
+          git commit -m "fix(master): remove Broker status from manual workflows"
+          git push origin HEAD:fix/broker-ojk-status-semantics
