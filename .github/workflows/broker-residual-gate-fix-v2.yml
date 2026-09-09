@@ -1,0 +1,34 @@
+name: Broker residual gate fix v2
+on:
+  push:
+    branches:
+      - fix/broker-ojk-status-semantics
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/broker-ojk-status-semantics
+          fetch-depth: 0
+      - name: Remove residual Broker Active predicate
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p=Path('src/pages/BookingPipelinePage.tsx')
+          s=p.read_text()
+          pattern=r"broker\.id\s*===\s*selectedBroker\.id\s*&&\s*broker\.status\s*===\s*'Active'"
+          n=len(re.findall(pattern,s))
+          if n != 1:
+              raise SystemExit(f'expected exactly one residual predicate, found {n}')
+          p.write_text(re.sub(pattern,"broker.id === selectedBroker.id",s,count=1))
+      - name: Commit source patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/BookingPipelinePage.tsx
+          git commit -m "fix(master): remove residual Broker status gate"
+          git push origin HEAD:fix/broker-ojk-status-semantics
