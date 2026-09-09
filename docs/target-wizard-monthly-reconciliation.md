@@ -1,0 +1,1 @@
+Each wizard node has annual and twelve monthly NB/RN budgets. Parent monthly budgets must equal personal plus direct-child budgets. The final sibling inherits the remainder independently for every month and NB/RN, while a leaf receives its full budget as personal. Existing official monthly distributions must not be redistributed or published automatically.
