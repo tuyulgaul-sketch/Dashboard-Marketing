@@ -31,6 +31,9 @@ const correctionSql = readFileSync('supabase/migrations/20260909_broker_ojk_stat
 const page = readFileSync('src/pages/MasterIntermediaryBulkImportPage.tsx', 'utf8');
 const brokerCombobox = readFileSync('src/components/common/BrokerCombobox.tsx', 'utf8');
 const masterService = readFileSync('src/services/masterDataService.ts', 'utf8');
+const bookingPage = readFileSync('src/pages/BookingPipelinePage.tsx', 'utf8');
+const legacyStore = readFileSync('src/services/store.ts', 'utf8');
+const brokerData = readFileSync('src/data/brokerMasterData.ts', 'utf8');
 const app = readFileSync('src/App.tsx', 'utf8');
 const sidebar = readFileSync('src/components/layout/AppSidebar.tsx', 'utf8');
 
@@ -173,4 +176,8 @@ test('UI exposes Agent status only; Broker picker and service do not use status 
   assert.match(page, /Import Data Baru/);
   assert.doesNotMatch(page, /localStorage|sessionStorage/);
   assert.doesNotMatch(page, /Daftar Agent\.xlsx|Daftar Broker\.xlsx/);
+  assert.doesNotMatch(bookingPage, /brokerStatusFilter|setBrokerStatus|editingBroker\.status|broker\.status ===/);
+  assert.doesNotMatch(bookingPage, /Broker.*berstatus Active|broker berstatus Active/i);
+  assert.doesNotMatch(legacyStore, /public setBrokerStatus\(/);
+  assert.match(brokerData, /Legacy compatibility only; not a PertaLife or OJK license determination/);
 });
