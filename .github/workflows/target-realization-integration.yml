@@ -71,13 +71,13 @@ jobs:
           for(const [path,expected] of Object.entries(snapshot)) assert.equal(readFileSync(path,'utf8'),expected,`Live feature changed: ${path}`);
           console.log('Existing live feature files preserved, including Tanda Terima photo preview.');
           NODE
-      - name: Prepare approved archive navigation fixture
-        run: node scripts/prepare-official-archive-regression.mjs
       - name: Run navigation, upload guard and existing regressions
         run: |
           node scripts/test-bulk-pipeline-single-workflow.mjs
-          # Preserve the released photo-preview feature byte-for-byte; its
-          # one-time integration fixture requires a separate jsdom setup.
+          # The upload workspace is pinned directly to the approved main SHA in
+          # test-target-realization-navigation.mjs. Do not re-apply historical
+          # archive/on-screen transforms here; doing so double-transforms the
+          # already released workspace and produces a false regression.
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \
