@@ -1,0 +1,1 @@
+The guided setup must allocate annual and all twelve monthly NB/RN targets at every hierarchy level. Each month's team budget equals personal plus direct-child budgets. The last sibling and leaf inherit exact remainders. Approved monthly distributions remain unchanged until intentionally edited and published.
