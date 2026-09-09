@@ -1,211 +1,45 @@
-name: Broker correction finalizer
+name: Master intermediary bulk regression
 
 on:
   pull_request:
     paths:
+      - 'src/utils/masterIntermediaryBulk.ts'
+      - 'src/services/masterIntermediaryBulkService.ts'
+      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
+      - 'src/App.tsx'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
+      - 'scripts/test-master-intermediary-bulk.mjs'
+      - '.github/workflows/master-intermediary-bulk-regression.yml'
+  push:
+    branches:
+      - feat/agent-broker-bulk-import
+    paths:
+      - 'src/utils/masterIntermediaryBulk.ts'
+      - 'src/services/masterIntermediaryBulkService.ts'
+      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
+      - 'src/App.tsx'
+      - 'src/components/layout/AppSidebar.tsx'
+      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
+      - 'scripts/test-master-intermediary-bulk.mjs'
       - '.github/workflows/master-intermediary-bulk-regression.yml'
 
-permissions:
-  contents: write
-
 jobs:
-  finalize:
-    runs-on: ubuntu-latest
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          ref: fix/broker-ojk-status-semantics
-          fetch-depth: 0
-      - name: Remove Broker status semantics from manual workflow
-        shell: python
+          node-version: 24
+      - name: Install locked dependencies
         run: |
-          from pathlib import Path
-
-          def replace_exact(path, old, new, count=1):
-              p = Path(path)
-              text = p.read_text()
-              actual = text.count(old)
-              if actual != count:
-                  raise SystemExit(f'{path}: expected {count} occurrence(s), found {actual}: {old[:80]!r}')
-              p.write_text(text.replace(old, new, count))
-
-          page = 'src/pages/BookingPipelinePage.tsx'
-          replace_exact(page, "  const [brokerStatusFilter, setBrokerStatusFilter] =\n    useState<'ALL' | 'Active' | 'Inactive'>('ALL');\n\n", "")
-          replace_exact(page, "      status:\n        'Active',\n", "", 1)
-          replace_exact(page, "  const filteredBrokers =\n    brokers\n      .filter(\n        broker =>\n          brokerStatusFilter ===\n            'ALL' ||\n          broker.status ===\n            brokerStatusFilter\n      )\n      .filter(\n        broker => {", "  const filteredBrokers =\n    brokers\n      .filter(\n        broker => {")
-          replace_exact(page, "'Broker yang dipilih sudah tidak aktif / tidak tersedia di Master Broker. Pilih broker aktif lainnya.'", "'Broker yang dipilih sudah tidak tersedia di Master Broker. Pilih broker lainnya.'")
-          replace_exact(page, "Daftar hanya menampilkan broker berstatus Active pada Master Broker yang dikelola System Admin.", "Daftar broker mengikuti Master Broker. Status perizinan Broker tidak ditetapkan atau dipelihara oleh PertaLife.")
-          replace_exact(page, "                  {brokers.filter(\n                    broker =>\n                      broker.status ===\n                      'Active'\n                  ).length}", "                  {brokers.length}")
-          replace_exact(page, "                  <div className=\"grid gap-3 md:grid-cols-[1fr_220px]\">", "                  <div>", 1)
-          old_filter = '''
-                    <select
-                      value={brokerStatusFilter}
-                      onChange={event =>
-                        setBrokerStatusFilter(
-                          event.target.value as
-                            | 'ALL'
-                            | 'Active'
-                            | 'Inactive'
-                        )
-                      }
-                      className="h-10 rounded-md border border-gray-200 bg-white px-3 text-xs font-semibold"
-                    >
-                      <option value="ALL">Semua Status</option>
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>'''
-          replace_exact(page, old_filter, '')
-          old_summary = '''                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                    <Badge variant="outline">
-                      {filteredBrokers.length} tampil
-                    </Badge>
-                    <span>
-                      {brokers.filter(
-                        broker =>
-                          broker.status ===
-                          'Active'
-                      ).length} Active
-                    </span>
-                    <span>•</span>
-                    <span>
-                      {brokers.filter(
-                        broker =>
-                          broker.status ===
-                          'Inactive'
-                      ).length} Inactive
-                    </span>
-                  </div>'''
-          replace_exact(page, old_summary, '''                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                    <Badge variant="outline">{filteredBrokers.length} broker tampil</Badge>
-                    <span>Status perizinan mengikuti sumber OJK dan tidak dikelola PertaLife.</span>
-                  </div>''')
-          replace_exact(page, "                          <th className=\"p-3\">Status</th>\n", "", 1)
-          old_badge = '''
-                              <td className="p-3">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    broker.status ===
-                                    'Active'
-                                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                                      : 'border-gray-300 bg-gray-100 text-gray-600'
-                                  }
-                                >
-                                  {broker.status}
-                                </Badge>
-                              </td>
-'''
-          replace_exact(page, old_badge, '\n')
-          old_toggle = '''
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      store.setBrokerStatus(
-                                        broker.id,
-                                        broker.status ===
-                                          'Active'
-                                          ? 'Inactive'
-                                          : 'Active'
-                                      )
-                                    }
-                                    className="h-7 text-[10px]"
-                                  >
-                                    {broker.status ===
-                                    'Active'
-                                      ? 'Nonaktifkan'
-                                      : 'Aktifkan'}
-                                  </Button>
-'''
-          replace_exact(page, old_toggle, '\n')
-          replace_exact(page, "Perubahan Master Broker tercatat pada Audit Trail. Booking Case hanya menampilkan broker berstatus Active.", "Perubahan Master Broker tercatat pada Audit Trail. Status perizinan Broker mengikuti sumber OJK dan tidak ditetapkan oleh PertaLife.")
-          old_modal_status = '''
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Status
-                  </label>
-
-                  <select
-                    value={editingBroker.status}
-                    onChange={event =>
-                      setEditingBroker(
-                        previous =>
-                          previous
-                            ? {
-                                ...previous,
-                                status:
-                                  event.target.value as
-                                    | 'Active'
-                                    | 'Inactive',
-                              }
-                            : previous
-                      )
-                    }
-                    className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-xs"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
-'''
-          replace_exact(page, old_modal_status, '\n')
-
-          broker_data = 'src/data/brokerMasterData.ts'
-          replace_exact(broker_data, "  status: 'Active' | 'Inactive';", "  /** Legacy compatibility only; not a PertaLife or OJK license determination. */\n  status?: 'Active' | 'Inactive';")
-
-          store = 'src/services/store.ts'
-          replace_exact(store, "      newBroker.status,\n      undefined,\n      `Added broker ${newBroker.companyName}`", "      undefined,\n      undefined,\n      `Added broker ${newBroker.companyName}; regulatory status is not maintained by PertaLife`")
-          replace_exact(store, "      previous.status,\n      updated.status,\n      undefined,\n      `Updated broker ${updated.companyName}`", "      undefined,\n      undefined,\n      undefined,\n      `Updated broker ${updated.companyName}; regulatory status is not maintained by PertaLife`")
-          old_method = '''
-  public setBrokerStatus(
-    brokerId: string,
-    status:
-      | 'Active'
-      | 'Inactive'
-  ) {
-    const broker =
-      this.getBrokers().find(
-        item =>
-          item.id ===
-          brokerId
-      );
-
-    if (
-      !broker
-    ) {
-      throw new Error(
-        'Broker tidak ditemukan.'
-      );
-    }
-
-    this.updateBroker({
-      ...broker,
-      status,
-    });
-  }
-'''
-          replace_exact(store, old_method, '\n')
-          replace_exact(store, "      broker.status,\n      undefined,\n      undefined,\n      `Deleted broker ${broker.companyName}`", "      undefined,\n      undefined,\n      undefined,\n      `Deleted broker ${broker.companyName}; regulatory status is not maintained by PertaLife`")
-
-          test = Path('scripts/test-master-intermediary-bulk.mjs')
-          text = test.read_text()
-          anchor = "const masterService = readFileSync('src/services/masterDataService.ts', 'utf8');\n"
-          if "const bookingPage =" not in text:
-              text = text.replace(anchor, anchor + "const bookingPage = readFileSync('src/pages/BookingPipelinePage.tsx', 'utf8');\nconst legacyStore = readFileSync('src/services/store.ts', 'utf8');\nconst brokerData = readFileSync('src/data/brokerMasterData.ts', 'utf8');\n")
-          marker = "  assert.doesNotMatch(page, /Daftar Agent\\.xlsx|Daftar Broker\\.xlsx/);\n});"
-          replacement = """  assert.doesNotMatch(page, /Daftar Agent\\.xlsx|Daftar Broker\\.xlsx/);\n  assert.doesNotMatch(bookingPage, /brokerStatusFilter|setBrokerStatus|editingBroker\\.status|broker\\.status ===/);\n  assert.doesNotMatch(bookingPage, /Broker.*berstatus Active|broker berstatus Active/i);\n  assert.doesNotMatch(legacyStore, /public setBrokerStatus\\(/);\n  assert.match(brokerData, /Legacy compatibility only; not a PertaLife or OJK license determination/);\n});"""
-          if marker not in text:
-              raise SystemExit('test assertion anchor not found')
-          test.write_text(text.replace(marker, replacement, 1))
-
-          Path('.github/workflows/finalize-broker-ojk-correction.yml').unlink(missing_ok=True)
-      - name: Restore normal regression workflow and commit
-        run: |
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/master-intermediary-bulk-regression.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "fix(master): remove Broker status from manual workflows"
-          git push origin HEAD:fix/broker-ojk-status-semantics
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Sanitized Agent Broker regression
+        run: node --test scripts/test-master-intermediary-bulk.mjs
+      - name: Production build
+        run: pnpm run build
