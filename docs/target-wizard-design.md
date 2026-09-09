@@ -1,0 +1,3 @@
+# Guided target cascading requirements
+
+The wizard must collect annual NB and RN and all twelve monthly NB/RN allocations. Annual totals alone are not sufficient. It must preserve existing official targets until explicit publication, use the active User Master hierarchy, allocate personal targets before subordinate budgets, assign the final sibling's remainder automatically for each month, and assign a leaf's entire budget to personal targets. All twelve months must balance independently for NB and RN, and annual totals must equal the sum of monthly values. Existing approved monthly distributions must never be replaced with an assumed equal distribution. A new distribution can be entered deliberately, with exact-rupiah validation and safe review before publication.
