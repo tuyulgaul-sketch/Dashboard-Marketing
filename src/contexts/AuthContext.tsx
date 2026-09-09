@@ -34,6 +34,10 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const authoritySignature = (profile: AuthProfile) => JSON.stringify([
+  profile.id, profile.auth_user_id, profile.role_level, profile.unit,
+  profile.department, profile.manager_id, profile.legacy_user_id, profile.active,
+]);
 const clearLiteRuntime = () => {
   clearCentralBusinessRuntime();
   clearCentralUserRuntime();
@@ -97,9 +101,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadProfile = useCallback(async (currentSession: Session, version: number, background = false, forceDirectory = false) => {
     const isCurrent = () => generation.current === version && sessionRef.current?.user.id === currentSession.user.id;
-    const { data, error } = await supabase.from('profiles')
+    const { data, error } = await Promise.resolve(supabase.from('profiles')
       .select('id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active')
-      .eq('auth_user_id', currentSession.user.id).eq('active', true).single();
+      .eq('auth_user_id', currentSession.user.id).eq('active', true).single()).catch(error => ({ data: null, error }));
     if (!isCurrent()) return;
     if (error || !data || data.auth_user_id !== currentSession.user.id || !data.active) {
       console.error('Profile tidak ditemukan:', error);
@@ -119,11 +123,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const authProfile = data as AuthProfile;
     const previous = profileRef.current;
     const unchanged = Boolean(previous && JSON.stringify(previous) === JSON.stringify(authProfile));
-    if (background && unchanged) {
-      // Refresh only the authoritative directory when its revision changed.
-      // Token renewal and window focus must not clear business runtimes or forms.
-      if (forceDirectory) await syncCentralUserRuntime(authProfile);
+    const sameAuthority = Boolean(previous && authoritySignature(previous) === authoritySignature(authProfile));
+    if (background && sameAuthority) {
+      // Display-only changes and directory revisions do not rebuild business
+      // runtimes. Keep the active forms mounted and refresh only the directory.
+      try {
+        if (forceDirectory || !unchanged) await syncCentralUserRuntime(authProfile);
+        if (isCurrent() && !unchanged) updateProfile(authProfile);
+      } catch (refreshError) {
+        console.error('Directory refresh failed:', refreshError);
+      }
       return;
+    }
+    if (background && previous && !sameAuthority) {
+      // A genuine role, hierarchy or account change must not retain the old
+      // authorization while the new authoritative runtime is being loaded.
+      updateProfile(null);
+      setRestoredBusinessReady(false);
+      clearLiteRuntime();
     }
     try {
       await syncGlobalResetState();
@@ -147,8 +164,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshAuthenticatedProfile = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) return;
-    if (refreshing.current) return refreshing.current;
-    const task = loadProfile(current, generation.current, true, true);
+    const version = generation.current;
+    const previousTask = refreshing.current;
+    if (previousTask) {
+      // A directory revision must not be dropped just because a token check
+      // is in flight. Wait, then perform the requested authoritative refresh.
+      await previousTask.catch(error => { console.error('Profile refresh failed:', error); });
+      if (generation.current !== version || sessionRef.current?.user.id !== current.user.id) return;
+    }
+    const task = loadProfile(sessionRef.current!, version, true, true);
     refreshing.current = task;
     try { await task; } finally { if (refreshing.current === task) refreshing.current = null; }
   }, [loadProfile]);
@@ -172,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!refreshing.current) {
           const task = loadProfile(next, generation.current, true);
           refreshing.current = task;
-          void task.finally(() => { if (refreshing.current === task) refreshing.current = null; });
+          void task.catch(error => { console.error('Profile refresh failed:', error); }).finally(() => { if (refreshing.current === task) refreshing.current = null; });
         }
         return;
       }

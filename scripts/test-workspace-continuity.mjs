@@ -72,7 +72,7 @@ test('changed authority, inactive users, signout and explicit reset remain prote
   assert.equal(state.profile.legacy_user_id, 'USR-000099');
   f.setProfile(null); await state.refreshAuthenticatedProfile(); state = f.render();
   assert.equal(state.profile, null); assert.equal(state.restoredBusinessReady, false);
-  f.event('SIGNED_IN', session('auth-1')); f.setProfile(profile()); await settle(); state = f.render();
+  f.setProfile(profile()); f.event('SIGNED_IN', session('auth-1')); await settle(); state = f.render();
   f.reset(); for (const timer of f.intervals.values()) await timer();
   assert.equal(f.reloads(), 1, 'only explicit global reset may reload');
   f.event('SIGNED_OUT', null); state = f.render();
@@ -98,7 +98,7 @@ const wizardFixture = saved => {
   const render = () => h.render(Wizard, { publisherAuthorized: true });
   const walk = (node, predicate) => { if (node === null || node === undefined || typeof node === 'boolean') return null; if (Array.isArray(node)) { for (const child of node) { const found = walk(child,predicate); if (found) return found; } return null; } if (typeof node !== 'object') return null; if (predicate(node)) return node; return walk(node.props?.children,predicate); };
   const text = node => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(text).join('') : node?.props ? text(node.props.children) : '';
-  const find = (root, type, label) => walk(root, node => node.type === type && (!label || text(node).includes(label)));
+  const find = (root, type, label) => walk(root, node => node.type === type && (!label || text(node).trim() === label));
   return { render, find, walk, text, storage: sessionStorage, listeners, cleanup: h.cleanup };
 };
 
@@ -109,6 +109,7 @@ test('wizard opens only on click and restores unconfirmed NB/RN, exact step and 
   assert.equal(f.find(view,'Dialog').props.open,true);
   const input = label => f.walk(view, node => node.type === 'Input' && node.props['aria-label'] === label);
   input('Target tim tahunan NB').props.onChange({ target: { value: '100' } });
+  view = f.render();
   input('Target tim tahunan RN').props.onChange({ target: { value: '20' } });
   view = f.render(); f.find(view,'Button','Lanjut').props.onClick(); view = f.render();
   const monthly = f.walk(view, node => typeof node.type === 'function' && node.type.name === 'MonthlyEditor');

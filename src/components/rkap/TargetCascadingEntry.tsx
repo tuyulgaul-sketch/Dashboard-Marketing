@@ -14,7 +14,7 @@ const TargetCascadingEntry: React.FC<{ publisherAuthorized: boolean }> = ({ publ
       <p className="text-xs text-slate-500">Setup terpandu menjadi alur utama. Editor manual tetap tersedia untuk kebutuhan khusus.</p>
       <Button size="sm" variant="outline" onClick={() => setManual(value => !value)}>{manual ? 'Kembali ke Wizard' : 'Editor Manual'}</Button>
     </div>
-    <div hidden={manual}><TargetCascadingWizard publisherAuthorized={publisherAuthorized}/></div>
+    <div hidden={manual}><TargetCascadingWizard publisherAuthorized={publisherAuthorized} active={!manual}/></div>
     <div hidden={!manual}><LegacyTargetOnScreenSetup publisherAuthorized={publisherAuthorized}/></div>
   </div>;
 };
