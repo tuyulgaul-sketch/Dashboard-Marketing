@@ -1,0 +1,1 @@
+The implementation must include annual and twelve-month NB/RN allocations at every hierarchy level. Monthly parent budgets must equal personal plus direct-child budgets; the final sibling and leaf inherit exact remaining monthly allocations. Existing official data must not be changed before explicit validated publication.
