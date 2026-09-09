@@ -1,0 +1,1 @@
+The wizard must capture annual and twelve monthly NB/RN targets from Directorate through staff, reconcile each month independently, deduct personal allocations before cascading, and automatically assign exact remaining monthly budgets to the final sibling and leaf. Official data remains unchanged until explicit publication.
