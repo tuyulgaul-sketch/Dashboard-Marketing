@@ -46,14 +46,14 @@ test('every intentional existing-source change is exactly the approved transform
     // changed upload pages to that release while retaining exact historical
     // transforms for every other navigation, permission and reader file.
     const xlsxBaseline = '76c655d4adadd42f0e5388e1729aa120afdb0c2d';
-    const expected = matrixTransforms[path]
-      ? matrixTransforms[path](git('show', `${MATRIX_BASE}:${path}`))
-      : path === 'src/pages/TargetRkapPage.tsx'
-        ? compactTargetTransform[path](git('show', `${COMPACT_BASE}:${path}`))
-        : path === 'src/pages/ProduksiPage.tsx'
-          ? advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`))
-          : path === 'src/pages/TargetRealizationUploadPage.tsx'
-            ? git('show', `8120adfa0e9183843924b9fb43496abf7b028945:${path}`)
+    const expected = path === 'src/pages/ProduksiPage.tsx'
+      ? advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`))
+      : path === 'src/pages/TargetRealizationUploadPage.tsx'
+        ? git('show', `8120adfa0e9183843924b9fb43496abf7b028945:${path}`)
+        : matrixTransforms[path]
+          ? matrixTransforms[path](git('show', `${MATRIX_BASE}:${path}`))
+          : path === 'src/pages/TargetRkapPage.tsx'
+            ? compactTargetTransform[path](git('show', `${COMPACT_BASE}:${path}`))
             : transform(original);
     assert.equal(read(path), expected, `${path} contains an unexpected change`);
   }
