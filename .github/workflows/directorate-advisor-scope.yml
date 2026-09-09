@@ -1,0 +1,33 @@
+name: Directorate Advisor scope regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/pages/DirectoratePerformancePage.tsx'
+      - 'src/services/directoratePerformanceService.ts'
+      - 'scripts/approved-directorate-scope-transform.mjs'
+      - 'scripts/test-directorate-advisor-scope.mjs'
+      - 'scripts/integrate-target-realization-v2.mjs'
+      - '.github/workflows/directorate-advisor-scope.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+          git restore -- pnpm-lock.yaml
+      - name: Verify Advisor scope and directorate totals
+        run: node --test scripts/test-directorate-advisor-scope.mjs
+      - name: Verify production build
+        run: pnpm run build

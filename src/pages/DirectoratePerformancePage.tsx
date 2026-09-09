@@ -90,7 +90,7 @@ const DirectoratePerformancePage: React.FC<{ view: 'target' | 'realization' }> =
   }, [snapshot]);
 
   const scopes = useMemo(() => {
-    const values = new Set<string>(['Captive Marketing', 'Corporate & Retail Marketing']);
+    const values = new Set<string>(['Advisor', 'Captive Marketing', 'Corporate & Retail Marketing']);
     snapshot?.targets.forEach(row => {
       const normalized = normalizePerformanceScope(row.unit, row.department);
       if (normalized.department !== 'None') values.add(normalized.department);
