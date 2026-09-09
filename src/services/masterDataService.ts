@@ -37,7 +37,7 @@ type BrokerRow = {
   fax: string | null;
   email: string | null;
   website: string | null;
-  /** Legacy compatibility only; not PertaLife/OJK authorization status. */
+  /** Legacy compatibility only; never an OJK/PertaLife authorization decision. */
   status: 'Active' | 'Inactive' | null;
   source_period: string | null;
   source_name: string | null;
@@ -89,7 +89,9 @@ const brokerFromRow = (
   fax: row.fax || "",
   email: row.email || "",
   website: row.website || "",
-  legacyStatus: row.status || undefined,
+  // Temporary adapter for the legacy BrokerMaster TypeScript surface only.
+  // UI/business logic must not display or filter on this value.
+  status: row.status || 'Active',
   sourcePeriod: row.source_period || "",
   sourceName: row.source_name || "",
   createdAt: row.created_at,
