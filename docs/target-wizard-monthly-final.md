@@ -1,0 +1,1 @@
+The target wizard must collect annual and monthly NB/RN for every team and individual, validate all twelve months independently, deduct personal allocations from team budgets, and assign exact remaining monthly targets to the final sibling and leaf. Publication remains explicit and official data is preserved until then.
