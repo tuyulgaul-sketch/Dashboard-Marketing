@@ -1082,10 +1082,7 @@ export const BookingPipelinePage: React.FC = () => {
               .getBrokers()
               .find(
                 broker =>
-                  broker.id ===
-                    selectedBroker.id &&
-                  broker.status ===
-                    'Active'
+                  broker.id === selectedBroker.id
               );
 
           if (
