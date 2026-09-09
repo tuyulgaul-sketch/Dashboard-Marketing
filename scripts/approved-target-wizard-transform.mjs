@@ -26,31 +26,9 @@ export const prepareNavigationFixture = source => {
   return value;
 };
 
-/** The archive fixture first reconstructs its historical page, then applies the new entry. */
-export const prepareArchiveFixture = source => {
-  let value = once(source,
-    "import { execFileSync } from 'node:child_process';",
-    "import { execFileSync } from 'node:child_process';\nimport { wizardHubTransform } from './approved-target-wizard-transform.mjs';");
-  value = once(value,
-    'assert.equal(read(hub), workspaceHubTransform(onscreenHubTransform(archiveHubTransform(baseline))),',
-    'assert.equal(read(hub), wizardHubTransform(workspaceHubTransform(onscreenHubTransform(archiveHubTransform(baseline)))),');
-  value = once(value,
-    "import { archiveHubTransform, onscreenHubTransform, workspaceHubTransform } from './prepare-official-archive-regression.mjs';",
-    "import { archiveHubTransform, onscreenHubTransform, workspaceHubTransform } from './prepare-official-archive-regression.mjs';\nimport { wizardHubTransform } from './approved-target-wizard-transform.mjs';");
-  value = once(value,
-    "? workspaceHubTransform(onscreenHubTransform(archiveHubTransform(expectedBase))) : expectedBase;",
-    "? wizardHubTransform(workspaceHubTransform(onscreenHubTransform(archiveHubTransform(expectedBase)))) : expectedBase;");
-  return value;
-};
-
 if (process.argv[1]?.endsWith('approved-target-wizard-transform.mjs')) {
-  const mode = process.argv[2];
-  if (mode === 'navigation') {
-    const path = 'scripts/test-target-realization-navigation.mjs';
-    writeFileSync(path, prepareNavigationFixture(readFileSync(path, 'utf8')));
-  } else if (mode === 'archive') {
-    const path = 'scripts/prepare-official-archive-regression.mjs';
-    writeFileSync(path, prepareArchiveFixture(readFileSync(path, 'utf8')));
-  } else throw new Error('Choose navigation or archive fixture mode.');
-  console.log(`Approved target wizard ${mode} fixture installed; runtime source unchanged.`);
+  if (process.argv[2] !== 'navigation') throw new Error('Only the navigation fixture may be updated.');
+  const path = 'scripts/test-target-realization-navigation.mjs';
+  writeFileSync(path, prepareNavigationFixture(readFileSync(path, 'utf8')));
+  console.log('Approved target wizard navigation fixture installed; runtime source unchanged.');
 }
