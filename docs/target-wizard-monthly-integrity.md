@@ -1,0 +1,1 @@
+Annual and monthly NB/RN cascading are inseparable. The wizard must collect twelve monthly amounts at each level, validate annual and monthly reconciliation separately, subtract personal targets, assign the final sibling's and leaf's remainders automatically, and preserve official data until deliberate publication.
