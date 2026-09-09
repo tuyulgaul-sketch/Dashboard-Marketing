@@ -1,0 +1,1 @@
+The wizard must collect annual and twelve monthly targets for NB and RN at each hierarchy level. It must reconcile each month separately, subtract personal allocations from team budgets, automatically assign the remaining budget to the final sibling and to leaf personal targets, and preserve existing official data until explicit publication.
