@@ -13,7 +13,6 @@ import {
   type BrokerBulkCandidate,
   type MasterBulkKind,
   type MasterBulkReview,
-  type MasterBulkStatus,
 } from '@/utils/masterIntermediaryBulk';
 import { bulkAddCentralAgents, bulkAddCentralBrokers } from '@/services/masterIntermediaryBulkService';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +22,6 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, Download, FileSpreadsheet, ShieldCheck, Upload } from 'lucide-react';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
 const sourcePeriodDefault = () => new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date());
 
 const saveBlob = (bytes: BlobPart, filename: string, type: string) => {
@@ -40,7 +38,10 @@ const saveBlob = (bytes: BlobPart, filename: string, type: string) => {
 
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-const downloadErrorReport = (kind: MasterBulkKind, review: MasterBulkReview<AgentBulkCandidate> | MasterBulkReview<BrokerBulkCandidate>) => {
+const downloadErrorReport = (
+  kind: MasterBulkKind,
+  review: MasterBulkReview<AgentBulkCandidate> | MasterBulkReview<BrokerBulkCandidate>
+) => {
   const lines = [
     ['Baris', 'Field', 'Error'].map(csvCell).join(','),
     ...review.issues.map(issue => [issue.rowNumber, issue.field, issue.message].map(csvCell).join(',')),
@@ -96,7 +97,6 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
   const [kind, setKind] = useState<MasterBulkKind>('agent');
   const [file, setFile] = useState<File | null>(null);
   const [review, setReview] = useState<ReviewState>(null);
-  const [brokerStatus, setBrokerStatus] = useState<MasterBulkStatus | ''>('');
   const [sourcePeriod, setSourcePeriod] = useState(sourcePeriodDefault);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -135,7 +135,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
         setReview({ kind, value });
         setMessage(`Validasi Agent selesai: ${value.addCount} data baru, ${value.skipCount} sudah identik, ${value.errorCount} perlu diperbaiki.`);
       } else {
-        const value = reviewBrokerBulkRows(rows, brokers, brokerStatus || null);
+        const value = reviewBrokerBulkRows(rows, brokers);
         setReview({ kind, value });
         setMessage(`Validasi Broker selesai: ${value.addCount} data baru, ${value.skipCount} sudah identik, ${value.errorCount} perlu direkonsiliasi.`);
       }
@@ -148,7 +148,6 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
 
   const publish = async () => {
     if (!file || !review || review.kind !== kind || review.value.errorCount > 0 || !sourcePeriod.trim()) return;
-    if (kind === 'broker' && !brokerStatus) return;
     const addCount = review.value.addCount;
     const skipCount = review.value.skipCount;
     if (!window.confirm(
@@ -162,7 +161,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
         const result = await bulkAddCentralAgents(review.value.rows, file.name, sourcePeriod.trim());
         setMessage(`Import Agent berhasil: ${result.inserted} ditambahkan, ${result.skipped} dilewati karena sudah identik.`);
       } else {
-        const result = await bulkAddCentralBrokers(review.value.rows, brokerStatus as MasterBulkStatus, file.name, sourcePeriod.trim());
+        const result = await bulkAddCentralBrokers(review.value.rows, file.name, sourcePeriod.trim());
         setMessage(`Import Broker berhasil: ${result.inserted} ditambahkan, ${result.skipped} dilewati karena sudah identik.`);
       }
       setReview(null);
@@ -196,12 +195,10 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Format Daftar Agent</CardTitle>
-                <CardDescription className="text-xs">Mengikuti 9 kolom file Daftar Agent. Kode Agen dan Nomor Lisensi diperlakukan sebagai teks agar tidak berubah menjadi notasi ilmiah.</CardDescription>
+                <CardDescription className="text-xs">Mengikuti 9 kolom file Daftar Agent. Status Active/Inactive tetap dikelola PertaLife.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void downloadTemplate('agent')} disabled={busy} className="gap-2 text-xs"><Download className="h-4 w-4" />Download Template Agent</Button>
-                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void downloadTemplate('agent')} disabled={busy} className="gap-2 text-xs"><Download className="h-4 w-4" />Download Template Agent</Button>
                 <p className="text-[11px] leading-relaxed text-slate-600">Kolom: {AGENT_BULK_HEADERS.join(' • ')}</p>
               </CardContent>
             </Card>
@@ -211,24 +208,10 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Format Daftar Broker</CardTitle>
-                <CardDescription className="text-xs">Mengikuti 12 kolom file Perusahaan Pialang Asuransi. File sumber tidak memiliki status sehingga sistem tidak mengasumsikan izin masih aktif.</CardDescription>
+                <CardDescription className="text-xs">Mengikuti 12 kolom file Perusahaan Pialang Asuransi. Broker tidak memiliki status Active/Inactive yang dikelola PertaLife; data izin merupakan informasi OJK.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void downloadTemplate('broker')} disabled={busy} className="gap-2 text-xs"><Download className="h-4 w-4" />Download Template Broker</Button>
-                </div>
-                <div className="max-w-xs">
-                  <label className="text-xs font-semibold text-slate-700">Status untuk seluruh batch Broker *</label>
-                  <select
-                    value={brokerStatus}
-                    onChange={event => { setBrokerStatus(event.target.value as MasterBulkStatus | ''); setReview(null); }}
-                    className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-xs"
-                  >
-                    <option value="">Pilih setelah verifikasi sumber</option>
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void downloadTemplate('broker')} disabled={busy} className="gap-2 text-xs"><Download className="h-4 w-4" />Download Template Broker</Button>
                 <p className="text-[11px] leading-relaxed text-slate-600">Kolom: {BROKER_BULK_HEADERS.join(' • ')}</p>
               </CardContent>
             </Card>
@@ -263,7 +246,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {current.errorCount > 0 && <Button type="button" variant="outline" size="sm" onClick={() => downloadErrorReport(kind, current as MasterBulkReview<AgentBulkCandidate> & MasterBulkReview<BrokerBulkCandidate>)} className="gap-2 text-xs"><Download className="h-4 w-4" />Download Error Report</Button>}
-                    <Button type="button" size="sm" onClick={() => void publish()} disabled={busy || current.errorCount > 0 || current.addCount === 0 || (kind === 'broker' && !brokerStatus) || !sourcePeriod.trim()} className="text-xs">Import Data Baru</Button>
+                    <Button type="button" size="sm" onClick={() => void publish()} disabled={busy || current.errorCount > 0 || current.addCount === 0 || !sourcePeriod.trim()} className="text-xs">Import Data Baru</Button>
                   </div>
                 </div>
 
@@ -277,7 +260,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="min-w-[900px] w-full text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
-                      <tr><th className="p-2">Baris</th><th className="p-2">Identitas</th><th className="p-2">Lisensi / Izin</th><th className="p-2">Status</th><th className="p-2">Hasil</th><th className="p-2">Catatan</th></tr>
+                      <tr><th className="p-2">Baris</th><th className="p-2">Identitas</th><th className="p-2">Lisensi / Izin</th><th className="p-2">Status Agent</th><th className="p-2">Hasil</th><th className="p-2">Catatan</th></tr>
                     </thead>
                     <tbody>
                       {previewRows.map(row => (
@@ -285,7 +268,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
                           <td className="p-2">{row.rowNumber}</td>
                           <td className="p-2 font-semibold">{'agentCode' in row ? `${row.agentCode} • ${row.agentName}` : row.companyName}</td>
                           <td className="p-2">{row.licenseNumber || '-'}<br /><span className="text-[10px] text-slate-500">{'licenseExpiryDate' in row ? `${row.licenseDate || '-'} s.d. ${row.licenseExpiryDate || '-'}` : row.licenseDate || '-'}</span></td>
-                          <td className="p-2">{row.status}</td>
+                          <td className="p-2">{'agentCode' in row ? row.status : '—'}</td>
                           <td className="p-2"><Badge variant="outline" className={row.disposition === 'ERROR' ? 'border-rose-200 bg-rose-50 text-rose-700' : row.disposition === 'ADD' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200'}>{row.disposition}</Badge></td>
                           <td className="p-2 text-[10px] text-slate-600">{row.issues.map(issue => issue.message).join(' • ') || '-'}</td>
                         </tr>
@@ -300,7 +283,7 @@ const MasterIntermediaryBulkImportPage: React.FC = () => {
         </Card>
 
         <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs leading-relaxed text-blue-900">
-          Bulk Import hanya menambahkan record baru dan tidak melakukan Update/Delete. Untuk perubahan satu record, tetap gunakan tombol Tambah/Edit pada Master Agent atau Master Broker di menu Booking & Pipeline. Import ulang file yang sama bersifat idempotent: record identik dilewati.
+          Bulk Import hanya menambahkan record baru dan tidak melakukan Update/Delete. Status Active/Inactive hanya berlaku untuk Agent dan tetap dikelola PertaLife. Broker mengikuti data izin OJK tanpa status bisnis internal. Untuk perubahan satu record, tetap gunakan tombol Tambah/Edit pada Master Agent atau Master Broker di menu Booking & Pipeline.
         </div>
       </div>
     </AppLayout>
