@@ -1,0 +1,1 @@
+The wizard must include annual and twelve monthly NB/RN allocations for the directorate, teams, and individuals. Every month must reconcile independently, personal allocations reduce the team budget, and the final sibling and leaf receive exact remainders. Existing official distributions remain unchanged until explicit publication.
