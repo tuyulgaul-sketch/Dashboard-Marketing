@@ -1,0 +1,1 @@
+The wizard must support annual and twelve monthly NB/RN allocations for the directorate, teams, and individuals. Each month reconciles personal and child budgets against the parent. The last sibling and leaf receive exact remainders. Existing official targets remain unchanged until explicit validated publication.
