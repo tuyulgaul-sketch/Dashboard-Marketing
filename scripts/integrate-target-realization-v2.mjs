@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { TRANSFORMS } from './integrate-target-realization.mjs';
+import { advisorReaderScopeTransform } from './approved-directorate-scope-transform.mjs';
 
 const replaceOnce = (source, before, after) => {
   assert.equal(source.split(before).length, 2, `Expected exactly one anchor: ${before.slice(0, 100)}`);
@@ -41,7 +42,7 @@ const transformPerformanceMemo = source => {
   let next = TRANSFORMS['src/pages/DirectoratePerformancePage.tsx'](source);
   next = replaceOnce(next, `  const actualRows = summary?.productions || [];\n  const targetRows = summary?.targets || [];`,
     `  const actualRows = useMemo(() => summary?.productions || [], [summary]);\n  const targetRows = useMemo(() => summary?.targets || [], [summary]);`);
-  return next;
+  return advisorReaderScopeTransform(next);
 };
 
 /** Issue #44: exact additive navigation transform for Marketing Administration bulk master import. */
