@@ -1,0 +1,44 @@
+name: Prepare workspace continuity
+on:
+  push:
+    branches: [fix/workspace-focus-continuity]
+    paths:
+      - 'scripts/apply-workspace-continuity.mjs'
+      - 'scripts/finalize-workspace-continuity.mjs'
+      - '.github/workflows/prepare-workspace-continuity.yml'
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply exact source changes
+        run: |
+          node --check scripts/apply-workspace-continuity.mjs
+          node --check scripts/finalize-workspace-continuity.mjs
+          node scripts/apply-workspace-continuity.mjs
+          node scripts/finalize-workspace-continuity.mjs
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify cascading and existing upload behavior
+        run: |
+          node --test scripts/test-target-cascading.mjs scripts/test-target-onscreen.mjs
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+          pnpm run build
+      - name: Commit verified runtime changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/contexts/AuthContext.tsx src/components/common/ReleaseSyncBridge.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
+          git commit -m 'fix(marketing): preserve authenticated workspace and wizard progress'
+          git push origin HEAD:fix/workspace-focus-continuity
