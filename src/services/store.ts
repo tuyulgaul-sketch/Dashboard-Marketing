@@ -552,8 +552,7 @@ export interface OfficialProductionImportRecord {
   coverageEnd?: string;
   productionAmount: number;
   marketingFunction:
-    | 'Captive Marketing'
-    | 'Corporate & Retail Marketing';
+    'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
   businessType:
     | 'New Business'
     | 'Renewal Business';
@@ -568,11 +567,9 @@ export interface OfficialProductionSummary {
   productionYear: number;
   productionMonth: number;
   marketingFunction:
-    | 'Captive Marketing'
-    | 'Corporate & Retail Marketing';
+    'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
   unit:
-    | 'Captive Marketing'
-    | 'Corporate & Retail Marketing';
+    'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
   department: string;
   businessType:
     | 'New Business'
@@ -607,8 +604,7 @@ export interface OfficialPolicyRecord {
   customerName: string;
   productName: string;
   marketingFunction:
-    | 'Captive Marketing'
-    | 'Corporate & Retail Marketing';
+    'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
   department: string;
   businessType:
     | 'New Business'
@@ -3664,11 +3660,9 @@ class StoreService {
           productionYear: number;
           productionMonth: number;
           marketingFunction:
-            | 'Captive Marketing'
-            | 'Corporate & Retail Marketing';
+            'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
           unit:
-            | 'Captive Marketing'
-            | 'Corporate & Retail Marketing';
+            'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
           department: string;
           businessType:
             | 'New Business'
