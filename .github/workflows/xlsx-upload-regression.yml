@@ -12,6 +12,7 @@ on:
       - 'scripts/test-marketing-xlsx.mjs'
       - 'scripts/check-xlsx-regression.mjs'
       - 'scripts/test-target-realization-navigation.mjs'
+      - 'scripts/prepare-workspace-navigation-regression.mjs'
       - 'scripts/prepare-restored-business-fixture.mjs'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -39,6 +40,7 @@ jobs:
         run: node scripts/prepare-restored-business-fixture.mjs
       - name: Existing business and navigation regressions
         run: |
+          node scripts/prepare-workspace-navigation-regression.mjs
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \

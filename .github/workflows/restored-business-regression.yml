@@ -44,7 +44,6 @@ jobs:
             'src/pages/DokumenAdministrasiReaderPage.tsx',
             'src/pages/TandaTerimaV14Page.tsx',
             'src/pages/AdministrasiPage.tsx',
-            'src/components/common/ReleaseSyncBridge.tsx',
             'src/services/centralUserRuntime.ts',
             'src/services/targetService.ts',
             'src/services/masterDataService.ts',
@@ -53,6 +52,7 @@ jobs:
           ];
           const main = execFileSync('git', ['rev-parse', 'origin/main'], {encoding:'utf8'}).trim();
           const snapshot = Object.fromEntries(paths.map(path => [path, execFileSync('git', ['show', `${main}:${path}`], {encoding:'utf8'})]));
+          snapshot['src/components/common/ReleaseSyncBridge.tsx'] = execFileSync('git', ['show', 'cd81205bc5783b4cabb533a4a3914fb90a40386b:src/components/common/ReleaseSyncBridge.tsx'], {encoding:'utf8'});
           writeFileSync('/tmp/restore-preserved-files.json', JSON.stringify(snapshot));
           for (const [path, expected] of Object.entries(snapshot)) {
             if (readFileSync(path, 'utf8') !== expected) throw new Error(`Existing live file changed: ${path}`);

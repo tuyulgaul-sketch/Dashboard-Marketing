@@ -1,20 +1,13 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-
-import type { Session } from "@supabase/supabase-js";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { canAccessFeature } from '@/lib/accessControl';
 import { syncCentralMasterRuntime, clearCentralMasterRuntime } from '@/services/centralMasterRuntime';
 import { syncCentralTargetRuntime, clearCentralTargetRuntime } from '@/services/centralTargetRuntime';
-import { supabase } from "@/lib/supabase";
-import { syncLegacyIdentityFromSupabase } from "@/lib/legacyIdentityBridge";
-import { syncGlobalResetState } from "@/lib/globalResetSync";
-import { clearCentralUserRuntime, syncCentralUserRuntime } from "@/services/centralUserRuntime";
-import { clearCentralBusinessRuntime, syncCentralBusinessRuntime } from "@/services/centralBusinessStorageRuntime";
+import { supabase } from '@/lib/supabase';
+import { syncLegacyIdentityFromSupabase } from '@/lib/legacyIdentityBridge';
+import { syncGlobalResetState } from '@/lib/globalResetSync';
+import { clearCentralUserRuntime, syncCentralUserRuntime } from '@/services/centralUserRuntime';
+import { clearCentralBusinessRuntime, syncCentralBusinessRuntime } from '@/services/centralBusinessStorageRuntime';
 
 export type AuthProfile = {
   id: string;
@@ -37,10 +30,14 @@ type AuthContextValue = {
   restoredBusinessReady: boolean;
   restoredBusinessError: string | null;
   retryRestoredBusiness: () => Promise<void>;
+  refreshAuthenticatedProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
+const authoritySignature = (profile: AuthProfile) => JSON.stringify([
+  profile.id, profile.auth_user_id, profile.role_level, profile.unit,
+  profile.department, profile.manager_id, profile.legacy_user_id, profile.active,
+]);
 const clearLiteRuntime = () => {
   clearCentralBusinessRuntime();
   clearCentralUserRuntime();
@@ -48,28 +45,52 @@ const clearLiteRuntime = () => {
   clearCentralTargetRuntime();
 };
 
+// A refreshed token is not a new login. Keep the existing React tree mounted.
+// A real identity change, inactive profile or explicit global reset still revokes
+// access and must never be treated as a harmless background refresh.
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [restoredBusinessReady, setRestoredBusinessReady] = useState(false);
   const [restoredBusinessError, setRestoredBusinessError] = useState<string | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  const profileRef = useRef<AuthProfile | null>(null);
+  const generation = useRef(0);
+  const refreshing = useRef<Promise<void> | null>(null);
 
-  const loadRestoredBusiness = useCallback(async (authProfile: AuthProfile) => {
+  const updateProfile = useCallback((next: AuthProfile | null) => {
+    profileRef.current = next;
+    setProfile(next);
+  }, []);
+
+  const revoke = useCallback(() => {
+    generation.current += 1;
+    sessionRef.current = null;
+    profileRef.current = null;
+    refreshing.current = null;
+    setSession(null);
+    setProfile(null);
+    setRestoredBusinessReady(false);
+    setRestoredBusinessError(null);
+    clearLiteRuntime();
+  }, []);
+
+  const loadRestoredBusiness = useCallback(async (authProfile: AuthProfile, isCurrent: () => boolean) => {
+    if (!isCurrent()) return;
     setRestoredBusinessReady(false);
     setRestoredBusinessError(null);
     try {
       await syncCentralMasterRuntime(authProfile);
-      // Dashboard, production and support views also consume target data.
-      // Use the existing server-authorized target runtime for every business
-      // profile, even when the user cannot publish or edit Target & RKAP.
+      if (!isCurrent()) return;
       if (canAccessFeature(authProfile, 'DASHBOARD')) {
         await syncCentralTargetRuntime(authProfile.id);
       } else {
         clearCentralTargetRuntime();
       }
-      setRestoredBusinessReady(true);
+      if (isCurrent()) setRestoredBusinessReady(true);
     } catch (error) {
+      if (!isCurrent()) return;
       clearCentralMasterRuntime();
       clearCentralTargetRuntime();
       const message = error instanceof Error ? error.message : 'Database pusat belum dapat dimuat.';
@@ -78,82 +99,138 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const loadProfile = useCallback(async (currentSession: Session | null) => {
-    if (!currentSession) {
-      setRestoredBusinessReady(false);
-      setRestoredBusinessError(null);
-      clearLiteRuntime();
-      setProfile(null);
+  const loadProfile = useCallback(async (currentSession: Session, version: number, background = false, forceDirectory = false) => {
+    const isCurrent = () => generation.current === version && sessionRef.current?.user.id === currentSession.user.id;
+    const { data, error } = await Promise.resolve(supabase.from('profiles')
+      .select('id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active')
+      .eq('auth_user_id', currentSession.user.id).eq('active', true).single()).catch(error => ({ data: null, error }));
+    if (!isCurrent()) return;
+    if (error || !data || data.auth_user_id !== currentSession.user.id || !data.active) {
+      console.error('Profile tidak ditemukan:', error);
+      // A temporary network error is not evidence that a valid account was revoked.
+      // Preserve its UI but do not grant any new authority. Explicitly inactive or
+      // missing profiles still revoke access.
+      if (error && data === null && profileRef.current?.auth_user_id === currentSession.user.id && background && error.code !== 'PGRST116') {
+        console.error('Pemeriksaan profile sementara gagal; sesi lama tidak diubah.');
+        return;
+      }
+      revoke();
+      setSession(currentSession);
+      sessionRef.current = currentSession;
+      setLoading(false);
       return;
     }
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active")
-      .eq("auth_user_id", currentSession.user.id)
-      .eq("active", true)
-      .single();
-
-    if (error || !data) {
-      console.error("Profile tidak ditemukan:", error);
-      clearLiteRuntime();
-      setProfile(null);
-      return;
-    }
-
     const authProfile = data as AuthProfile;
+    const previous = profileRef.current;
+    const unchanged = Boolean(previous && JSON.stringify(previous) === JSON.stringify(authProfile));
+    const sameAuthority = Boolean(previous && authoritySignature(previous) === authoritySignature(authProfile));
+    if (background && sameAuthority) {
+      // Display-only changes and directory revisions do not rebuild business
+      // runtimes. Keep the active forms mounted and refresh only the directory.
+      try {
+        if (forceDirectory || !unchanged) await syncCentralUserRuntime(authProfile);
+        if (isCurrent() && !unchanged) updateProfile(authProfile);
+      } catch (refreshError) {
+        console.error('Directory refresh failed:', refreshError);
+      }
+      return;
+    }
+    if (background && previous && !sameAuthority) {
+      // A genuine role, hierarchy or account change must not retain the old
+      // authorization while the new authoritative runtime is being loaded.
+      updateProfile(null);
+      setRestoredBusinessReady(false);
+      clearLiteRuntime();
+    }
     try {
       await syncGlobalResetState();
-    } catch (resetSyncError) {
-      console.error("Global reset state sync gagal:", resetSyncError);
-    }
-
-    // Preserve the established identity bridge. Never invent a missing legacy ID.
-    syncLegacyIdentityFromSupabase(authProfile);
-
-    try {
+      if (!isCurrent()) return;
+      syncLegacyIdentityFromSupabase(authProfile);
       await syncCentralUserRuntime(authProfile);
-      // A restored-module failure must not block the existing live services.
-      await loadRestoredBusiness(authProfile);
+      if (!isCurrent()) return;
+      await loadRestoredBusiness(authProfile, isCurrent);
+      if (!isCurrent()) return;
       await syncCentralBusinessRuntime(authProfile);
     } catch (runtimeError) {
-      console.error("Supabase Lite runtime gagal dimuat:", runtimeError);
+      if (!isCurrent()) return;
+      console.error('Supabase Lite runtime gagal dimuat:', runtimeError);
       clearLiteRuntime();
-      setProfile(null);
+      updateProfile(null);
       return;
     }
+    if (isCurrent()) updateProfile(authProfile);
+  }, [loadRestoredBusiness, revoke, updateProfile]);
 
-    // Existing legacy pages now read centralized runtime snapshots.
-    // No automatic migration of old browser/IndexedDB business records.
-    setProfile(authProfile);
-  }, [loadRestoredBusiness]);
+  const refreshAuthenticatedProfile = useCallback(async () => {
+    const current = sessionRef.current;
+    if (!current) return;
+    const version = generation.current;
+    const previousTask = refreshing.current;
+    if (previousTask) {
+      // A directory revision must not be dropped just because a token check
+      // is in flight. Wait, then perform the requested authoritative refresh.
+      await previousTask.catch(error => { console.error('Profile refresh failed:', error); });
+      if (generation.current !== version || sessionRef.current?.user.id !== current.user.id) return;
+    }
+    const task = loadProfile(sessionRef.current!, version, true, true);
+    refreshing.current = task;
+    try { await task; } finally { if (refreshing.current === task) refreshing.current = null; }
+  }, [loadProfile]);
 
   useEffect(() => {
     let mounted = true;
-    const initialize = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
+    let eventSeen = false;
+    const applySession = (next: Session | null, background: boolean) => {
       if (!mounted) return;
-      setSession(initialSession);
-      await loadProfile(initialSession);
-      if (mounted) setLoading(false);
-    };
-    void initialize();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (!mounted) return;
-      setSession(newSession);
+      const nextId = next?.user.id || null;
+      const previousId = sessionRef.current?.user.id || null;
+      if (!next || !nextId) {
+        revoke();
+        setLoading(false);
+        return;
+      }
+      sessionRef.current = next;
+      setSession(next);
+      if (previousId === nextId && profileRef.current?.auth_user_id === nextId) {
+        // Revalidate the profile without replacing the page or reloading data.
+        if (!refreshing.current) {
+          const task = loadProfile(next, generation.current, true);
+          refreshing.current = task;
+          void task.catch(error => { console.error('Profile refresh failed:', error); }).finally(() => { if (refreshing.current === task) refreshing.current = null; });
+        }
+        return;
+      }
+      const version = ++generation.current;
+      refreshing.current = null;
+      if (previousId !== nextId) {
+        clearLiteRuntime();
+        updateProfile(null);
+        setRestoredBusinessReady(false);
+        setRestoredBusinessError(null);
+      }
       setLoading(true);
-      loadProfile(newSession).finally(() => {
-        if (mounted) setLoading(false);
+      void loadProfile(next, version, background && previousId === nextId).finally(() => {
+        if (mounted && generation.current === version) setLoading(false);
       });
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
+      if (!mounted) return;
+      eventSeen = true;
+      applySession(next, event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || event === 'SIGNED_IN');
     });
-
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted && !eventSeen) applySession(data.session, false);
+    }).catch(error => {
+      console.error('Inisialisasi sesi gagal:', error);
+      if (mounted && !eventSeen) setLoading(false);
+    });
     return () => {
       mounted = false;
+      generation.current += 1;
       subscription.unsubscribe();
       clearLiteRuntime();
     };
-  }, [loadProfile]);
+  }, [loadProfile, revoke, updateProfile]);
 
   useEffect(() => {
     if (!profile) return;
@@ -161,38 +238,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const changed = await syncGlobalResetState();
         if (changed) window.location.reload();
-      } catch (error) {
-        console.error("Periodic global reset sync gagal:", error);
-      }
+      } catch (error) { console.error('Periodic global reset sync gagal:', error); }
     }, 60_000);
-    return () => { window.clearInterval(intervalId); };
+    return () => window.clearInterval(intervalId);
   }, [profile?.id]);
 
   const retryRestoredBusiness = async () => {
-    if (profile) await loadRestoredBusiness(profile);
+    const current = profileRef.current;
+    if (current) await loadRestoredBusiness(current, () => profileRef.current?.id === current.id);
   };
-
   const signOut = async () => {
-    setRestoredBusinessReady(false);
-    setRestoredBusinessError(null);
-    clearLiteRuntime();
+    revoke();
+    setLoading(false);
     await supabase.auth.signOut();
-    setSession(null);
-    setProfile(null);
   };
 
-  return (
-    <AuthContext.Provider value={{
-      session, profile, loading, signOut,
-      restoredBusinessReady, restoredBusinessError, retryRestoredBusiness,
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{
+    session, profile, loading, signOut,
+    restoredBusinessReady, restoredBusinessError, retryRestoredBusiness, refreshAuthenticatedProfile,
+  }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth harus digunakan di dalam AuthProvider");
+  if (!context) throw new Error('useAuth harus digunakan di dalam AuthProvider');
   return context;
 };
