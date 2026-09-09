@@ -1,45 +1,22 @@
-name: Master intermediary bulk regression
+name: Broker correction finalizer
 
 on:
   pull_request:
     paths:
-      - 'src/utils/masterIntermediaryBulk.ts'
-      - 'src/services/masterIntermediaryBulkService.ts'
-      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
-      - 'src/pages/BookingPipelinePage.tsx'
-      - 'src/services/store.ts'
-      - 'src/data/brokerMasterData.ts'
-      - 'src/App.tsx'
-      - 'src/components/layout/AppSidebar.tsx'
-      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
-      - 'scripts/test-master-intermediary-bulk.mjs'
-      - '.github/workflows/master-intermediary-bulk-regression.yml'
-  push:
-    branches:
-      - feat/agent-broker-bulk-import
-    paths:
-      - 'src/utils/masterIntermediaryBulk.ts'
-      - 'src/services/masterIntermediaryBulkService.ts'
-      - 'src/pages/MasterIntermediaryBulkImportPage.tsx'
-      - 'src/App.tsx'
-      - 'src/components/layout/AppSidebar.tsx'
-      - 'supabase/migrations/20260908_agent_broker_bulk_import.sql'
-      - 'scripts/test-master-intermediary-bulk.mjs'
       - '.github/workflows/master-intermediary-bulk-regression.yml'
 
 permissions:
   contents: write
 
 jobs:
-  finalize-manual-broker-workflow:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/broker-ojk-status-semantics'
-    runs-on: ubuntu-24.04
+  finalize:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: fix/broker-ojk-status-semantics
           fetch-depth: 0
-      - name: Apply final Broker OJK correction
+      - name: Remove Broker status semantics from manual workflow
         shell: python
         run: |
           from pathlib import Path
@@ -223,33 +200,12 @@ jobs:
           test.write_text(text.replace(marker, replacement, 1))
 
           Path('.github/workflows/finalize-broker-ojk-correction.yml').unlink(missing_ok=True)
-          # Restore the normal regression workflow so no helper machinery reaches main.
-          import subprocess
-          subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/master-intermediary-bulk-regression.yml'], check=True)
-      - name: Commit finalized correction
+      - name: Restore normal regression workflow and commit
         run: |
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/master-intermediary-bulk-regression.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/pages/BookingPipelinePage.tsx src/services/store.ts src/data/brokerMasterData.ts scripts/test-master-intermediary-bulk.mjs .github/workflows/master-intermediary-bulk-regression.yml .github/workflows/finalize-broker-ojk-correction.yml
+          git add -A
           git commit -m "fix(master): remove Broker status from manual workflows"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
-  verify:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'fix/broker-ojk-status-semantics'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Install locked dependencies
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.28.0 --activate
-          pnpm install --frozen-lockfile
-      - name: Sanitized Agent Broker regression
-        run: node --test scripts/test-master-intermediary-bulk.mjs
-      - name: Production build
-        run: pnpm run build
+          git push origin HEAD:fix/broker-ojk-status-semantics
