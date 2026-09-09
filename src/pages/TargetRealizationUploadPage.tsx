@@ -10,7 +10,7 @@ import TargetRkapPage from '@/pages/TargetRkapPage';
 import ProduksiPage from '@/pages/ProduksiPage';
 import RkapPipelineMatrixUpload from '@/components/rkap/RkapPipelineMatrixUpload';
 import OfficialUploadArchiveManager from '@/components/rkap/OfficialUploadArchiveManager';
-import TargetOnScreenSetup from '@/components/rkap/TargetOnScreenSetup';
+import TargetOnScreenSetup from '@/components/rkap/TargetCascadingEntry';
 
 type UploadTab = 'setup' | 'targets' | 'bulk' | 'realization' | 'manage';
 const VALID_TABS = new Set<UploadTab>(['setup', 'targets', 'bulk', 'realization', 'manage']);
