@@ -1,0 +1,81 @@
+name: Advisor Excel compatibility
+on:
+  push:
+    branches: [fix/advisor-excel-ownership]
+    paths:
+      - 'scripts/patch-advisor-excel.mjs'
+      - 'scripts/test-advisor-excel.mjs'
+      - 'scripts/prepare-advisor-regression.mjs'
+      - '.github/workflows/advisor-excel-compatibility.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/marketingWorkbook.ts'
+      - 'src/pages/ProduksiPage.tsx'
+      - 'src/services/store.ts'
+      - 'src/types/index.ts'
+      - 'scripts/test-advisor-excel.mjs'
+      - 'scripts/test-target-realization-navigation.mjs'
+      - '.github/workflows/advisor-excel-compatibility.yml'
+permissions:
+  contents: read
+jobs:
+  patch-and-verify:
+    if: github.event_name == 'push' && github.repository == 'tuyulgaul-sketch/Dashboard-Marketing'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify exact approved source and prepare historical regression
+        run: node scripts/prepare-advisor-regression.mjs
+      - name: Validate ownership, cascading and preserved source
+        run: |
+          node --test scripts/test-advisor-excel.mjs
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+          node --experimental-strip-types --test scripts/test-target-realization-navigation.mjs
+      - name: Production build
+        run: pnpm run build
+      - name: Commit verified regression extension
+        run: |
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/test-target-realization-navigation.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m 'test(marketing): pin approved Advisor import source extension'
+          git push origin HEAD:refs/heads/fix/advisor-excel-ownership
+  verify-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Test Advisor and existing uploads
+        run: |
+          node --test scripts/test-advisor-excel.mjs
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+          node --experimental-strip-types --test scripts/test-target-realization-navigation.mjs
+      - name: Production build
+        run: pnpm run build

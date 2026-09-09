@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { FINAL_TRANSFORMS } from './integrate-target-realization-v2.mjs';
 import { COMPACT_BASE, compactTargetTransform } from './integrate-compact-target.mjs';
 import { MATRIX_BASE, matrixTransforms } from './integrate-rkap-pipeline-matrix.mjs';
+import { advisorProductionPageTransform } from './approved-advisor-production-transform.mjs';
 
 const require = createRequire(import.meta.url);
 const read = path => readFileSync(path, 'utf8');
@@ -46,11 +47,13 @@ test('every intentional existing-source change is exactly the approved transform
     // transforms for every other navigation, permission and reader file.
     const xlsxBaseline = '76c655d4adadd42f0e5388e1729aa120afdb0c2d';
     const expected = matrixTransforms[path]
-      ? matrixTransforms[path](git('show', `${MATRIX_BASE}:${path}`))
+      ? path === 'src/pages/TargetRealizationUploadPage.tsx'
+        ? git('show', `8120adfa0e9183843924b9fb43496abf7b028945:${path}`)
+        : matrixTransforms[path](git('show', `${MATRIX_BASE}:${path}`))
       : path === 'src/pages/TargetRkapPage.tsx'
         ? compactTargetTransform[path](git('show', `${COMPACT_BASE}:${path}`))
         : path === 'src/pages/ProduksiPage.tsx'
-          ? git('show', `${xlsxBaseline}:${path}`)
+          ? advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`))
           : transform(original);
     assert.equal(read(path), expected, `${path} contains an unexpected change`);
   }

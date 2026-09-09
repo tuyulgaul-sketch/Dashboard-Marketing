@@ -20,7 +20,8 @@ const TARGET_ROLES = new Set([
   'VP_CAPTIVE_MARKETING', 'VP_CORPORATE_RETAIL_MARKETING',
   'DEPARTMENT_HEAD_MARKETING', 'SUPERVISOR_MARKETING', 'STAFF_MARKETING',
 ]);
-const PRODUCTION_UNITS = new Set(['Captive Marketing', 'Corporate & Retail Marketing']);
+export type MarketingProductionFunction = 'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor';
+const PRODUCTION_UNITS = new Set<MarketingProductionFunction>(['Captive Marketing', 'Corporate & Retail Marketing', 'Advisor']);
 
 export const normalizeMarketingUserId = (value: unknown): string =>
   String(value ?? '').replace(/\u00A0/g, ' ').replace(/[\u200B-\u200D\u2060]/g, '').trim().toUpperCase();
@@ -35,9 +36,16 @@ export const normalizeMarketingUnit = (value: unknown): string => {
   const unit = normalizeMarketingText(value);
   if (/^captive (i|ii|iii)$/.test(unit)) return 'Captive Marketing';
   if (/^crm (i|ii|iii)$/.test(unit)) return 'Corporate & Retail Marketing';
+  if (unit === 'advisor' || unit === 'advisor pemasaran' || unit === 'advisor marketing' || unit === 'advisor to direktur pemasaran') return 'Advisor';
   if (unit === 'captive marketing') return 'Captive Marketing';
   if (unit === 'corporate & retail marketing' || unit === 'corporate retail marketing') return 'Corporate & Retail Marketing';
   return String(value ?? '').trim();
+};
+
+export const normalizeMarketingFunction = (value: unknown): MarketingProductionFunction | null => {
+  const normalized = normalizeMarketingUnit(value);
+  if (PRODUCTION_UNITS.has(normalized as MarketingProductionFunction)) return normalized as MarketingProductionFunction;
+  return null;
 };
 
 export interface OwnerResolution {
@@ -65,11 +73,12 @@ export const resolveMarketingOwner = (
   const user = matches[0];
   if (user.status !== 'Active') errors.push(`User ID ${id} tidak aktif.`);
   if (!TARGET_ROLES.has(user.role)) errors.push(`User ID ${id} bukan pemilik target/pipeline Marketing yang berwenang.`);
-  if (options.production && !PRODUCTION_UNITS.has(normalizeMarketingUnit(user.unit))) {
-    errors.push(`User ID ${id} bukan pemilik realisasi Captive Marketing atau Corporate & Retail Marketing.`);
+  const reportingUnit = user.role === 'ADVISOR_MARKETING_DIRECTOR' ? 'Advisor' : normalizeMarketingUnit(user.unit);
+  if (options.production && !PRODUCTION_UNITS.has(reportingUnit as MarketingProductionFunction)) {
+    errors.push(`User ID ${id} bukan pemilik realisasi Captive Marketing, Corporate & Retail Marketing, atau Advisor.`);
   }
-  if (options.unit && normalizeMarketingUnit(options.unit) !== normalizeMarketingUnit(user.unit)) {
-    errors.push(`Fungsi Marketing tidak sesuai User ID ${id}. Seharusnya ${user.unit}.`);
+  if (options.unit && normalizeMarketingUnit(options.unit) !== reportingUnit) {
+    errors.push(`Fungsi Marketing tidak sesuai User ID ${id}. Seharusnya ${reportingUnit}.`);
   }
   if (options.name && normalizeMarketingText(options.name) !== normalizeMarketingText(user.name)) {
     warnings.push(`Nama PIC berbeda dari User Master. Pemilik resmi ${user.name} (${id}); nama pada file tidak digunakan untuk lookup.`);

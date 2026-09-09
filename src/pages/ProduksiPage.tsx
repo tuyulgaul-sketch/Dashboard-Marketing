@@ -1,4 +1,4 @@
-import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner } from '@/utils/marketingWorkbook';
+import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingFunction } from '@/utils/marketingWorkbook';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -341,42 +341,6 @@ const normalizeBusinessType = (
     )
   ) {
     return 'Renewal Business';
-  }
-
-  return null;
-};
-
-const normalizeMarketingFunction = (
-  value: string
-):
-  | 'Captive Marketing'
-  | 'Corporate & Retail Marketing'
-  | null => {
-  const compact =
-    String(
-      value || ''
-    )
-      .trim()
-      .toLowerCase()
-      .replace(
-        /[^a-z&]/g,
-        ''
-      );
-
-  if (
-    compact ===
-    'captivemarketing'
-  ) {
-    return 'Captive Marketing';
-  }
-
-  if (
-    compact ===
-      'corporate&retailmarketing' ||
-    compact ===
-      'corporateretailmarketing'
-  ) {
-    return 'Corporate & Retail Marketing';
   }
 
   return null;
@@ -1046,7 +1010,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                 !functionValue
               ) {
                 rowErrors.push(
-                  'Fungsi Marketing harus Captive Marketing atau Corporate & Retail Marketing'
+                  'Fungsi Marketing harus Captive Marketing, Corporate & Retail Marketing, atau Advisor'
                 );
               }
 
@@ -1189,10 +1153,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                   ),
                 productionAmount:
                   amount as number,
-                marketingFunction:
-                  functionValue as
-                    | 'Captive Marketing'
-                    | 'Corporate & Retail Marketing',
+                marketingFunction: functionValue,
                 businessType:
                   businessType as
                     | 'New Business'
