@@ -1,0 +1,1 @@
+The wizard must collect annual and monthly NB/RN at all hierarchy levels, validate each of the twelve months, subtract personal allocations before cascading, and assign the last sibling and leaf their exact remaining monthly budgets. Official data remains unchanged until explicit publication.
