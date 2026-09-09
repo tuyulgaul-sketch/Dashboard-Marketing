@@ -16,6 +16,7 @@ on:
       - 'scripts/test-target-realization-navigation.mjs'
       - 'scripts/test-bulk-pipeline-single-workflow.mjs'
       - 'scripts/prepare-official-archive-regression.mjs'
+      - 'scripts/approved-target-wizard-transform.mjs'
       - 'scripts/test-official-upload-upsert-guard.mjs'
       - 'supabase/migrations/20260907_directorate_performance_reader_v33.sql'
       - 'supabase/migrations/20260907_official_upload_guard_v34.sql'
@@ -74,10 +75,9 @@ jobs:
       - name: Run navigation, upload guard and existing regressions
         run: |
           node scripts/test-bulk-pipeline-single-workflow.mjs
-          # The upload workspace is pinned directly to the approved main SHA in
-          # test-target-realization-navigation.mjs. Do not re-apply historical
-          # archive/on-screen transforms here; doing so double-transforms the
-          # already released workspace and produces a false regression.
+          # Extend only the historical expected upload-hub import. No runtime
+          # files are rewritten and no earlier archive transforms are repeated.
+          node scripts/approved-target-wizard-transform.mjs navigation
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \

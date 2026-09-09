@@ -11,6 +11,7 @@ on:
       - 'supabase/migrations/20260908_official_upload_archive_v1.sql'
       - 'scripts/test-official-upload-archive.mjs'
       - 'scripts/prepare-official-archive-regression.mjs'
+      - 'scripts/approved-target-wizard-transform.mjs'
       - '.github/workflows/official-upload-archive-regression.yml'
 permissions:
   contents: read
@@ -33,10 +34,20 @@ jobs:
         run: node scripts/test-official-upload-archive.mjs
       - name: Native XLSX and User ID regression
         run: node scripts/test-marketing-xlsx.mjs
-      - name: Prepare preserved business fixture and exact archive extension
+      - name: Verify preserved business and historical archive contract
         run: |
           node scripts/prepare-restored-business-fixture.mjs
-          node scripts/prepare-official-archive-regression.mjs
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { archiveHubTransform, onscreenHubTransform, workspaceHubTransform } from './scripts/prepare-official-archive-regression.mjs';
+          import { assertWizardHub } from './scripts/approved-target-wizard-transform.mjs';
+          const path='src/pages/TargetRealizationUploadPage.tsx';
+          const baseline=execFileSync('git',['show','050e3b24a983216a66378cf0ae925e89865b9d36:'+path],{encoding:'utf8'});
+          assertWizardHub(readFileSync(path,'utf8'),workspaceHubTransform(onscreenHubTransform(archiveHubTransform(baseline))));
+          console.log('Approved archive, on-screen, workspace and wizard extensions verified.');
+          NODE
+          node scripts/approved-target-wizard-transform.mjs navigation
       - name: Existing business and navigation regressions
         run: |
           node --experimental-strip-types --test \
