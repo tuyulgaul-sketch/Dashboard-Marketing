@@ -1,0 +1,1 @@
+The wizard must collect annual and all twelve monthly NB/RN allocations at every hierarchy level, reconcile each month independently, deduct personal allocations from team budgets, and automatically assign the remaining monthly budget to final siblings and leaves. Approved data remains unchanged until explicit publication.
