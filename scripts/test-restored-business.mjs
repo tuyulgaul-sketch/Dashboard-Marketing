@@ -76,7 +76,8 @@ test('central master and target caches initialize for every dashboard profile', 
   assert.doesNotMatch(auth, /canAccessFeature\(authProfile, 'TARGET_RKAP'\)/);
   assert.match(auth, /clearCentralMasterRuntime\(\)/);
   assert.match(auth, /clearCentralTargetRuntime\(\)/);
-  assert.match(auth, /await loadRestoredBusiness\(authProfile\)/);
+  // The authenticated generation guard prevents stale refreshes from replacing a newer session.
+  assert.match(auth, /await loadRestoredBusiness\(authProfile,\s*isCurrent\)/);
   assert.match(auth, /restoredBusinessReady/);
   assert.match(read('src/components/common/RestoredBusinessGuard.tsx'), /if \(restoredBusinessReady\) return children/);
 });
