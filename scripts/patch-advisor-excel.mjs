@@ -51,14 +51,20 @@ save(pagePath, page);
 
 // Widen only the official production reporting-field types. Do not change
 // product, business-type, transaction, role, or unrelated access-control enums.
-const reportingType = /(marketingFunction\??:\s*)(?:'Captive Marketing'\s*\|\s*'Corporate & Retail Marketing')/g;
+const reportingType = /(marketingFunction\??:\s*)(?:\|\s*)?'Captive Marketing'\s*\|\s*'Corporate & Retail Marketing'/g;
 let totalTypeChanges = 0;
 for (const path of ['src/services/store.ts', 'src/types/index.ts']) {
   let content = read(path);
   const matches = [...content.matchAll(reportingType)];
   totalTypeChanges += matches.length;
   content = content.replace(reportingType, "$1'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor'");
+  if (path === 'src/services/store.ts') {
+    const summaryUnit = /(unit:\s*)(?:\|\s*)?'Captive Marketing'\s*\|\s*'Corporate & Retail Marketing'/g;
+    const unitMatches = [...content.matchAll(summaryUnit)];
+    assert.ok(unitMatches.length >= 2, 'Expected official summary and aggregation unit types');
+    content = content.replace(summaryUnit, "$1'Captive Marketing' | 'Corporate & Retail Marketing' | 'Advisor'");
+  }
   save(path, content);
 }
-assert.ok(totalTypeChanges > 0, 'Expected official production reporting type definitions');
+assert.ok(totalTypeChanges >= 4, 'Expected official import, summary, policy and aggregation reporting types');
 console.log(`Advisor compatibility patch applied; ${totalTypeChanges} reporting-field type declarations updated.`);
