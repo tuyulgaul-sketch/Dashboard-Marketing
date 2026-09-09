@@ -1,0 +1,1 @@
+The wizard must include annual and twelve monthly NB/RN allocation at every level. Each month must reconcile parent team budgets with personal and direct-child allocations. Last-sibling and leaf remainders are automatic. Existing official monthly targets are preserved until deliberate publication.
