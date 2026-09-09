@@ -3,8 +3,8 @@ on:
   push:
     branches: [fix/workspace-focus-continuity]
     paths:
-      - 'scripts/apply-workspace-continuity.mjs'
-      - 'scripts/finalize-workspace-continuity.mjs'
+      - 'scripts/harden-workspace-continuity.mjs'
+      - 'scripts/test-workspace-continuity.mjs'
       - '.github/workflows/prepare-workspace-continuity.yml'
 permissions:
   contents: write
@@ -18,27 +18,55 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Apply exact source changes
+      - name: Apply exact source hardening
         run: |
-          node --check scripts/apply-workspace-continuity.mjs
-          node --check scripts/finalize-workspace-continuity.mjs
-          node scripts/apply-workspace-continuity.mjs
-          node scripts/finalize-workspace-continuity.mjs
+          node --check scripts/harden-workspace-continuity.mjs
+          node --check scripts/test-workspace-continuity.mjs
+          node scripts/harden-workspace-continuity.mjs
       - name: Install locked dependencies
         run: |
           corepack enable
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --frozen-lockfile
-      - name: Verify cascading and existing upload behavior
+      - name: Test focus continuity and target workflows
         run: |
-          node --test scripts/test-target-cascading.mjs scripts/test-target-onscreen.mjs
+          node --test scripts/test-workspace-continuity.mjs scripts/test-target-cascading.mjs scripts/test-target-onscreen.mjs
           node scripts/test-compact-target.mjs
           node scripts/test-marketing-xlsx.mjs
-          pnpm run build
+      - name: Verify TypeScript and lint
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript';
+          import { execFileSync } from 'node:child_process';
+          import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+          import { tmpdir } from 'node:os';
+          import { join, relative } from 'node:path';
+          const root=process.cwd();
+          const dir=mkdtempSync(join(tmpdir(),'workspace-baseline-'));
+          const diagnostics=cwd=>{
+            const config=ts.readConfigFile(join(cwd,'tsconfig.app.json'),ts.sys.readFile);
+            if(config.error)throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText,' '));
+            const parsed=ts.parseJsonConfigFileContent(config.config,ts.sys,cwd);
+            const program=ts.createProgram(parsed.fileNames,parsed.options);
+            return ts.getPreEmitDiagnostics(program).map(d=>`${d.file?relative(cwd,d.file.fileName):'config'}|TS${d.code}|${ts.flattenDiagnosticMessageText(d.messageText,' ')}`);
+          };
+          try {
+            execFileSync('git',['worktree','add','--detach',dir,'origin/main']);
+            symlinkSync(join(root,'node_modules'),join(dir,'node_modules'));
+            const before=diagnostics(dir),after=diagnostics(root);
+            const counts=new Map();for(const item of before)counts.set(item,(counts.get(item)||0)+1);
+            const added=[];for(const item of after){const n=counts.get(item)||0;if(n)counts.set(item,n-1);else added.push(item);}
+            console.log(`TypeScript baseline=${before.length}, current=${after.length}, new=${added.length}`);
+            if(added.length)throw new Error(added.join('\n'));
+          }finally{rmSync(join(dir,'node_modules'),{force:true});execFileSync('git',['worktree','remove','--force',dir]);rmSync(dir,{recursive:true,force:true});}
+          NODE
+          pnpm exec eslint src/contexts/AuthContext.tsx src/components/common/ReleaseSyncBridge.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
+      - name: Production build
+        run: pnpm run build
       - name: Commit verified runtime changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/contexts/AuthContext.tsx src/components/common/ReleaseSyncBridge.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
-          git commit -m 'fix(marketing): preserve authenticated workspace and wizard progress'
+          git add src/contexts/AuthContext.tsx src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetCascadingEntry.tsx
+          git commit -m 'fix(marketing): harden focus and year-scoped draft continuity'
           git push origin HEAD:fix/workspace-focus-continuity
