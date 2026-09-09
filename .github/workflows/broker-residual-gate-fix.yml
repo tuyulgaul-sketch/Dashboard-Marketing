@@ -1,0 +1,49 @@
+name: Broker residual gate fix
+on:
+  push:
+    branches:
+      - fix/broker-ojk-status-semantics
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/broker-ojk-status-semantics
+          fetch-depth: 0
+      - name: Remove residual Broker Active gate
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/BookingPipelinePage.tsx')
+          s=p.read_text()
+          old="""          const latestBroker =
+            store
+              .getBrokers()
+              .find(
+                broker =>
+                  broker.id ===
+                    selectedBroker.id &&
+                  broker.status ===
+                    'Active'
+              );"""
+          new="""          const latestBroker =
+            store
+              .getBrokers()
+              .find(
+                broker =>
+                  broker.id ===
+                    selectedBroker.id
+              );"""
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one residual Broker status gate, found {s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+      - name: Commit source-only patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/pages/BookingPipelinePage.tsx
+          git commit -m "fix(master): remove residual Broker status gate"
+          git push origin HEAD:fix/broker-ojk-status-semantics
