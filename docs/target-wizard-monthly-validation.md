@@ -1,0 +1,1 @@
+Annual NB/RN and twelve monthly NB/RN values are mandatory. Every team budget equals personal allocations plus direct-child budgets for each month. The final sibling receives the exact remaining monthly budget, and a leaf receives its entire budget as personal targets. Existing official distributions remain unchanged unless deliberately edited and published.
