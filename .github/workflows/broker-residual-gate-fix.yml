@@ -17,29 +17,15 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
           p=Path('src/pages/BookingPipelinePage.tsx')
           s=p.read_text()
-          old="""          const latestBroker =
-            store
-              .getBrokers()
-              .find(
-                broker =>
-                  broker.id ===
-                    selectedBroker.id &&
-                  broker.status ===
-                    'Active'
-              );"""
-          new="""          const latestBroker =
-            store
-              .getBrokers()
-              .find(
-                broker =>
-                  broker.id ===
-                    selectedBroker.id
-              );"""
-          if s.count(old) != 1:
-              raise SystemExit(f'expected one residual Broker status gate, found {s.count(old)}')
-          p.write_text(s.replace(old,new,1))
+          pattern=r"broker\.id\s*===\s*selectedBroker\.id\s*&&\s*broker\.status\s*===\s*'Active'"
+          matches=re.findall(pattern,s)
+          if len(matches) != 1:
+              raise SystemExit(f'expected one residual Broker Active predicate, found {len(matches)}')
+          s=re.sub(pattern,"broker.id === selectedBroker.id",s,count=1)
+          p.write_text(s)
       - name: Commit source-only patch
         run: |
           git config user.name github-actions[bot]
