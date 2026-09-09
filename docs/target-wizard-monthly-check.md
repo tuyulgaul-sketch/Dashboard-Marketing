@@ -1,0 +1,1 @@
+Annual and twelve-month NB/RN cascading must be implemented together. Every team and personal allocation must balance annually and monthly. Personal allocations reduce the team budget, the final sibling and leaf receive exact monthly remainders, and official targets remain unchanged before publication.
