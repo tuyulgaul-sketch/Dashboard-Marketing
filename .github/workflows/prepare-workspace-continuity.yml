@@ -5,7 +5,7 @@ on:
     paths:
       - 'scripts/harden-workspace-continuity.mjs'
       - 'scripts/repair-workspace-regressions.mjs'
-      - 'scripts/test-workspace-continuity.mjs'
+      - 'scripts/complete-workspace-type-fix.mjs'
       - '.github/workflows/prepare-workspace-continuity.yml'
 permissions:
   contents: write
@@ -19,11 +19,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Apply exact source and regression changes
+      - name: Apply approved source and regression changes
         run: |
-          node --check scripts/harden-workspace-continuity.mjs
-          node --check scripts/repair-workspace-regressions.mjs
           node scripts/harden-workspace-continuity.mjs
+          node scripts/complete-workspace-type-fix.mjs
           node scripts/repair-workspace-regressions.mjs
       - name: Install locked dependencies
         run: |
