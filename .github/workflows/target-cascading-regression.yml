@@ -1,0 +1,91 @@
+name: Target cascading wizard
+on:
+  push:
+    branches: [feat/target-cascading-wizard]
+    paths:
+      - 'scripts/target-cascading.bundle.br'
+      - 'scripts/install-target-cascading.mjs'
+      - '.github/workflows/target-cascading-regression.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/utils/targetCascadingWizard.ts'
+      - 'src/components/rkap/TargetCascadingWizard.tsx'
+      - 'src/components/rkap/TargetOnScreenSetup.tsx'
+      - 'src/components/rkap/LegacyTargetOnScreenSetup.tsx'
+      - 'scripts/test-target-cascading.mjs'
+      - 'scripts/test-target-onscreen.mjs'
+      - '.github/workflows/target-cascading-regression.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Install source bundle on the preparation commit
+        if: github.event_name == 'push'
+        run: node scripts/install-target-cascading.mjs
+      - name: Test cascading and existing on-screen workflows
+        run: |
+          node --test scripts/test-target-cascading.mjs scripts/test-target-onscreen.mjs
+          node scripts/test-compact-target.mjs
+          node scripts/test-marketing-xlsx.mjs
+      - name: Check new TypeScript diagnostics against main
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript';
+          import { execFileSync } from 'node:child_process';
+          import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+          import { tmpdir } from 'node:os';
+          import { join, relative } from 'node:path';
+          const root=process.cwd();
+          const base=execFileSync('git',['merge-base','HEAD','origin/main'],{encoding:'utf8'}).trim();
+          const dir=mkdtempSync(join(tmpdir(),'wizard-baseline-'));
+          const diagnostics=(cwd)=>{
+            const config=ts.readConfigFile(join(cwd,'tsconfig.app.json'),ts.sys.readFile);
+            if(config.error)throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText,' '));
+            const parsed=ts.parseJsonConfigFileContent(config.config,ts.sys,cwd);
+            const program=ts.createProgram(parsed.fileNames,parsed.options);
+            return ts.getPreEmitDiagnostics(program).map(d=>`${d.file?relative(cwd,d.file.fileName):'config'}|TS${d.code}|${ts.flattenDiagnosticMessageText(d.messageText,' ')}`);
+          };
+          try {
+            execFileSync('git',['worktree','add','--detach',dir,base]);
+            symlinkSync(join(root,'node_modules'),join(dir,'node_modules'));
+            const before=diagnostics(dir),after=diagnostics(root);
+            const counts=new Map();
+            for(const item of before)counts.set(item,(counts.get(item)||0)+1);
+            const added=[];
+            for(const item of after){const n=counts.get(item)||0;if(n)counts.set(item,n-1);else added.push(item);}
+            console.log(`TypeScript baseline=${before.length}, current=${after.length}, new=${added.length}`);
+            if(added.length)throw new Error(added.join('\n'));
+          }finally{
+            rmSync(join(dir,'node_modules'),{force:true});
+            execFileSync('git',['worktree','remove','--force',dir]);
+            rmSync(dir,{recursive:true,force:true});
+          }
+          NODE
+      - name: Lint new modules
+        run: pnpm exec eslint src/utils/targetCascadingWizard.ts src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetOnScreenSetup.tsx
+      - name: Verify production build
+        run: pnpm run build
+      - name: Commit verified source once
+        if: github.event_name == 'push'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/utils/targetCascadingWizard.ts src/components/rkap/TargetCascadingWizard.tsx src/components/rkap/TargetOnScreenSetup.tsx src/components/rkap/LegacyTargetOnScreenSetup.tsx scripts/test-target-cascading.mjs scripts/test-target-onscreen.mjs
+          git commit -m 'feat(marketing): guided annual target cascading with safe publication'
+          git push origin HEAD:feat/target-cascading-wizard
