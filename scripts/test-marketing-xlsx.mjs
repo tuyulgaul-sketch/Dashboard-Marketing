@@ -137,7 +137,7 @@ assert.match(productionSource, /User ID Pemilik Realisasi/);
 assert.match(productionSource, /picUserId:\s*picMatch!\.id/);
 assert.doesNotMatch(productionSource, /users\.find\(\s*user\s*=>\s*user\.name/);
 assert.match(productionSource, /validatedFile !== uploadFile/);
-assert.match(targetSource, /downloadMarketingWorkbook\('target'/);
+assert.match(targetSource, /downloadTargetSetupWorkbook\(/);
 assert.match(targetSource, /downloadMarketingWorkbook\('pipeline'/);
 assert.match(targetSource, /resolveMarketingOwner\(picUserId/);
 assert.match(targetSource, /getMarketingTemplateHeaders\('pipeline'\)/);
