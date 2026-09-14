@@ -1,5 +1,6 @@
 import type { User } from '@/types';
-import { COMPACT_TARGET_HEADERS } from './targetCompact';
+import { LEGACY_TARGET_HEADERS } from './targetCompact';
+import { prepareTargetTemplateRows, applyTargetValidationWorkbook } from './targetValidationWorkbook';
 import type ExcelJS from 'exceljs';
 
 export type SpreadsheetRow = Record<string, string>;
@@ -120,7 +121,7 @@ export const getMarketingTemplateHeaders = (kind: MarketingTemplateKind): string
     'Unit', 'Department', 'Direct Superior', 'Catatan', 'Existing Policy Number',
     'Original Policy Year', 'Coverage Start', 'Coverage End', 'Renewal Type',
   ];
-  return [...COMPACT_TARGET_HEADERS];
+  return [...LEGACY_TARGET_HEADERS];
 };
 
 const loadExcelJS = async () => (await import('exceljs')).default;
@@ -216,6 +217,8 @@ export const buildMarketingWorkbook = async (
   const workbook = new Excel.Workbook();
   workbook.creator = 'PertaLife Marketing Dashboard';
   workbook.created = new Date();
+  const targetTemplate = kind === 'target' ? prepareTargetTemplateRows(users, rows) : null;
+  const effectiveRows = targetTemplate?.rows ?? rows;
   const headers = getMarketingTemplateHeaders(kind);
   const sheet = workbook.addWorksheet(MARKETING_SHEETS[kind], { views: [{ state: 'frozen', ySplit: 1 }] });
   const directorySheet = workbook.addWorksheet(USER_DIRECTORY_SHEET, { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -231,8 +234,8 @@ export const buildMarketingWorkbook = async (
   headerStyle(sheet.getRow(1));
   sheet.columns = headers.map(header => ({ key: header, width: /Nama|Catatan|Produk|Department|Fungsi/.test(header) ? 28 : 20 }));
   // Preserve exact existing header order and values. No fabricated transactions.
-  rows.forEach(row => sheet.addRow(headers.map(header => row[header] ?? '')));
-  const dataEnd = Math.max(rows.length + 1, 2);
+  effectiveRows.forEach(row => sheet.addRow(headers.map(header => row[header] ?? '')));
+  const dataEnd = Math.max(effectiveRows.length + 1, 2);
   sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: dataEnd, column: headers.length } };
   sheet.getColumn(headers.findIndex(header => /User ID/.test(header)) + 1).numFmt = '@';
   directorySheet.addRow(['User ID', 'Nama', 'Jabatan', 'Unit', 'Department', 'Status']);
@@ -250,20 +253,11 @@ export const buildMarketingWorkbook = async (
       showErrorMessage: true, errorTitle: 'User ID tidak valid', error: 'Pilih User ID dari Daftar User ID.',
     };
   }
-  if (kind === 'target') {
-    [12, 22, 12, 12, 24].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  if (kind === 'target' && targetTemplate) {
+    [12, 22, 30, 28, 30, 18].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+    for (let column = 7; column <= headers.length; column += 1) sheet.getColumn(column).width = column === headers.length ? 30 : 18;
     sheet.getColumn(1).numFmt = '0';
-    sheet.getColumn(3).numFmt = '0';
-    for (let rowNumber = 2; rowNumber <= Math.max(1001, dataEnd); rowNumber += 1) {
-      sheet.getCell(rowNumber, 3).dataValidation = {
-        type: 'list', allowBlank: false, formulae: ['"1,2,3,4,5,6,7,8,9,10,11,12"'],
-        showErrorMessage: true, errorTitle: 'Periode tidak valid', error: 'Pilih bulan 1 sampai 12.',
-      };
-      sheet.getCell(rowNumber, 4).dataValidation = {
-        type: 'list', allowBlank: false, formulae: ['"NB,RN"'],
-        showErrorMessage: true, errorTitle: 'Jenis bisnis tidak valid', error: 'Pilih NB atau RN.',
-      };
-    }
+    applyTargetValidationWorkbook(workbook, sheet, users, targetTemplate.year);
   }
   const moneyHeaders = kind === 'production' ? ['Realisasi Produksi (Rp)'] : kind === 'pipeline' ? ['Estimasi Premi'] : headers.filter(header => header.startsWith('Target ') || / (NB|RN)$/.test(header));
   moneyHeaders.forEach(header => { const column = sheet.getColumn(headers.indexOf(header) + 1); column.numFmt = '#,##0;[Red](#,##0)'; });
