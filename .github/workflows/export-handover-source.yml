@@ -1,0 +1,49 @@
+name: Export handover source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-handover-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout production application baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 87956721909c600933183ee0e8c604445a35edb2
+          fetch-depth: 1
+
+      - name: Build clean handover source directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handover-source/Dashboard-Marketing
+          rsync -a ./ handover-source/Dashboard-Marketing/ \
+            --exclude='.git/' \
+            --exclude='node_modules/' \
+            --exclude='dist/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='handover-source/'
+          cat > handover-source/Dashboard-Marketing/SOURCE_BASELINE.txt <<'EOF'
+          Repository: tuyulgaul-sketch/Dashboard-Marketing
+          Application baseline commit: 87956721909c600933183ee0e8c604445a35edb2
+          Export purpose: IT in-house handover
+          Secrets intentionally excluded: .env, service-role keys, tokens, passwords, private keys.
+          EOF
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dashboard-Marketing-Source-8795672
+          path: handover-source/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 6
