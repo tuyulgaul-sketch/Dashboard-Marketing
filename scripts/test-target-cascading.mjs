@@ -93,7 +93,9 @@ test('source keeps official publication behind explicit authorization and confir
  const component=readFileSync('src/components/rkap/TargetCascadingWizard.tsx','utf8');
  const parent=readFileSync('src/pages/TargetRealizationUploadPage.tsx','utf8');
  const entry=readFileSync('src/components/rkap/TargetCascadingEntry.tsx','utf8');
- assert.match(parent,/TargetCascadingEntry/);
+ assert.doesNotMatch(parent,/TargetCascadingEntry/);
+ assert.match(parent,/Setup Target \(Excel\)/);
+ assert.match(parent,/value="targets"/);
  assert.match(entry,/TargetCascadingWizard/);
  assert.match(component,/useTargetRealizationPublisher/);
  assert.match(component,/actorId === 'USR-000024'/);

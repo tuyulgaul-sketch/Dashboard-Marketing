@@ -72,6 +72,38 @@ assert.equal(targetRoundtrip.actual.worksheets[0].getCell('D2').value, 'NB');
 assert.equal(targetRoundtrip.actual.worksheets[0].getCell('E2').value, 150000000);
 assert.ok(targetRoundtrip.actual.worksheets[0].getCell('C2').dataValidation.formulae.length);
 assert.ok(targetRoundtrip.actual.worksheets[0].getCell('D2').dataValidation.formulae.length);
+
+const targetSetupUsers = [
+  { id: 'USR-000001', name: 'Direktur', role: 'DIRECTOR_MARKETING', position: 'Director Marketing', unit: 'Direktorat Pemasaran', department: 'None', status: 'Active', superiorId: null },
+  { id: 'USR-000002', name: 'Advisor', role: 'ADVISOR_MARKETING_DIRECTOR', position: 'Advisor', unit: 'Direktorat Pemasaran', department: 'None', status: 'Active', superiorId: 'USR-000001' },
+  { id: 'USR-000003', name: 'VP Captive', role: 'VP_CAPTIVE_MARKETING', position: 'VP', unit: 'Captive Marketing', department: 'None', status: 'Active', superiorId: 'USR-000001' },
+  { id: 'USR-000004', name: 'Staff Captive', role: 'STAFF_MARKETING', position: 'Staff', unit: 'Captive Marketing', department: 'Captive I', status: 'Active', superiorId: 'USR-000003' },
+];
+const setupBytes = await workbook.buildTargetSetupWorkbook(targetSetupUsers, 2027, []);
+const setupBook = new ExcelJS.Workbook();
+await setupBook.xlsx.load(setupBytes);
+assert.deepEqual(setupBook.worksheets.map(sheet => sheet.name), [
+  workbook.MARKETING_SHEETS.target,
+  workbook.USER_DIRECTORY_SHEET,
+  workbook.TARGET_DIRECTORATE_SHEET,
+  workbook.TARGET_VALIDATION_ENGINE_SHEET,
+  workbook.TARGET_VALIDATION_SHEET,
+  workbook.TARGET_RECONCILIATION_SHEET,
+  workbook.TARGET_GUIDE_SHEET,
+]);
+const setupData = setupBook.getWorksheet(workbook.MARKETING_SHEETS.target);
+assert.equal(setupData.getCell('A2').value, 2027);
+assert.equal(setupData.getCell('B2').value, 'USR-000001');
+assert.ok(setupData.getCell('G2').value.formula);
+assert.ok(setupData.getCell('K2').value.formula);
+assert.equal(setupData.getCell('M2').value, 0);
+assert.equal(setupBook.getWorksheet(workbook.TARGET_DIRECTORATE_SHEET).getCell('A5').value, 'Januari');
+assert.ok(setupBook.getWorksheet(workbook.TARGET_VALIDATION_SHEET).getCell('B6').value.formula);
+assert.equal(setupBook.getWorksheet(workbook.TARGET_VALIDATION_ENGINE_SHEET).state, 'veryHidden');
+const setupRows = await workbook.readNativeXlsxRows(setupBytes, { sheetName: workbook.MARKETING_SHEETS.target, requiredHeaders: ['Tahun', 'User ID Penerima', 'Target Tahunan'] });
+assert.equal(setupRows.length, targetSetupUsers.length);
+assert.equal(setupRows[0]['User ID Penerima'], 'USR-000001');
+assert.equal(setupRows[0]['Target Tahunan'], '0');
 const pipeline = Object.fromEntries(workbook.getMarketingTemplateHeaders('pipeline').map(header => [header, '']));
 pipeline.Tahun = 2026;
 pipeline['PIC User ID'] = 'USR-000025';
