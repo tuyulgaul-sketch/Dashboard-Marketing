@@ -1,6 +1,6 @@
-import { buildCompactTargetTemplateRows, normalizeTargetUploadRows } from '@/utils/targetCompact';
+import { normalizeTargetUploadRows, parseExactTargetRupiah } from '@/utils/targetCompact';
 import { getRkapMonthlyValue, getRkapWinMonthlyValue } from '@/utils/rkapPipelineMatrix';
-import { downloadMarketingWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
+import { downloadMarketingWorkbook, downloadTargetSetupWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, TARGET_DIRECTORATE_SHEET, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { store, OfficialProductionSummary } from '@/services/store';
@@ -1733,9 +1733,13 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
   // ============================================================
 
   const handleDownloadTargetTemplate = async () => {
-    const templateData = buildCompactTargetTemplateRows(users, selectedTargetYear);
     try {
-      await downloadMarketingWorkbook('target', templateData, users, `Template_Target_${selectedTargetYear}`);
+      await downloadTargetSetupWorkbook(
+        users,
+        selectedTargetYear,
+        targets,
+        `Template_Setup_Target_${selectedTargetYear}`
+      );
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Gagal membuat template XLSX.');
     }
@@ -1781,6 +1785,18 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           requiredHeaders: ['Tahun', 'User ID Penerima'],
         });
         const parsed = normalizeTargetUploadRows(importedRows, users, selectedTargetYear);
+        let directorateRows: Record<string, string>[] | null = null;
+        try {
+          directorateRows = await readMarketingSpreadsheet(targetFile, {
+            sheetName: TARGET_DIRECTORATE_SHEET,
+            requiredHeaders: ['Bulan', 'Target Direktorat NB', 'Target Direktorat RN'],
+          });
+        } catch (directorateError) {
+          const message = directorateError instanceof Error ? directorateError.message : '';
+          if (!/Sheet data .*tidak ditemukan/i.test(message)) throw directorateError;
+          // Backward compatibility: old upload files remain readable.
+          // New downloaded templates always contain Target Direktorat and receive monthly validation.
+        }
 
         if (
           parsed.length === 0
@@ -2445,6 +2461,51 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
             });
           }
         );
+
+        if (directorateRows) {
+          const monthIndexByName = new Map([
+            ['januari', 0], ['februari', 1], ['maret', 2], ['april', 3], ['mei', 4], ['juni', 5],
+            ['juli', 6], ['agustus', 7], ['september', 8], ['oktober', 9], ['november', 10], ['desember', 11],
+          ]);
+          const directorateByMonth = new Map<number, { NB: number; RN: number }>();
+          directorateRows.forEach((row, index) => {
+            const rawMonth = String(getRowValue(row, 'Bulan', 'Periode') || '').trim().toLowerCase();
+            const monthIndex = monthIndexByName.get(rawMonth);
+            if (monthIndex === undefined) throw new Error(`Target Direktorat baris ${index + 2}: Bulan tidak valid (${rawMonth || 'kosong'}).`);
+            if (directorateByMonth.has(monthIndex)) throw new Error(`Target Direktorat: bulan ${rawMonth} muncul lebih dari satu kali.`);
+            let nb: number;
+            let rn: number;
+            try {
+              nb = parseExactTargetRupiah(getRowValue(row, 'Target Direktorat NB'));
+              rn = parseExactTargetRupiah(getRowValue(row, 'Target Direktorat RN'));
+            } catch (error) {
+              throw new Error(`Target Direktorat ${rawMonth}: ${error instanceof Error ? error.message : 'nominal tidak valid.'}`);
+            }
+            directorateByMonth.set(monthIndex, { NB: nb, RN: rn });
+          });
+          if (directorateByMonth.size !== 12) throw new Error('Target Direktorat wajib memuat tepat 12 bulan Januari–Desember.');
+
+          const directorValidation = validationList.find(row =>
+            targetHolders.some(user => user.id === row.userId && user.role === 'DIRECTOR_MARKETING')
+          );
+          if (!directorValidation) throw new Error('Direktur Marketing aktif tidak ditemukan untuk validasi Target Direktorat.');
+          for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+            const expected = directorateByMonth.get(monthIndex)!;
+            const allocatedNB = validationList.reduce((sum, row) => sum + row.monthlyNewBusiness[monthIndex], 0);
+            const allocatedRN = validationList.reduce((sum, row) => sum + row.monthlyRenewal[monthIndex], 0);
+            const nbDiff = Math.round(allocatedNB) - Math.round(expected.NB);
+            const rnDiff = Math.round(allocatedRN) - Math.round(expected.RN);
+            const monthLabel = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][monthIndex];
+            if (nbDiff !== 0) {
+              directorValidation.messages.push(`Target Direktorat ${monthLabel} NB belum balance: alokasi ${formatRupiah(allocatedNB)} vs target ${formatRupiah(expected.NB)}. Selisih ${formatRupiah(Math.abs(nbDiff))}.`);
+              directorValidation.isValid = false;
+            }
+            if (rnDiff !== 0) {
+              directorValidation.messages.push(`Target Direktorat ${monthLabel} RN belum balance: alokasi ${formatRupiah(allocatedRN)} vs target ${formatRupiah(expected.RN)}. Selisih ${formatRupiah(Math.abs(rnDiff))}.`);
+              directorValidation.isValid = false;
+            }
+          }
+        }
 
         const directorUser =
           targetHolders.find(
@@ -4725,7 +4786,7 @@ if (
                     <FileSpreadsheet className="w-5 h-5 text-blue-600" />
 
                     <CardTitle className="text-sm font-bold text-gray-900">
-                      Workflow Setup Target RKAP (XLSX dengan Daftar User ID)
+                      Workflow Setup Target RKAP via Excel
                     </CardTitle>
 
                   </div>
@@ -4740,7 +4801,7 @@ if (
                 </div>
 
                 <CardDescription className="text-xs">
-                  Proses 6 Langkah: Pilih Tahun, Download Template XLSX, Isi melalui Microsoft Excel, Upload XLSX, Validasi Cascading, lalu Publish
+                  Proses 6 Langkah: pilih tahun, download template XLSX, isi target pada Excel sambil cek Ringkasan Validasi, upload XLSX, validasi ulang sistem, lalu Publish
                 </CardDescription>
 
               </CardHeader>
@@ -4812,7 +4873,7 @@ if (
                           <Download className="w-4 h-4 text-blue-600" />
 
                           <span>
-                            Download Template Target (.xlsx)
+                            Download Template Setup Target (.xlsx)
                           </span>
 
                         </Button>

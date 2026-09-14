@@ -1,0 +1,70 @@
+name: Verify target Excel handover build
+on:
+  push:
+    branches: [feat/target-setup-excel-validator]
+    paths:
+      - '.github/workflows/verify-target-excel-handover.yml'
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Target Excel regressions
+        run: |
+          node scripts/test-marketing-xlsx.mjs
+          node scripts/test-target-cascading.mjs
+          node scripts/test-compact-target.mjs
+      - name: Reject new TypeScript diagnostics against main
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript';
+          import { execFileSync } from 'node:child_process';
+          import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+          import { tmpdir } from 'node:os';
+          import { join, relative } from 'node:path';
+          const root=process.cwd();
+          const dir=mkdtempSync(join(tmpdir(),'target-excel-baseline-'));
+          const diagnostics=cwd=>{
+            const config=ts.readConfigFile(join(cwd,'tsconfig.app.json'),ts.sys.readFile);
+            if(config.error)throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText,' '));
+            const parsed=ts.parseJsonConfigFileContent(config.config,ts.sys,cwd);
+            const program=ts.createProgram(parsed.fileNames,parsed.options);
+            return ts.getPreEmitDiagnostics(program).map(d=>`${d.file?relative(cwd,d.file.fileName):'config'}|TS${d.code}|${ts.flattenDiagnosticMessageText(d.messageText,' ')}`);
+          };
+          try {
+            execFileSync('git',['worktree','add','--detach',dir,'origin/main']);
+            symlinkSync(join(root,'node_modules'),join(dir,'node_modules'));
+            const before=diagnostics(dir), after=diagnostics(root);
+            const counts=new Map(); for(const item of before) counts.set(item,(counts.get(item)||0)+1);
+            const added=[]; for(const item of after){const n=counts.get(item)||0; if(n) counts.set(item,n-1); else added.push(item);}
+            console.log(`TypeScript baseline=${before.length}, current=${after.length}, new=${added.length}`);
+            if(added.length) throw new Error(added.join('\n'));
+          } finally {
+            rmSync(join(dir,'node_modules'),{force:true});
+            execFileSync('git',['worktree','remove','--force',dir]);
+            rmSync(dir,{recursive:true,force:true});
+          }
+          NODE
+      - name: Lint changed source
+        run: pnpm exec eslint src/utils/marketingWorkbook.ts src/pages/TargetRkapPage.tsx src/pages/TargetRealizationUploadPage.tsx
+      - name: Production build
+        run: pnpm run build
+      - name: Remove temporary verification workflow after success
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/verify-target-excel-handover.yml
+          git commit -m 'ci(target): remove temporary handover verifier'
+          git push origin HEAD:feat/target-setup-excel-validator
