@@ -196,5 +196,60 @@ export const normalizeTargetUploadRows = (
   const required = ['Tahun','User ID Penerima','Target Tahunan','Target Tahunan NB','Target Tahunan RN','Target Pribadi','Target Pribadi NB','Target Pribadi RN'];
   const missing = required.filter(header => !keys.has(headerOf(header)));
   if (missing.length) throw new Error(`Kolom wajib format lama tidak ditemukan: ${missing.join(', ')}.`);
+
+  // New Excel template carries the monthly Directorate baseline in hidden columns
+  // on the Director row. When present, re-check it in code so workbook formulas
+  // remain a convenience layer, never the final source of truth. Older legacy
+  // workbooks without these columns remain readable for backward compatibility.
+  const monthlyBaselineHeaders = MONTHS.flatMap(month => [
+    `Target Direktorat ${month} NB`,
+    `Target Direktorat ${month} RN`,
+  ]);
+  const baselineColumnsPresent = monthlyBaselineHeaders.filter(header => keys.has(headerOf(header)));
+  if (baselineColumnsPresent.length > 0) {
+    const missingBaselineColumns = monthlyBaselineHeaders.filter(header => !keys.has(headerOf(header)));
+    if (missingBaselineColumns.length) {
+      throw new Error(`Kolom acuan Target Direktorat belum lengkap: ${missingBaselineColumns.join(', ')}.`);
+    }
+
+    const holders = activeHolders(users);
+    const directors = holders.filter(user => user.role === 'DIRECTOR_MARKETING');
+    if (directors.length !== 1) throw new Error('User Master harus memiliki tepat satu Direktur Marketing aktif untuk validasi Target Direktorat.');
+    const directorId = idOf(directors[0].id);
+    const directorRows = rows.filter(row => idOf(valueOf(row, 'User ID Penerima')) === directorId);
+    if (directorRows.length !== 1) throw new Error(`File harus memiliki tepat satu baris Direktur Marketing (${directorId}).`);
+    const directorRow = directorRows[0];
+    const holderIds = new Set(holders.map(user => idOf(user.id)));
+    const holderRows = rows.filter(row => holderIds.has(idOf(valueOf(row, 'User ID Penerima'))));
+
+    const directorMonthlyNB: number[] = [];
+    const directorMonthlyRN: number[] = [];
+    MONTHS.forEach(month => {
+      const expectedNB = parseExactTargetRupiah(valueOf(directorRow, `Target Direktorat ${month} NB`));
+      const expectedRN = parseExactTargetRupiah(valueOf(directorRow, `Target Direktorat ${month} RN`));
+      directorMonthlyNB.push(expectedNB);
+      directorMonthlyRN.push(expectedRN);
+      const actualNB = safeSum(holderRows.map(row => parseExactTargetRupiah(valueOf(row, `${month} NB`))), `${month} total alokasi NB`);
+      const actualRN = safeSum(holderRows.map(row => parseExactTargetRupiah(valueOf(row, `${month} RN`))), `${month} total alokasi RN`);
+      if (actualNB !== expectedNB) {
+        throw new Error(`${month} NB belum balance: total alokasi pribadi seluruh holder ${actualNB.toLocaleString('id-ID')} tidak sama dengan Target Direktorat ${expectedNB.toLocaleString('id-ID')}. Selisih ${(actualNB - expectedNB).toLocaleString('id-ID')}.`);
+      }
+      if (actualRN !== expectedRN) {
+        throw new Error(`${month} RN belum balance: total alokasi pribadi seluruh holder ${actualRN.toLocaleString('id-ID')} tidak sama dengan Target Direktorat ${expectedRN.toLocaleString('id-ID')}. Selisih ${(actualRN - expectedRN).toLocaleString('id-ID')}.`);
+      }
+    });
+
+    const directorAnnualNB = parseExactTargetRupiah(valueOf(directorRow, 'Target Tahunan NB'));
+    const directorAnnualRN = parseExactTargetRupiah(valueOf(directorRow, 'Target Tahunan RN'));
+    const monthlyAnnualNB = safeSum(directorMonthlyNB, 'Target Direktorat tahunan NB');
+    const monthlyAnnualRN = safeSum(directorMonthlyRN, 'Target Direktorat tahunan RN');
+    if (directorAnnualNB !== monthlyAnnualNB) {
+      throw new Error(`Target Tahunan Direktur NB ${directorAnnualNB.toLocaleString('id-ID')} tidak sama dengan jumlah Target Direktorat bulanan NB ${monthlyAnnualNB.toLocaleString('id-ID')}.`);
+    }
+    if (directorAnnualRN !== monthlyAnnualRN) {
+      throw new Error(`Target Tahunan Direktur RN ${directorAnnualRN.toLocaleString('id-ID')} tidak sama dengan jumlah Target Direktorat bulanan RN ${monthlyAnnualRN.toLocaleString('id-ID')}.`);
+    }
+  }
+
   return rows;
 };
