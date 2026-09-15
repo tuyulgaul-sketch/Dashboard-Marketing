@@ -30,6 +30,7 @@ export const RESTORED_BUSINESS_STORAGE_KEYS = [
   'pertalife_official_production_summaries',
   'pertalife_official_production_batches',
   'pertalife_official_policy_directory',
+  'pertalife_official_production_policy_details',
   'pertalife_participants',
   'pertalife_historical',
   'pertalife_reimbursements',
