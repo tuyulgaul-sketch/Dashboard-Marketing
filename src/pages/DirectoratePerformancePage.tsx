@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertCircle, BarChart3, Database, RefreshCw, Target, TrendingUp } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatRupiah } from '@/utils/formatters';
+import ProductPolicyDrilldown from '@/components/performance/ProductPolicyDrilldown';
 import {
-  buildPerformanceSummary, listDirectoratePerformance,
+  buildPerformanceSummary, listDirectoratePerformance, matchesPerformanceScope,
   normalizePerformanceScope, type BusinessTypeFilter, type DirectoratePerformanceSnapshot,
 } from '@/services/directoratePerformanceService';
 
@@ -147,6 +148,13 @@ const DirectoratePerformancePage: React.FC<{ view: 'target' | 'realization' }> =
     });
     return [...values.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'id'));
   }, [actualRows]);
+
+  const policyDetails = useMemo(() => (snapshot?.details || []).filter(row =>
+    row.year === year &&
+    matchesPerformanceScope(row, scope) &&
+    (business === 'OVERALL' || row.businessType === business)
+  ), [snapshot, year, scope, business]);
+
   const history = snapshot?.batches.filter(batch => batch.publishedPeriodKeys.some(period => period.startsWith(`${year}-`))).slice(0, 10) || [];
 
   return (
@@ -204,7 +212,7 @@ const DirectoratePerformancePage: React.FC<{ view: 'target' | 'realization' }> =
               <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-left text-xs"><thead className="border-b bg-slate-50 text-slate-600"><tr><th className="p-3">Bulan</th>{view === 'target' && <th className="p-3 text-right">Target</th>}<th className="p-3 text-right">Realisasi</th><th className="p-3 text-right">Source Rows</th></tr></thead><tbody className="divide-y">{monthly.map(row => <tr key={row.month}><td className="p-3 font-semibold">{row.label}</td>{view === 'target' && <td className="p-3 text-right">{formatRupiah(row.target)}</td>}<td className="p-3 text-right font-semibold text-emerald-700">{formatRupiah(row.actual)}</td><td className="p-3 text-right">{formatCount(row.transactions)}</td></tr>)}</tbody></table></div>
             </CardContent></Card>
             {view === 'target' && <Card className="border-slate-200"><CardHeader><CardTitle className="text-sm">Performance Breakdown</CardTitle><CardDescription className="text-xs">Target pribadi terdistribusi dan realisasi per unit/departemen. Baris perusahaan tidak menjumlahkan kembali target atasan dan bawahan.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-xs"><thead className="border-b bg-slate-50"><tr><th className="p-3">Scope</th><th className="p-3 text-right">Target</th><th className="p-3 text-right">Realisasi</th><th className="p-3 text-right">Achievement</th></tr></thead><tbody className="divide-y">{breakdown.map(row => <tr key={row.key}><td className="p-3 font-semibold">{row.key}</td><td className="p-3 text-right">{formatRupiah(row.target)}</td><td className="p-3 text-right">{formatRupiah(row.actual)}</td><td className="p-3 text-right">{row.achievement === null ? '—' : `${row.achievement.toFixed(2)}%`}</td></tr>)}{breakdown.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-slate-500">Belum ada data untuk scope ini.</td></tr>}</tbody></table></div></CardContent></Card>}
-            {view === 'realization' && <Card className="border-slate-200"><CardHeader><CardTitle className="text-sm">Realisasi per Produk</CardTitle><CardDescription className="text-xs">Agregat produk untuk scope dan jenis bisnis yang dipilih.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[480px] text-left text-xs"><thead className="border-b bg-slate-50"><tr><th className="p-3">Produk</th><th className="p-3 text-right">Realisasi</th><th className="p-3 text-right">Source Rows</th></tr></thead><tbody className="divide-y">{productBreakdown.map(row => <tr key={row.name}><td className="p-3 font-semibold">{row.name}</td><td className="p-3 text-right">{formatRupiah(row.amount)}</td><td className="p-3 text-right">{formatCount(row.transactions)}</td></tr>)}{productBreakdown.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-slate-500">Belum ada realisasi Official untuk pilihan ini.</td></tr>}</tbody></table></div></CardContent></Card>}
+            {view === 'realization' && <ProductPolicyDrilldown products={productBreakdown} details={policyDetails} filterKey={`${year}|${scope}|${business}`} />}
             {view === 'realization' && history.length > 0 && <Card className="border-slate-200"><CardHeader><CardTitle className="text-sm">Riwayat Publish Snapshot</CardTitle><CardDescription className="text-xs">Re-upload periode yang sama mengganti snapshot periode tersebut. Riwayat tidak dijumlahkan kembali sebagai produksi.</CardDescription></CardHeader><CardContent className="space-y-2">{history.map(batch => <div key={batch.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 p-3"><div><p className="text-xs font-semibold">{batch.filename || 'Snapshot Produksi'}</p><p className="mt-1 text-[11px] text-slate-500">{formatTimestamp(batch.uploadedAt)} • {batch.publishedPeriodKeys.join(', ')}</p></div><div className="text-right"><p className="text-xs font-semibold">{formatRupiah(batch.totalProductionAmount)}</p><p className="text-[11px] text-slate-500">{formatCount(batch.validRowCount)} valid rows</p></div></div>)}</CardContent></Card>}
             <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 text-xs leading-relaxed text-blue-900"><strong>Sumber data:</strong> Target berasal dari batch RKAP current yang dipublikasikan Arianie. Realisasi berasal dari ringkasan Official Production yang terhubung dengan batch published. Pembaruan diperiksa otomatis setiap 30 detik saat halaman aktif dan dapat diminta melalui Refresh. Ini bukan koneksi langsung ke core asuransi; angka baru muncul setelah snapshot dipublikasikan.</div>
           </>
