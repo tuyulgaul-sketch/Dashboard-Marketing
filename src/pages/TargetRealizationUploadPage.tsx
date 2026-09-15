@@ -10,6 +10,7 @@ import TargetRkapPage from '@/pages/TargetRkapPage';
 import ProduksiPage from '@/pages/ProduksiPage';
 import RkapPipelineMatrixUpload from '@/components/rkap/RkapPipelineMatrixUpload';
 import OfficialUploadArchiveManager from '@/components/rkap/OfficialUploadArchiveManager';
+import OfficialProductionDetailCapture from '@/components/rkap/OfficialProductionDetailCapture';
 
 type UploadTab = 'targets' | 'bulk' | 'realization' | 'manage';
 const VALID_TABS = new Set<UploadTab>(['targets', 'bulk', 'realization', 'manage']);
@@ -91,7 +92,10 @@ const TargetRealizationUploadPage: React.FC = () => {
           </TabsList>
           <TabsContent value="targets" forceMount className={contentClass('targets')}><TargetRkapPage embedded initialUploadTab="targets" publisherAuthorized={canPublish} /></TabsContent>
           <TabsContent value="bulk" forceMount className={contentClass('bulk')}><RkapPipelineMatrixUpload publisherAuthorized={canPublish} /></TabsContent>
-          <TabsContent value="realization" forceMount className={contentClass('realization')}><ProduksiPage embedded uploadOnly publisherAuthorized={canPublish} /></TabsContent>
+          <TabsContent value="realization" forceMount className={contentClass('realization')}>
+            <OfficialProductionDetailCapture />
+            <ProduksiPage embedded uploadOnly publisherAuthorized={canPublish} />
+          </TabsContent>
           <TabsContent value="manage" forceMount className={contentClass('manage')}><OfficialUploadArchiveManager /></TabsContent>
         </Tabs>
         <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs leading-relaxed text-blue-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>Setup target melalui Excel, upload, dan penghapusan hanya tersedia bagi publisher resmi. Target baru tidak mengganti data resmi sebelum validasi dan konfirmasi Publish. Penghapusan tetap memerlukan preview, alasan, serta konfirmasi ID batch; riwayat resmi dipertahankan.</p></div>
