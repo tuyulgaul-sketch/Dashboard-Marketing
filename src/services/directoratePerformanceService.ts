@@ -27,6 +27,23 @@ export interface DirectorateProductionSummary {
   transactionCount: number;
 }
 
+export interface DirectorateProductionPolicyDetail {
+  id: string;
+  year: number;
+  month: number;
+  unit: string;
+  department: string;
+  businessType: 'New Business' | 'Renewal Business';
+  productName: string;
+  policyNumber: string;
+  customerName: string;
+  amount: number;
+  sourceRows: number;
+  picUserId: string;
+  sourceBatchId: string;
+  legacyBackfill: boolean;
+}
+
 export interface DirectorateProductionBatch {
   id: string;
   uploadedAt: string;
@@ -41,6 +58,7 @@ export interface DirectoratePerformanceSnapshot {
   refreshedAt: string;
   targets: DirectorateTargetGroup[];
   summaries: DirectorateProductionSummary[];
+  details: DirectorateProductionPolicyDetail[];
   batches: DirectorateProductionBatch[];
 }
 
@@ -58,6 +76,7 @@ const number = (value: unknown): number => {
   }
   return parsed;
 };
+const boolean = (value: unknown): boolean => value === true || value === 'true';
 const rows = (value: unknown): unknown[] => {
   if (!Array.isArray(value)) throw new Error('Daftar laporan pusat tidak valid.');
   return value;
@@ -131,7 +150,7 @@ export const buildPerformanceSummary = (
 
 /** A separate server projection: no generic writable store or browser-data fallback. */
 export const listDirectoratePerformance = async (): Promise<DirectoratePerformanceSnapshot> => {
-  const { data, error } = await supabase.rpc('list_directorate_performance_v33');
+  const { data, error } = await supabase.rpc('list_directorate_performance_v35');
   if (error) throw error;
   const payload = record(data as unknown);
   const targets = rows(payload.targets).map(value => {
@@ -153,6 +172,18 @@ export const listDirectoratePerformance = async (): Promise<DirectoratePerforman
       productName: text(row.productName), amount: number(row.amount), transactionCount: number(row.transactionCount),
     };
   });
+  const details = rows(payload.details).map((value): DirectorateProductionPolicyDetail => {
+    const row = record(value);
+    const businessType = text(row.businessType);
+    if (businessType !== 'New Business' && businessType !== 'Renewal Business') throw new Error('Jenis bisnis detail realisasi tidak valid.');
+    return {
+      id: text(row.id), year: number(row.year), month: number(row.month),
+      unit: text(row.unit), department: text(row.department), businessType,
+      productName: text(row.productName), policyNumber: text(row.policyNumber), customerName: text(row.customerName),
+      amount: number(row.amount), sourceRows: number(row.sourceRows), picUserId: text(row.picUserId),
+      sourceBatchId: text(row.sourceBatchId), legacyBackfill: boolean(row.legacyBackfill),
+    };
+  });
   const batches = rows(payload.batches).map(value => {
     const row = record(value);
     return {
@@ -161,5 +192,5 @@ export const listDirectoratePerformance = async (): Promise<DirectoratePerforman
       totalProductionAmount: number(row.totalProductionAmount), validRowCount: number(row.validRowCount),
     };
   });
-  return { refreshedAt: text(payload.refreshedAt), targets, summaries, batches };
+  return { refreshedAt: text(payload.refreshedAt), targets, summaries, details, batches };
 };
