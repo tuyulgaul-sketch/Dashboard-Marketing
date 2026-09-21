@@ -1,48 +1,66 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { Activity, ClipboardCheck } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CalendarCheck } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessFeature } from "@/lib/accessControl";
 
 const DigitalAffinityPage: React.FC = () => {
   const { profile } = useAuth();
+  const canSeeSurvey = canAccessFeature(profile, "SURVEY_PERTALIFE_CARE");
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">
+          <h1 className="text-2xl font-black tracking-tight text-slate-900">
             Digital & Affinity
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {profile?.full_name}
+            Workspace operasional Digital & Affinity.
           </p>
         </div>
 
-        <Card className="border-dashed border-slate-300">
-          <CardContent className="flex min-h-[320px] flex-col items-center justify-center p-8 text-center">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-              <CalendarCheck className="h-6 w-6" />
-            </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {canSeeSurvey && (
+            <Card className="border-blue-200 bg-blue-50/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ClipboardCheck className="h-5 w-5 text-blue-700" />
+                  Survey PertaLife Care
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-4 text-sm leading-6 text-slate-600">
+                  Monitor hasil survey, issue aplikasi, evidence, dan tindak lanjut
+                  yang terhubung ke Activities.
+                </p>
+                <Button asChild>
+                  <Link to="/survey-pertalife-care">Buka Survey Dashboard</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
-            <h2 className="text-base font-bold text-slate-900">
-              Dashboard Digital & Affinity belum dikonfigurasi
-            </h2>
-
-            <p className="mt-2 max-w-lg text-sm text-slate-500">
-              Untuk sementara, aktivitas harian, pekerjaan project,
-              follow-up, dan koordinasi dicatat melalui modul Aktivitas.
-            </p>
-
-            <Button asChild className="mt-5">
-              <Link to="/aktivitas">
-                Buka Aktivitas
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="h-5 w-5 text-slate-700" />
+                Aktivitas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4 text-sm leading-6 text-slate-600">
+                Kelola task pribadi, assignment, kolaborasi, dan tindak lanjut.
+              </p>
+              <Button asChild variant="outline">
+                <Link to="/aktivitas">Buka Aktivitas</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppLayout>
   );

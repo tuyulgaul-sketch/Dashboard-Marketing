@@ -14,6 +14,7 @@ import {
   Briefcase,
   CalendarCheck,
   CalendarDays,
+  ClipboardCheck,
   ChevronRight,
   FileText,
   FileUp,
@@ -57,6 +58,10 @@ export const AppSidebar:
     const canSeeTarget = canAccessFeature(profile, 'TARGET_RKAP');
     const canSeeBooking = canAccessFeature(profile, 'BOOKING_PIPELINE');
     const canSeeProduction = canAccessFeature(profile, 'PRODUCTION');
+    const canSeePertaLifeCareSurvey = canAccessFeature(
+      profile,
+      "SURVEY_PERTALIFE_CARE"
+    );
     const { canPublish } = useTargetRealizationPublisher();
     const targetRealizationItems: FlyoutItem[] = [
       ...(canSeeTarget ? [{ label: 'Target', path: '/target-rkap', icon: Target }] : []),
@@ -172,6 +177,17 @@ export const AppSidebar:
                 "/tanda-terima",
               icon:
                 FileText,
+            }]
+          : []),
+      ];
+
+    const digitalAffinityItems:
+      FlyoutItem[] = [
+        ...(canSeePertaLifeCareSurvey
+          ? [{
+              label: "Survey PertaLife Care",
+              path: "/survey-pertalife-care",
+              icon: ClipboardCheck,
             }]
           : []),
       ];
@@ -389,6 +405,8 @@ export const AppSidebar:
               administrationItems
                 .length > 0 ||
               communicationItems
+                .length > 0 ||
+              digitalAffinityItems
                 .length > 0
             ) && (
               <div className="pt-3">
@@ -407,6 +425,12 @@ export const AppSidebar:
                     "Marketing Communication",
                     Megaphone,
                     communicationItems
+                  )}
+
+                  {renderFlyoutGroup(
+                    "Digital & Affinity",
+                    ClipboardCheck,
+                    digitalAffinityItems
                   )}
                 </div>
               </div>
