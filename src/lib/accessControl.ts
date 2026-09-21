@@ -10,6 +10,7 @@ export type AppFeature =
   | "DOCUMENT_ADMIN"
   | "DOCUMENT_MARCOMM"
   | "TANDA_TERIMA"
+  | "SURVEY_PERTALIFE_CARE"
   | "SYSTEM_ADMIN";
 
 const normalize = (value?: string | null) =>
@@ -53,6 +54,18 @@ export const isDigitalAffinityProfile = (
       isMarketingSupportProfile(profile) &&
       normalize(profile.department) ===
         "digital & affinity"
+  );
+
+export const isPertaLifeCareSurveyOwner = (
+  profile?: AuthProfile | null
+) =>
+  Boolean(
+    profile &&
+      profile.active &&
+      [
+        "banjar@pertalife.com",
+        "nadi.akbar@pertalife.com",
+      ].includes(normalize(profile.email))
   );
 
 export const isMarketingAdministrationProfile = (
@@ -121,6 +134,10 @@ export const canAccessFeature = (
 
   if (feature === "SYSTEM_ADMIN") {
     return isSystemAdminProfile(profile);
+  }
+
+  if (feature === "SURVEY_PERTALIFE_CARE") {
+    return isPertaLifeCareSurveyOwner(profile);
   }
 
   if (feature === "DASHBOARD") {

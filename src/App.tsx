@@ -36,6 +36,7 @@ import TargetRealizationUploadPage from './pages/TargetRealizationUploadPage';
 import BookingPipelinePage from './pages/BookingPipelinePage';
 import MasterIntermediaryBulkImportPage from './pages/MasterIntermediaryBulkImportPage';
 import DigitalAffinityPage from './pages/DigitalAffinityPage';
+import PertaLifeCareSurveyPage from './pages/PertaLifeCareSurveyPage';
 import RestoredBusinessGuard from './components/common/RestoredBusinessGuard';
 import { isDigitalAffinityProfile, isMarketingSupportProfile } from '@/lib/accessControl';
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
@@ -167,6 +168,17 @@ const AppRoutes = () => (
       element={
         <Protected>
           <HomeRoute />
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/survey-pertalife-care"
+      element={
+        <Protected>
+          <FeatureOnly feature="SURVEY_PERTALIFE_CARE">
+            <PertaLifeCareSurveyPage />
+          </FeatureOnly>
         </Protected>
       }
     />
