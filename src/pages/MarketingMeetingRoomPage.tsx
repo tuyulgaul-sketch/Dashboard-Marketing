@@ -13,6 +13,7 @@ import {
   cancelMeetingRoomBooking,
   createMeetingRoomBooking,
   getMeetingRoomBookings,
+  getRecentMeetingRoomBookings,
   reviewDirpemRoomBooking,
 } from "@/services/meetingRoomService";
 
@@ -306,6 +307,15 @@ const MarketingMeetingRoomPage:
 
 
     const [
+      recentBookings,
+      setRecentBookings,
+    ] =
+      useState<
+        MeetingRoomBooking[]
+      >([]);
+
+
+    const [
       loading,
       setLoading,
     ] =
@@ -448,14 +458,24 @@ const MarketingMeetingRoomPage:
               )
             );
 
-          const rows =
-            await getMeetingRoomBookings(
-              fromDate,
-              toDate
-            );
+          const [
+            rows,
+            recentRows,
+          ] =
+            await Promise.all([
+              getMeetingRoomBookings(
+                fromDate,
+                toDate
+              ),
+              getRecentMeetingRoomBookings(),
+            ]);
 
           setBookings(
             rows
+          );
+
+          setRecentBookings(
+            recentRows
           );
         } catch (
           error
@@ -606,6 +626,34 @@ const MarketingMeetingRoomPage:
           ),
         [
           selectedDayBookings,
+        ]
+      );
+
+
+    const recentMarketingBookings =
+      useMemo(
+        () =>
+          recentBookings.filter(
+            item =>
+              item.room_code ===
+              "MARKETING_MEETING_ROOM"
+          ),
+        [
+          recentBookings,
+        ]
+      );
+
+
+    const recentDirpemBookings =
+      useMemo(
+        () =>
+          recentBookings.filter(
+            item =>
+              item.room_code ===
+              "DIRPEM_WORK_ROOM"
+          ),
+        [
+          recentBookings,
         ]
       );
 
@@ -1515,6 +1563,89 @@ const MarketingMeetingRoomPage:
       );
 
 
+    const renderRecentBookingRow =
+      (
+        item:
+          MeetingRoomBooking
+      ) => (
+        <div
+          key={
+            item.id
+          }
+          className="grid gap-2 border-b border-slate-100 px-4 py-3 last:border-b-0 sm:grid-cols-[145px_105px_minmax(0,1fr)_180px_auto] sm:items-center"
+        >
+
+          <div className="text-xs font-semibold text-slate-700">
+            {formatDate(
+              item.booking_date
+            )}
+          </div>
+
+
+          <div className="text-xs text-slate-600">
+
+            {formatTime(
+              item.start_time
+            )}
+
+            {" - "}
+
+            {formatTime(
+              item.end_time
+            )}
+
+          </div>
+
+
+          <div className="min-w-0">
+
+            <div className="truncate text-sm font-bold text-slate-900">
+              {
+                item.meeting_title
+              }
+            </div>
+
+          </div>
+
+
+          <div className="min-w-0">
+
+            <div className="truncate text-xs font-semibold text-slate-700">
+              {
+                item.requester_name
+              }
+            </div>
+
+            <div className="truncate text-[10px] text-slate-400">
+              {
+                item.requester_department ||
+                item.requester_unit
+              }
+            </div>
+
+          </div>
+
+
+          <div className="sm:text-right">
+
+            <span
+              className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-bold ${getStatusClass(
+                item.booking_status
+              )}`}
+            >
+
+              {getStatusLabel(
+                item.booking_status
+              )}
+
+            </span>
+
+          </div>
+
+        </div>
+      );
+
+
     return (
       <AppLayout>
 
@@ -1836,6 +1967,200 @@ const MarketingMeetingRoomPage:
               </CardContent>
 
             </Card>
+
+          </div>
+
+
+          {/* RECENT BOOKINGS - INDEPENDENT FROM DATE FILTER */}
+
+          <div className="space-y-3">
+
+            <div>
+
+              <h2 className="text-sm font-bold text-slate-900">
+                Booking Terbaru Semua User
+              </h2>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Maksimal 10 booking terbaru per ruangan. Tidak dipengaruhi oleh filter Lihat Tanggal.
+              </p>
+
+            </div>
+
+
+            <div className="grid gap-5 xl:grid-cols-2">
+
+
+              <Card className="overflow-hidden">
+
+                <CardHeader className="border-b border-blue-100 bg-blue-50/70">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <div>
+
+                      <CardTitle className="flex items-center gap-2 text-base text-blue-900">
+
+                        <DoorOpen className="h-5 w-5" />
+
+                        Ruang Meeting Marketing
+
+                      </CardTitle>
+
+                      <p className="mt-1 text-xs text-blue-700">
+                        10 booking terbaru • semua user
+                      </p>
+
+                    </div>
+
+
+                    <div className="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-bold text-white">
+
+                      {
+                        recentMarketingBookings.length
+                      } Booking
+
+                    </div>
+
+                  </div>
+
+                </CardHeader>
+
+
+                <CardContent className="p-0">
+
+                  {loading ? (
+
+                    <div className="py-10 text-center text-sm text-slate-500">
+                      Memuat booking terbaru...
+                    </div>
+
+                  ) : recentMarketingBookings.length ===
+                    0 ? (
+
+                    <div className="p-8 text-center text-sm text-slate-500">
+                      Belum ada booking terkonfirmasi.
+                    </div>
+
+                  ) : (
+
+                    <div>
+
+                      <div className="hidden border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[145px_105px_minmax(0,1fr)_180px_auto]">
+
+                        <span>Tanggal</span>
+
+                        <span>Jam</span>
+
+                        <span>Meeting</span>
+
+                        <span>Pemesan</span>
+
+                        <span className="text-right">
+                          Status
+                        </span>
+
+                      </div>
+
+
+                      {recentMarketingBookings.map(
+                        renderRecentBookingRow
+                      )}
+
+                    </div>
+
+                  )}
+
+                </CardContent>
+
+              </Card>
+
+
+              <Card className="overflow-hidden">
+
+                <CardHeader className="border-b border-amber-100 bg-amber-50/70">
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <div>
+
+                      <CardTitle className="flex items-center gap-2 text-base text-amber-900">
+
+                        <DoorOpen className="h-5 w-5" />
+
+                        Ruang Kerja DirPem
+
+                      </CardTitle>
+
+                      <p className="mt-1 text-xs text-amber-700">
+                        10 booking terbaru • semua user
+                      </p>
+
+                    </div>
+
+
+                    <div className="rounded-full bg-amber-500 px-3 py-1 text-[10px] font-bold text-white">
+
+                      {
+                        recentDirpemBookings.length
+                      } Booking
+
+                    </div>
+
+                  </div>
+
+                </CardHeader>
+
+
+                <CardContent className="p-0">
+
+                  {loading ? (
+
+                    <div className="py-10 text-center text-sm text-slate-500">
+                      Memuat booking terbaru...
+                    </div>
+
+                  ) : recentDirpemBookings.length ===
+                    0 ? (
+
+                    <div className="p-8 text-center text-sm text-slate-500">
+                      Belum ada booking terkonfirmasi.
+                    </div>
+
+                  ) : (
+
+                    <div>
+
+                      <div className="hidden border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[145px_105px_minmax(0,1fr)_180px_auto]">
+
+                        <span>Tanggal</span>
+
+                        <span>Jam</span>
+
+                        <span>Meeting</span>
+
+                        <span>Pemesan</span>
+
+                        <span className="text-right">
+                          Status
+                        </span>
+
+                      </div>
+
+
+                      {recentDirpemBookings.map(
+                        renderRecentBookingRow
+                      )}
+
+                    </div>
+
+                  )}
+
+                </CardContent>
+
+              </Card>
+
+            </div>
 
           </div>
 

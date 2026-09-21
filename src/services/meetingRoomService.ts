@@ -63,6 +63,21 @@ export async function getMeetingRoomBookings(
   );
 }
 
+export async function getRecentMeetingRoomBookings() {
+  const { data, error } =
+    await supabase.rpc(
+      "list_recent_meeting_room_bookings_v3"
+    );
+
+  if (error) {
+    throw error;
+  }
+
+  return (
+    (data || []) as MeetingRoomBooking[]
+  );
+}
+
 export async function createMeetingRoomBooking(
   meetingTitle: string,
   bookingDate: string,
