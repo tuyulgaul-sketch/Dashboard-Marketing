@@ -9,28 +9,50 @@ const headers = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers });
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers,
+    });
   }
 
   try {
     const ingestKey = req.headers.get("x-pertalife-survey-key") || "";
     if (!ingestKey) {
-      return new Response(JSON.stringify({ error: "Missing survey ingest key" }), { status: 401, headers });
+      return new Response(JSON.stringify({ error: "Missing survey ingest key" }), {
+        status: 401,
+        headers,
+      });
     }
 
-    const payload = await req.json();
+    const body = await req.json();
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceKey) throw new Error("Supabase service environment is not configured.");
+
+    if (!supabaseUrl || !serviceKey) {
+      throw new Error("Supabase service environment is not configured.");
+    }
 
     const client = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data, error } = await client.rpc("ingest_pertalife_care_survey_v1", {
-      p_secret: ingestKey,
-      p_payload: payload,
-    });
+
+    const isReconcile =
+      body &&
+      typeof body === "object" &&
+      body.mode === "reconcile" &&
+      Array.isArray(body.rows);
+
+    const { data, error } = isReconcile
+      ? await client.rpc("reconcile_pertalife_care_survey_v2", {
+          p_secret: ingestKey,
+          p_payloads: body.rows,
+        })
+      : await client.rpc("ingest_pertalife_care_survey_v2", {
+          p_secret: ingestKey,
+          p_payload: body,
+        });
 
     if (error) {
       const unauthorized = /invalid survey ingest key/i.test(error.message || "");
@@ -40,10 +62,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        mode: isReconcile ? "reconcile" : "ingest",
+        data,
+      }),
+      { status: 200, headers },
+    );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unexpected error" }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unexpected error",
+      }),
       { status: 500, headers },
     );
   }
