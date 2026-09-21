@@ -156,8 +156,8 @@ const ProductPolicyDrilldown: React.FC<{
                                   {hasResidual && (
                                     <tr className="bg-amber-50/60">
                                       <td className="p-3">
-                                        <p className="font-semibold text-amber-900">Detail historis / scope akses belum tersedia</p>
-                                        <p className="mt-1 text-[10px] leading-relaxed text-amber-700">Nilai ini menjaga rekonsiliasi tepat dengan total produk. Detail akan terisi penuh setelah periode terkait dipublish ulang dengan format Realisasi terbaru atau jika hak akses detail mencakup seluruh row.</p>
+                                        <p className="font-semibold text-amber-900">Detail historis belum tersedia</p>
+                                        <p className="mt-1 text-[10px] leading-relaxed text-amber-700">Nilai ini menjaga rekonsiliasi tepat dengan total produk. Detail akan terisi penuh setelah periode terkait dipublish ulang dengan format Realisasi terbaru.</p>
                                       </td>
                                       <td className="p-3 text-right font-semibold text-amber-900">{formatRupiah(residualAmount)}</td>
                                       <td className="p-3 text-right text-amber-800">{formatCount(residualRows)}</td>

@@ -150,7 +150,7 @@ export const buildPerformanceSummary = (
 
 /** A separate server projection: no generic writable store or browser-data fallback. */
 export const listDirectoratePerformance = async (): Promise<DirectoratePerformanceSnapshot> => {
-  const { data, error } = await supabase.rpc('list_directorate_performance_v35');
+  const { data, error } = await supabase.rpc('list_directorate_performance_v36');
   if (error) throw error;
   const payload = record(data as unknown);
   const targets = rows(payload.targets).map(value => {
