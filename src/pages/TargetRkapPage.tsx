@@ -1486,19 +1486,62 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
           );
 
         const production =
-          productions
+          officialProductions
             .filter(
-              row =>
-                row.status ===
-                  'POSTED' &&
-                row.productionYear ===
-                  selectedTargetYear &&
-                userScopeIds.has(
-                  row.picUserId
-                ) &&
-                matchesBusinessFilter(
-                  row.businessType
-                )
+              row => {
+                if (
+                  row.productionYear !==
+                    selectedTargetYear ||
+                  !matchesBusinessFilter(
+                    row.businessType
+                  )
+                ) {
+                  return false;
+                }
+
+                if (
+                  row.picUserId &&
+                  userScopeIds.has(
+                    row.picUserId
+                  )
+                ) {
+                  return true;
+                }
+
+                // Fallback for historical official-production rows that may not
+                // carry a PIC ID but still have a reliable marketing function.
+                if (
+                  user.role ===
+                  'VP_CAPTIVE_MARKETING'
+                ) {
+                  return (
+                    row.marketingFunction ===
+                    'Captive Marketing'
+                  );
+                }
+
+                if (
+                  user.role ===
+                  'VP_CORPORATE_RETAIL_MARKETING'
+                ) {
+                  return (
+                    row.marketingFunction ===
+                    'Corporate & Retail Marketing'
+                  );
+                }
+
+                if (
+                  user.role ===
+                  'ADVISOR_MARKETING_DIRECTOR'
+                ) {
+                  return (
+                    row.marketingFunction ===
+                    'Advisor'
+                  );
+                }
+
+                return false;
+              }
             )
             .reduce(
               (
@@ -1507,7 +1550,7 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
               ) =>
                 accumulator +
                 Number(
-                  row.invoiceAmount ||
+                  row.productionAmount ||
                   0
                 ),
               0
