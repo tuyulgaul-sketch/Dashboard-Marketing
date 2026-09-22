@@ -123,7 +123,7 @@ begin
     nullif(trim(coalesce(p_mime_type, '')), ''),
     p_file_size,
     v_visibility,
-    coalesce(p_visibility_payload, '{}'::jsonb) - 'uploadedByUserId' || coalesce(p_metadata, '{}'::jsonb),
+    coalesce(p_metadata, '{}'::jsonb),
     v_actor.id,
     v_actor.full_name,
     now()
