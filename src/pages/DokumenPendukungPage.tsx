@@ -32,6 +32,7 @@ import {
 import {
   deleteMarketingSupportFile,
   downloadMarketingSupportFile,
+  getMarketingSupportFileMaxBytes,
   saveMarketingSupportFile,
 } from '@/services/marketingSupportFileStorage';
 import {
@@ -1902,14 +1903,19 @@ export const DokumenPendukungPage:
           return;
         }
 
+        const uploadMaxBytes =
+          getMarketingSupportFileMaxBytes();
+
         if (
           uploadFile.size >
-          25 *
-            1024 *
-            1024
+          uploadMaxBytes
         ) {
           alert(
-            'Ukuran file maksimum 25 MB untuk UAT browser storage.'
+            `Ukuran file maksimum ${Math.round(
+              uploadMaxBytes /
+                1024 /
+                1024
+            )} MB untuk akun ini.`
           );
 
           return;
@@ -5428,6 +5434,14 @@ export const DokumenPendukungPage:
                         {uploadFile.name} • {formatFileSize(uploadFile.size)}
                       </p>
                     )}
+
+                    <p className="mt-1 text-[10px] font-medium text-gray-500">
+                      Maksimum {Math.round(
+                        getMarketingSupportFileMaxBytes() /
+                          1024 /
+                          1024
+                      )} MB per file untuk akun ini.
+                    </p>
                   </div>
 
                   <div>
