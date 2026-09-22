@@ -5352,6 +5352,101 @@ class StoreService {
     this.notify();
   }
 
+  public deletePublishedServiceDocument(
+    documentId:
+      string
+  ): ManagedServiceDocument {
+    const currentUser =
+      this.getCurrentUser();
+
+    const docs =
+      this.getServiceDocuments();
+
+    const index =
+      docs.findIndex(
+        item =>
+          item.id ===
+          documentId
+      );
+
+    if (
+      index <
+      0
+    ) {
+      throw new Error(
+        'Dokumen tidak ditemukan.'
+      );
+    }
+
+    const document =
+      docs[
+        index
+      ];
+
+    if (
+      document.status !==
+      'PUBLISHED'
+    ) {
+      throw new Error(
+        'Hanya dokumen yang sudah approved / published yang dapat dihapus.'
+      );
+    }
+
+    const canDelete =
+      (
+        document.ownerArea ===
+          'MARKETING_ADMINISTRATION' &&
+        this.isMarketingAdministrationOperator(
+          currentUser
+        )
+      ) ||
+      (
+        document.ownerArea ===
+          'MARKETING_COMMUNICATION' &&
+        this.isKarinaMarcommOperator(
+          currentUser
+        )
+      );
+
+    if (
+      !canDelete
+    ) {
+      throw new Error(
+        document.ownerArea ===
+          'MARKETING_ADMINISTRATION'
+          ? 'Hanya operator Marketing Administration yang dapat menghapus dokumen approved pada area ini.'
+          : 'Hanya Karina yang dapat menghapus Marketing Tool approved.'
+      );
+    }
+
+    docs.splice(
+      index,
+      1
+    );
+
+    localStorage.setItem(
+      STORAGE_KEYS.SERVICE_DOCUMENTS,
+      JSON.stringify(
+        docs
+      )
+    );
+
+    this.addAuditLog(
+      'SERVICE_DOCUMENT',
+      'DELETE_PUBLISHED',
+      'ManagedServiceDocument',
+      document.id,
+      'PUBLISHED',
+      'DELETED',
+      undefined,
+      `${document.category} | ${document.fileName} | ${document.versionLabel} | dihapus permanen oleh ${currentUser.name}`
+    );
+
+    this.notify();
+
+    return document;
+  }
+
   public deactivateServiceDocument(
     documentId:
       string

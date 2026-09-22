@@ -36,6 +36,9 @@ import {
   saveMarketingSupportFile,
 } from '@/services/marketingSupportFileStorage';
 import {
+  waitForCentralBusinessStorageSync,
+} from '@/services/centralBusinessStorageRuntime';
+import {
   formatDateKeyId,
   getMinimumMarcommNeedDateKey,
   isValidMarcommNeedDate,
@@ -86,6 +89,7 @@ import {
   PackagePlus,
   Search,
   ShieldCheck,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -817,6 +821,16 @@ export const DokumenPendukungPage:
     ] =
       useState(
         false
+      );
+
+    const [
+      deletingDocumentId,
+      setDeletingDocumentId,
+    ] =
+      useState<
+        string | null
+      >(
+        null
       );
 
     const [
@@ -2047,6 +2061,86 @@ export const DokumenPendukungPage:
               Error
               ? error.message
               : 'File tidak dapat diunduh.'
+          );
+        }
+      };
+
+    const canDeleteApprovedDocument =
+      (
+        document:
+          ManagedServiceDocument
+      ) =>
+        document.status ===
+          'PUBLISHED' &&
+        (
+          (
+            document.ownerArea ===
+              'MARKETING_ADMINISTRATION' &&
+            isAdminOperator
+          ) ||
+          (
+            document.ownerArea ===
+              'MARKETING_COMMUNICATION' &&
+            isKarina
+          )
+        );
+
+    const handleDeleteApprovedDocument =
+      async (
+        document:
+          ManagedServiceDocument
+      ) => {
+        if (
+          !canDeleteApprovedDocument(
+            document
+          )
+        ) {
+          return;
+        }
+
+        const confirmed =
+          window.confirm(
+            `Hapus permanen dokumen approved "${document.title}" (${document.versionLabel})? File akan dihapus dari repository dan tidak dapat di-download lagi.`
+          );
+
+        if (
+          !confirmed
+        ) {
+          return;
+        }
+
+        setDeletingDocumentId(
+          document.id
+        );
+
+        try {
+          store.deletePublishedServiceDocument(
+            document.id
+          );
+
+          await waitForCentralBusinessStorageSync(
+            'pertalife_service_documents'
+          );
+
+          await deleteMarketingSupportFile(
+            document.id
+          );
+
+          alert(
+            'Dokumen approved berhasil dihapus permanen.'
+          );
+        } catch (
+          error
+        ) {
+          alert(
+            error instanceof
+              Error
+              ? error.message
+              : 'Dokumen approved gagal dihapus.'
+          );
+        } finally {
+          setDeletingDocumentId(
+            null
           );
         }
       };
@@ -3675,6 +3769,32 @@ export const DokumenPendukungPage:
                   <Download className="h-3.5 w-3.5" />
                   Download
                 </Button>
+
+                {canDeleteApprovedDocument(
+                  document
+                ) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      deletingDocumentId ===
+                      document.id
+                    }
+                    onClick={() =>
+                      void handleDeleteApprovedDocument(
+                        document
+                      )
+                    }
+                    className="h-8 gap-1 border-rose-200 text-[10px] font-bold text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {deletingDocumentId ===
+                    document.id
+                      ? 'Menghapus...'
+                      : 'Delete'}
+                  </Button>
+                )}
 
                 {document.status ===
                   'PENDING_APPROVAL' &&
