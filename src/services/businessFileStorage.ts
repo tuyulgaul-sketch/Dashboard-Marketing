@@ -6,6 +6,9 @@ export const BUSINESS_FILE_BUCKET =
 export const BUSINESS_FILE_MAX_BYTES =
   10 * 1024 * 1024;
 
+export const MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES =
+  100 * 1024 * 1024;
+
 export type BusinessFileModule =
   | "PIPELINE_QUOTATION"
   | "PIPELINE_OUTCOME"
@@ -124,6 +127,9 @@ export async function uploadCentralBusinessFile(input: {
   file: File;
   visibilityPayload?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  registeredFileSize?: number;
+  registeredFileName?: string;
+  registeredMimeType?: string;
 }): Promise<CentralBusinessFileRow> {
   const {
     fileId,
@@ -133,6 +139,9 @@ export async function uploadCentralBusinessFile(input: {
     file,
     visibilityPayload = {},
     metadata = {},
+    registeredFileSize,
+    registeredFileName,
+    registeredMimeType,
   } = input;
 
   if (!fileId.trim()) {
@@ -146,7 +155,25 @@ export async function uploadCentralBusinessFile(input: {
     BUSINESS_FILE_MAX_BYTES
   ) {
     throw new Error(
-      "Ukuran file maksimum 10 MB."
+      "Ukuran object storage maksimum 10 MB."
+    );
+  }
+
+  const effectiveRegisteredFileSize =
+    registeredFileSize ??
+    file.size;
+
+  if (
+    !Number.isFinite(
+      effectiveRegisteredFileSize
+    ) ||
+    effectiveRegisteredFileSize <
+      0 ||
+    effectiveRegisteredFileSize >
+      MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES
+  ) {
+    throw new Error(
+      "Ukuran file terdaftar maksimum 100 MB."
     );
   }
 
@@ -214,12 +241,14 @@ export async function uploadCentralBusinessFile(input: {
         p_storage_path:
           storagePath,
         p_file_name:
+          registeredFileName ||
           file.name,
         p_mime_type:
+          registeredMimeType ||
           file.type ||
           "application/octet-stream",
         p_file_size:
-          file.size,
+          effectiveRegisteredFileSize,
         p_visibility_payload:
           visibilityPayload,
         p_metadata:
