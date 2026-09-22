@@ -2100,7 +2100,7 @@ export const DokumenPendukungPage:
 
         const confirmed =
           window.confirm(
-            `Hapus permanen dokumen approved "\${document.title}" (\${document.versionLabel})? File akan dihapus dari repository dan tidak dapat di-download lagi.`
+            `Hapus permanen dokumen approved "${document.title}" (${document.versionLabel})? File akan dihapus dari repository dan tidak dapat di-download lagi.`
           );
 
         if (
