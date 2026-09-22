@@ -192,9 +192,10 @@ const rebuildLegacyDerivedTargetFields = (
   const keys = new Set(Object.keys(rows[0] || {}).map(headerOf));
   const monthlyHeaders = MONTHS.flatMap(month => [`${month} NB`, `${month} RN`]);
   const missingMonthly = monthlyHeaders.filter(header => !keys.has(headerOf(header)));
-  if (missingMonthly.length) {
-    throw new Error(`Kolom bulanan format lama tidak ditemukan: ${missingMonthly.join(', ')}.`);
-  }
+  // Older legacy uploads may only carry a subset of monthly columns. Keep that
+  // historical contract unchanged; only the full official 37-column workbook
+  // has enough source data to safely rebuild its formula-derived fields.
+  if (missingMonthly.length) return rows;
 
   const ownById = new Map<string, { NB: number; RN: number }>();
   rows.forEach((row, index) => {
