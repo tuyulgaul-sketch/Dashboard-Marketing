@@ -1,6 +1,6 @@
 import { normalizeTargetUploadRows, parseExactTargetRupiah } from '@/utils/targetCompact';
 import { getRkapMonthlyValue, getRkapWinMonthlyValue } from '@/utils/rkapPipelineMatrix';
-import { downloadMarketingWorkbook, downloadTargetSetupWorkbook, readMarketingSpreadsheet, MARKETING_SHEETS, TARGET_DIRECTORATE_SHEET, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
+import { downloadMarketingWorkbook, downloadTargetSetupWorkbook, readMarketingSpreadsheet, readTargetDirectorateSpreadsheet, MARKETING_SHEETS, getMarketingTemplateHeaders, SPREADSHEET_ACCEPT, resolveMarketingOwner, normalizeMarketingUserId } from '@/utils/marketingWorkbook';
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { store, OfficialProductionSummary } from '@/services/store';
@@ -1783,14 +1783,15 @@ export const TargetRkapPage: React.FC<{ embedded?: boolean; initialUploadTab?: '
         const importedRows = await readMarketingSpreadsheet(targetFile, {
           sheetName: MARKETING_SHEETS.target,
           requiredHeaders: ['Tahun', 'User ID Penerima'],
+          allowFormulaWithoutResultHeaders: [
+            'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN',
+            'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN',
+          ],
         });
         const parsed = normalizeTargetUploadRows(importedRows, users, selectedTargetYear);
         let directorateRows: Record<string, string>[] | null = null;
         try {
-          directorateRows = await readMarketingSpreadsheet(targetFile, {
-            sheetName: TARGET_DIRECTORATE_SHEET,
-            requiredHeaders: ['Bulan', 'Target Direktorat NB', 'Target Direktorat RN'],
-          });
+          directorateRows = await readTargetDirectorateSpreadsheet(targetFile);
         } catch (directorateError) {
           const message = directorateError instanceof Error ? directorateError.message : '';
           if (!/Sheet data .*tidak ditemukan/i.test(message)) throw directorateError;

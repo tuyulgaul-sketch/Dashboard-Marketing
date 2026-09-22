@@ -186,6 +186,86 @@ export const expandCompactTargetRows = (
   });
 };
 
+const rebuildLegacyDerivedTargetFields = (
+  rows: TargetSpreadsheetRow[], users: CompactTargetUser[]
+): TargetSpreadsheetRow[] => {
+  const keys = new Set(Object.keys(rows[0] || {}).map(headerOf));
+  const monthlyHeaders = MONTHS.flatMap(month => [`${month} NB`, `${month} RN`]);
+  const missingMonthly = monthlyHeaders.filter(header => !keys.has(headerOf(header)));
+  // Older legacy uploads may only carry a subset of monthly columns. Keep that
+  // historical contract unchanged; only the full official 37-column workbook
+  // has enough source data to safely rebuild its formula-derived fields.
+  if (missingMonthly.length) return rows;
+
+  const ownById = new Map<string, { NB: number; RN: number }>();
+  rows.forEach((row, index) => {
+    const id = idOf(valueOf(row, 'User ID Penerima'));
+    if (!id) return;
+    const nb = MONTHS.map(month => {
+      try { return parseExactTargetRupiah(valueOf(row, `${month} NB`)); }
+      catch (error) { throw new Error(`Baris ${index + 2}, ${month} NB: ${error instanceof Error ? error.message : 'Target tidak valid.'}`); }
+    });
+    const rn = MONTHS.map(month => {
+      try { return parseExactTargetRupiah(valueOf(row, `${month} RN`)); }
+      catch (error) { throw new Error(`Baris ${index + 2}, ${month} RN: ${error instanceof Error ? error.message : 'Target tidak valid.'}`); }
+    });
+    ownById.set(id, {
+      NB: safeSum(nb, `${id} target pribadi NB`),
+      RN: safeSum(rn, `${id} target pribadi RN`),
+    });
+  });
+
+  const holders = activeHolders(users);
+  const holderIds = new Set(holders.map(user => idOf(user.id)));
+  const children = new Map<string, string[]>();
+  holders.forEach(user => children.set(idOf(user.id), []));
+  holders.forEach(user => {
+    const id = idOf(user.id);
+    const parent = idOf(user.superiorId);
+    if (parent && holderIds.has(parent)) children.get(parent)!.push(id);
+  });
+
+  const teamById = new Map<string, { NB: number; RN: number }>();
+  const visiting = new Set<string>();
+  const calculateTeam = (id: string): { NB: number; RN: number } => {
+    const cached = teamById.get(id);
+    if (cached) return cached;
+    if (visiting.has(id)) throw new Error(`Siklus struktur atasan terdeteksi pada ${id}.`);
+    visiting.add(id);
+    const own = ownById.get(id) || { NB: 0, RN: 0 };
+    const descendants = (children.get(id) || []).map(calculateTeam);
+    const total = {
+      NB: safeSum([own.NB, ...descendants.map(item => item.NB)], `${id} target tahunan NB`),
+      RN: safeSum([own.RN, ...descendants.map(item => item.RN)], `${id} target tahunan RN`),
+    };
+    teamById.set(id, total);
+    visiting.delete(id);
+    return total;
+  };
+  holders.forEach(user => calculateTeam(idOf(user.id)));
+
+  return rows.map(row => {
+    const id = idOf(valueOf(row, 'User ID Penerima'));
+    const own = ownById.get(id);
+    if (!own) return row;
+    const team = teamById.get(id) || own;
+    return {
+      ...row,
+      'Target Tahunan': String(safeSum([team.NB, team.RN], `${id} target tahunan`)),
+      'Target Tahunan NB': String(team.NB),
+      'Target Tahunan RN': String(team.RN),
+      'Target Pribadi': String(safeSum([own.NB, own.RN], `${id} target pribadi`)),
+      'Target Pribadi NB': String(own.NB),
+      'Target Pribadi RN': String(own.RN),
+    };
+  });
+};
+
+/**
+ * The six annual/personal columns in the official 37-column workbook are formulas.
+ * They are rebuilt from the editable monthly allocation and User Master hierarchy on upload,
+ * so publishing never depends on Excel's cached formula results.
+ */
 /** The legacy 37-column format stays readable. Incomplete compact headers must not fall back to it. */
 export const normalizeTargetUploadRows = (
   rows: TargetSpreadsheetRow[], users: CompactTargetUser[], year: number
@@ -196,5 +276,5 @@ export const normalizeTargetUploadRows = (
   const required = ['Tahun','User ID Penerima','Target Tahunan','Target Tahunan NB','Target Tahunan RN','Target Pribadi','Target Pribadi NB','Target Pribadi RN'];
   const missing = required.filter(header => !keys.has(headerOf(header)));
   if (missing.length) throw new Error(`Kolom wajib format lama tidak ditemukan: ${missing.join(', ')}.`);
-  return rows;
+  return rebuildLegacyDerivedTargetFields(rows, users);
 };
