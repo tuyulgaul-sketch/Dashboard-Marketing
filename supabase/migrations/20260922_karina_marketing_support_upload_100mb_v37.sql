@@ -1,10 +1,6 @@
--- Karina Nur Malika (USR-000031) may upload Marketing Support files up to 100 MB.
--- Other central business uploads remain capped at 10 MB by register_central_business_file().
--- Bucket/table limits are infrastructure ceilings; authorization remains account-scoped in the RPC.
-
-update storage.buckets
-set file_size_limit = 104857600
-where id = 'business-files';
+-- Karina Nur Malika (USR-000031) may register logical Marketing Support files up to 100 MB.
+-- Physical Storage objects remain at the existing 10 MB bucket limit and the client splits larger files
+-- into 5 MB chunks. Other accounts remain capped at 10 MB logical files by the authoritative RPC.
 
 alter table public.central_business_files
   drop constraint if exists central_business_files_size_check;
