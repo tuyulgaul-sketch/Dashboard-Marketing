@@ -3528,11 +3528,11 @@ const Index: React.FC = () => {
         >
 
           {/* =====================================================
-              STICKY EXECUTIVE CONTROLS
-              Filter + Dashboard Tabs stay visible while scrolling.
+              EXECUTIVE CONTROLS
+              Filter + Dashboard Tabs remain in the normal page flow.
           ====================================================== */}
 
-          <div className="sticky top-[76px] z-40 -mx-2 space-y-3 bg-slate-50/95 px-2 py-2 backdrop-blur-sm">
+          <div className="-mx-2 space-y-3 bg-slate-50/95 px-2 py-2">
 
         {/* =====================================================
             FILTER EXECUTIVE
