@@ -6,6 +6,9 @@ export const BUSINESS_FILE_BUCKET =
 export const BUSINESS_FILE_MAX_BYTES =
   10 * 1024 * 1024;
 
+export const MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES =
+  100 * 1024 * 1024;
+
 export type BusinessFileModule =
   | "PIPELINE_QUOTATION"
   | "PIPELINE_OUTCOME"
@@ -124,6 +127,7 @@ export async function uploadCentralBusinessFile(input: {
   file: File;
   visibilityPayload?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  maxBytes?: number;
 }): Promise<CentralBusinessFileRow> {
   const {
     fileId,
@@ -133,6 +137,8 @@ export async function uploadCentralBusinessFile(input: {
     file,
     visibilityPayload = {},
     metadata = {},
+    maxBytes =
+      BUSINESS_FILE_MAX_BYTES,
   } = input;
 
   if (!fileId.trim()) {
@@ -141,12 +147,28 @@ export async function uploadCentralBusinessFile(input: {
     );
   }
 
+  const effectiveMaxBytes =
+    Number.isFinite(
+      maxBytes
+    ) &&
+    maxBytes >
+      0
+      ? Math.min(
+          maxBytes,
+          MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES
+        )
+      : BUSINESS_FILE_MAX_BYTES;
+
   if (
     file.size >
-    BUSINESS_FILE_MAX_BYTES
+    effectiveMaxBytes
   ) {
     throw new Error(
-      "Ukuran file maksimum 10 MB."
+      `Ukuran file maksimum ${Math.round(
+        effectiveMaxBytes /
+          1024 /
+          1024
+      )} MB.`
     );
   }
 
