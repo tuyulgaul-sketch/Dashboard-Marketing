@@ -111,6 +111,42 @@ pipeline['Target Closing'] = '2026-08-20';
 await roundtrip('pipeline', [pipeline], workbook.getMarketingTemplateHeaders('pipeline'));
 
 const file = (name, bytes) => ({ name, size: bytes.length, arrayBuffer: async () => Uint8Array.from(bytes).buffer, text: async () => new TextDecoder().decode(bytes) });
+
+// The uploader must consume the official Target Direktorat layout exactly as generated:
+// title rows 1-2, header row 4, and monthly rows 5-16. Footer/TAHUNAN rows are ignored.
+const directorateRows = await workbook.readTargetDirectorateSpreadsheet(file('target-setup.xlsx', setupBytes));
+assert.equal(directorateRows.length, 12);
+assert.equal(directorateRows[0].Bulan, 'Januari');
+assert.equal(directorateRows[11].Bulan, 'Desember');
+
+// Formula-derived annual/personal columns must not depend on Excel cached results.
+// Simulate an editor that strips every cached formula result, then change one monthly input.
+setupData.getCell('M5').value = 125;
+for (let rowNumber = 2; rowNumber <= targetSetupUsers.length + 1; rowNumber += 1) {
+  for (let column = 7; column <= 12; column += 1) {
+    const cell = setupData.getCell(rowNumber, column);
+    if (cell.value && typeof cell.value === 'object' && cell.value.formula) {
+      cell.value = { formula: cell.value.formula };
+    }
+  }
+}
+const uncachedSetupBytes = new Uint8Array(await setupBook.xlsx.writeBuffer());
+const formulaRows = await workbook.readMarketingSpreadsheet(file('target-setup-uncached.xlsx', uncachedSetupBytes), {
+  sheetName: workbook.MARKETING_SHEETS.target,
+  requiredHeaders: ['Tahun', 'User ID Penerima'],
+  allowFormulaWithoutResultHeaders: [
+    'Target Tahunan', 'Target Tahunan NB', 'Target Tahunan RN',
+    'Target Pribadi', 'Target Pribadi NB', 'Target Pribadi RN',
+  ],
+});
+const rebuiltRows = compact.normalizeTargetUploadRows(formulaRows, targetSetupUsers, 2027);
+const rebuiltDirector = rebuiltRows.find(row => row['User ID Penerima'] === 'USR-000001');
+const rebuiltVp = rebuiltRows.find(row => row['User ID Penerima'] === 'USR-000003');
+const rebuiltStaff = rebuiltRows.find(row => row['User ID Penerima'] === 'USR-000004');
+assert.equal(rebuiltStaff['Target Pribadi NB'], '125');
+assert.equal(rebuiltVp['Target Tahunan NB'], '125');
+assert.equal(rebuiltDirector['Target Tahunan NB'], '125');
+
 const imported = await workbook.readMarketingSpreadsheet(file('production.xlsx', prod.bytes), { sheetName: workbook.MARKETING_SHEETS.production, requiredHeaders: workbook.getMarketingTemplateHeaders('production') });
 assert.equal(imported[0]['User ID Pemilik Realisasi'], 'USR-000025');
 const legacy = await workbook.readMarketingSpreadsheet(file('production.csv', new TextEncoder().encode('Tahun Produksi;User ID Pemilik Realisasi;PIC Marketing\r\n2026;USR-000025;"Marketing, A"')), { requiredHeaders: ['User ID Pemilik Realisasi'] });
@@ -141,4 +177,5 @@ assert.match(targetSource, /downloadTargetSetupWorkbook\(/);
 assert.match(targetSource, /downloadMarketingWorkbook\('pipeline'/);
 assert.match(targetSource, /resolveMarketingOwner\(picUserId/);
 assert.match(targetSource, /getMarketingTemplateHeaders\('pipeline'\)/);
+assert.match(targetSource, /readTargetDirectorateSpreadsheet\(targetFile\)/);
 console.log('Native XLSX roundtrip, both sheet contracts, real numeric values, owner ID validation, CSV compatibility and malformed workbook checks passed.');
