@@ -76,7 +76,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-3 shadow-sm sm:px-6">
+      <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-3 shadow-sm sm:px-6">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={onMenuClick} aria-label="Buka menu">
             <Menu className="h-5 w-5" />
