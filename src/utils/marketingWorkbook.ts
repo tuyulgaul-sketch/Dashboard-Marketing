@@ -125,7 +125,18 @@ export const getMarketingTemplateHeaders = (kind: MarketingTemplateKind): string
 
 const loadExcelJS = async () => (await import('exceljs')).default;
 
-const getCellText = (value: ExcelJS.CellValue): string => {
+export interface SpreadsheetReadOptions {
+  sheetName?: string;
+  requiredHeaders?: string[];
+  /** 1-based worksheet row containing the column headers. Defaults to row 1. */
+  headerRow?: number;
+  /** Read at most this many rows immediately below headerRow. */
+  dataRowCount?: number;
+  /** Formula-derived columns that may be rebuilt by domain logic when Excel omitted the cached result. */
+  allowFormulaWithoutResultHeaders?: string[];
+}
+
+const getCellText = (value: ExcelJS.CellValue, allowFormulaWithoutResult = false): string => {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) throw new Error('Tanggal Excel tidak valid.');
@@ -140,9 +151,10 @@ const getCellText = (value: ExcelJS.CellValue): string => {
     if ('formula' in value || 'sharedFormula' in value) {
       const result = value.result;
       if (result === undefined || result === null || (typeof result === 'object' && !(result instanceof Date))) {
+        if (allowFormulaWithoutResult) return '';
         throw new Error('Sel formula tidak memiliki hasil tersimpan yang valid. Simpan ulang file setelah perhitungan Excel selesai.');
       }
-      return getCellText(result);
+      return getCellText(result, allowFormulaWithoutResult);
     }
     if ('error' in value) throw new Error(`Sel Excel berisi error: ${value.error}`);
     if ('richText' in value) return value.richText.map(part => part.text).join('');
@@ -154,7 +166,7 @@ const getCellText = (value: ExcelJS.CellValue): string => {
 /** Actual OOXML parsing. Only the named data sheet is imported, never the directory sheet. */
 export const readNativeXlsxRows = async (
   binary: ArrayBuffer | Uint8Array,
-  options: { sheetName?: string; requiredHeaders?: string[] } = {}
+  options: SpreadsheetReadOptions = {}
 ): Promise<SpreadsheetRow[]> => {
   const Excel = await loadExcelJS();
   const workbook = new Excel.Workbook();
@@ -163,21 +175,40 @@ export const readNativeXlsxRows = async (
   if (sheet && (sheet.rowCount > 100001 || sheet.columnCount > 200)) throw new Error('Workbook melebihi batas 100.000 baris data atau 200 kolom.');
   if (!sheet) throw new Error(`Sheet data ${options.sheetName || 'pertama'} tidak ditemukan. Gunakan template XLSX terbaru.`);
   if (sheet.rowCount < 1) return [];
-  const headerRow = sheet.getRow(1);
+
+  const headerRowNumber = options.headerRow ?? 1;
+  if (!Number.isInteger(headerRowNumber) || headerRowNumber < 1 || headerRowNumber > sheet.rowCount) {
+    throw new Error(`Baris header ${headerRowNumber} tidak valid untuk sheet ${sheet.name}.`);
+  }
+  if (options.dataRowCount !== undefined && (!Number.isInteger(options.dataRowCount) || options.dataRowCount < 0)) {
+    throw new Error('Jumlah baris data XLSX tidak valid.');
+  }
+
+  const headerRow = sheet.getRow(headerRowNumber);
   const headers = Array.from({ length: headerRow.cellCount }, (_, index) => getCellText(headerRow.getCell(index + 1).value).trim());
   const normalized = headers.filter(Boolean).map(normalizeMarketingHeader);
   if (new Set(normalized).size !== normalized.length) throw new Error('Header Excel memiliki nama kolom duplikat.');
   const required = options.requiredHeaders || [];
   const missing = required.filter(header => !normalized.includes(normalizeMarketingHeader(header)));
   if (missing.length) throw new Error(`Kolom wajib tidak ditemukan: ${missing.join(', ')}.`);
+
+  const formulaFallbackHeaders = new Set((options.allowFormulaWithoutResultHeaders || []).map(normalizeMarketingHeader));
   const result: SpreadsheetRow[] = [];
-  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+  const firstDataRow = headerRowNumber + 1;
+  const lastDataRow = options.dataRowCount === undefined
+    ? sheet.rowCount
+    : Math.min(sheet.rowCount, headerRowNumber + options.dataRowCount);
+
+  for (let rowNumber = firstDataRow; rowNumber <= lastDataRow; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
     const record: SpreadsheetRow = {};
     headers.forEach((header, index) => {
       if (!header) return;
       try {
-        record[header] = getCellText(row.getCell(index + 1).value).replace(/\u00A0/g, ' ').replace(/[\u200B-\u200D\u2060]/g, '').trim();
+        record[header] = getCellText(
+          row.getCell(index + 1).value,
+          formulaFallbackHeaders.has(normalizeMarketingHeader(header))
+        ).replace(/\u00A0/g, ' ').replace(/[\u200B-\u200D\u2060]/g, '').trim();
       } catch (error) {
         throw new Error(`Sheet ${sheet.name}, baris ${rowNumber}, kolom ${header}: ${error instanceof Error ? error.message : 'Nilai tidak valid.'}`);
       }
@@ -189,7 +220,7 @@ export const readNativeXlsxRows = async (
 
 export const readMarketingSpreadsheet = async (
   file: File,
-  options: { sheetName?: string; requiredHeaders?: string[] } = {}
+  options: SpreadsheetReadOptions = {}
 ): Promise<SpreadsheetRow[]> => {
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (file.size === 0) throw new Error('File kosong.');
@@ -203,6 +234,28 @@ export const readMarketingSpreadsheet = async (
   const missing = (options.requiredHeaders || []).filter(header => !normalized.includes(normalizeMarketingHeader(header)));
   if (missing.length) throw new Error(`Kolom wajib tidak ditemukan: ${missing.join(', ')}.`);
   return rows;
+};
+
+/**
+ * Target Direktorat in the official setup workbook is presentation-friendly:
+ * title rows 1-2, headers on row 4, and exactly 12 monthly rows on 5-16.
+ * Older upload files with headers on row 1 remain supported.
+ */
+export const readTargetDirectorateSpreadsheet = async (file: File): Promise<SpreadsheetRow[]> => {
+  const requiredHeaders = ['Bulan', 'Target Direktorat NB', 'Target Direktorat RN'];
+  const baseOptions: SpreadsheetReadOptions = {
+    sheetName: TARGET_DIRECTORATE_SHEET,
+    requiredHeaders,
+    dataRowCount: 12,
+    allowFormulaWithoutResultHeaders: ['Total'],
+  };
+  try {
+    return await readMarketingSpreadsheet(file, { ...baseOptions, headerRow: 4 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (!/Kolom wajib tidak ditemukan/i.test(message)) throw error;
+    return readMarketingSpreadsheet(file, { ...baseOptions, headerRow: 1 });
+  }
 };
 
 export const buildMarketingWorkbook = async (
