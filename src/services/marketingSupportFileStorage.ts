@@ -1,4 +1,6 @@
 import {
+  BUSINESS_FILE_MAX_BYTES,
+  MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES,
   deleteCentralBusinessFile,
   downloadCentralBusinessFile,
   getCentralBusinessFile,
@@ -12,6 +14,18 @@ export interface StoredMarketingSupportFile {
   mimeType: string;
   savedAt: string;
 }
+
+const KARINA_LEGACY_USER_ID =
+  "USR-000031";
+
+export const getMarketingSupportFileMaxBytes =
+  () =>
+    localStorage.getItem(
+      "pertalife_current_user_id"
+    ) ===
+    KARINA_LEGACY_USER_ID
+      ? MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES
+      : BUSINESS_FILE_MAX_BYTES;
 
 const findDocumentContext =
   (
@@ -120,6 +134,8 @@ export const saveMarketingSupportFile =
         source:
           "marketingSupportFileStorage",
       },
+      maxBytes:
+        getMarketingSupportFileMaxBytes(),
     });
   };
 
