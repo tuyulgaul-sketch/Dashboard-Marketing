@@ -12,6 +12,11 @@ import { advisorProductionPageTransform } from './approved-advisor-production-tr
 
 const require = createRequire(import.meta.url);
 const read = path => readFileSync(path, 'utf8');
+const productionMasterCompatibilityTransform = source => source
+  .replace(`  return Math.round(\\n    signed\\n  );`, `  return signed;`)
+  .replace('Hanya akun Arianie Fajarwati yang dapat mempublish Realisasi Produksi. Gunakan CSV dari template Dashboard.', 'Hanya akun Arianie Fajarwati yang dapat mempublish Realisasi Produksi. File XLSX dapat memakai template Dashboard lama atau master RINCIAN PREMI dengan Bulan Produksi format YYYY/NNN.')
+  .replace('File CSV Realisasi Produksi', 'File XLSX / CSV Realisasi Produksi')
+  .replace('Gunakan template XLSX terbaru dengan User ID Pemilik Realisasi wajib. Sheet Daftar User ID hanya referensi; sistem membaca Data Realisasi. CSV tetap diterima jika memiliki User ID. Nama PIC tidak digunakan untuk menentukan pemilik.', 'Sistem menerima template Dashboard (sheet Data Realisasi) maupun master produksi (sheet RINCIAN PREMI). Pada master, Bulan Produksi seperti 2026/001 dibaca sebagai Januari 2026, GROSS PREMI boleh desimal, dan USERID menjadi pemilik Realisasi. Nama PIC hanya untuk cross-check.');
 const BASE = '9bfee0235fd36b02c8f74577dc5bea66d52c4028';
 const NEW_BASES = {
   'src/pages/DirectoratePerformancePage.tsx': 'f9a658990b112c4a8b284bfe4c18e40f09dc3f5a',
@@ -53,7 +58,7 @@ test('every intentional existing-source change is exactly the approved transform
       : path === 'src/pages/TargetRkapPage.tsx'
         ? compactTargetTransform[path](git('show', `${COMPACT_BASE}:${path}`))
         : path === 'src/pages/ProduksiPage.tsx'
-          ? advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`))
+          ? productionMasterCompatibilityTransform(advisorProductionPageTransform(git('show', `${xlsxBaseline}:${path}`)))
           : transform(original);
     assert.equal(read(path), expected, `${path} contains an unexpected change`);
   }

@@ -218,6 +218,69 @@ export const readNativeXlsxRows = async (
   return result;
 };
 
+export const PRODUCTION_MASTER_SHEET = 'RINCIAN PREMI';
+export const PRODUCTION_MASTER_REQUIRED_HEADERS = [
+  'Bulan Produksi', 'NO POLIS', 'PRODUK', 'GROSS PREMI',
+  'DISTRIBUSI PEMASARAN', 'STATUS PREMI', 'USERID', 'USERNAME',
+] as const;
+
+const getCompatibilityRowValue = (row: SpreadsheetRow, ...aliases: string[]): string => {
+  for (const alias of aliases) {
+    const key = Object.keys(row).find(candidate => normalizeMarketingHeader(candidate) === normalizeMarketingHeader(alias));
+    if (key) return String(row[key] ?? '').trim();
+  }
+  return '';
+};
+
+const mapProductionMasterRows = (rows: SpreadsheetRow[]): SpreadsheetRow[] => rows.map((row, index) => {
+  const rawPeriod = getCompatibilityRowValue(row, 'Bulan Produksi');
+  const periodMatch = /^(\\d{4})\\s*[\\/-]\\s*0*(\\d{1,3})$/.exec(rawPeriod);
+  const productionYear = periodMatch ? Number(periodMatch[1]) : Number.NaN;
+  const productionMonth = periodMatch ? Number(periodMatch[2]) : Number.NaN;
+  if (!Number.isInteger(productionYear) || productionYear < 2000 || productionYear > 2100 ||
+      !Number.isInteger(productionMonth) || productionMonth < 1 || productionMonth > 12) {
+    throw new Error(`Sheet ${PRODUCTION_MASTER_SHEET}, baris ${index + 2}: Bulan Produksi "${rawPeriod}" tidak valid. Gunakan format YYYY/NNN, contoh 2026/001.`);
+  }
+
+  const company = getCompatibilityRowValue(row, 'PERUSAHAAN');
+  const policyHolder = getCompatibilityRowValue(row, 'NAMA PEMEGANG POLIS');
+
+  return {
+    'Tahun Produksi': String(productionYear),
+    'Bulan Produksi': String(productionMonth),
+    'Nomor Polis': getCompatibilityRowValue(row, 'NO POLIS'),
+    'Nama Nasabah': company || policyHolder,
+    'Nomor Nota': getCompatibilityRowValue(row, 'NO. NOTA', 'NO NOTA'),
+    'Nama Produk': getCompatibilityRowValue(row, 'PRODUK'),
+    'Realisasi Produksi (Rp)': getCompatibilityRowValue(row, 'GROSS PREMI'),
+    'Fungsi Marketing': getCompatibilityRowValue(row, 'DISTRIBUSI PEMASARAN'),
+    'Jenis Bisnis': getCompatibilityRowValue(row, 'STATUS PREMI'),
+    'User ID Pemilik Realisasi': getCompatibilityRowValue(row, 'USERID'),
+    'PIC Marketing': getCompatibilityRowValue(row, 'USERNAME'),
+  };
+});
+
+const readProductionXlsxCompatibility = async (
+  binary: ArrayBuffer | Uint8Array,
+  options: SpreadsheetReadOptions
+): Promise<SpreadsheetRow[]> => {
+  try {
+    return await readNativeXlsxRows(binary, options);
+  } catch (primaryError) {
+    try {
+      const masterRows = await readNativeXlsxRows(binary, {
+        sheetName: PRODUCTION_MASTER_SHEET,
+        requiredHeaders: [...PRODUCTION_MASTER_REQUIRED_HEADERS],
+      });
+      return mapProductionMasterRows(masterRows);
+    } catch (masterError) {
+      const primaryMessage = primaryError instanceof Error ? primaryError.message : 'format Data Realisasi tidak valid';
+      const masterMessage = masterError instanceof Error ? masterError.message : 'format RINCIAN PREMI tidak valid';
+      throw new Error(`File Realisasi tidak dikenali. Template Dashboard: ${primaryMessage}. Master RINCIAN PREMI: ${masterMessage}`);
+    }
+  }
+};
+
 export const readMarketingSpreadsheet = async (
   file: File,
   options: SpreadsheetReadOptions = {}
@@ -225,7 +288,13 @@ export const readMarketingSpreadsheet = async (
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (file.size === 0) throw new Error('File kosong.');
   if (file.size > 15 * 1024 * 1024) throw new Error('Ukuran file maksimal 15 MB.');
-  if (extension === 'xlsx') return readNativeXlsxRows(await file.arrayBuffer(), options);
+  if (extension === 'xlsx') {
+    const binary = await file.arrayBuffer();
+    if (options.sheetName === MARKETING_SHEETS.production) {
+      return readProductionXlsxCompatibility(binary, options);
+    }
+    return readNativeXlsxRows(binary, options);
+  }
   if (extension !== 'csv') throw new Error('Gunakan file XLSX asli atau CSV. Format XLS lama dan file yang hanya diganti ekstensinya tidak didukung.');
   // Reuse the existing locale-aware CSV parser without changing unrelated exports.
   const { parseExcelOrCsvFile } = await import('./excelExport');

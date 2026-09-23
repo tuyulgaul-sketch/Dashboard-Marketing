@@ -290,9 +290,7 @@ const parseRupiah = (
         )
       : parsed;
 
-  return Math.round(
-    signed
-  );
+  return signed;
 };
 
 const normalizeBusinessType = (
@@ -1864,7 +1862,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                   </div>
 
                   <CardDescription className="text-xs text-blue-800">
-                    Hanya akun Arianie Fajarwati yang dapat mempublish Realisasi Produksi. Gunakan CSV dari template Dashboard.
+                    Hanya akun Arianie Fajarwati yang dapat mempublish Realisasi Produksi. File XLSX dapat memakai template Dashboard lama atau master RINCIAN PREMI dengan Bulan Produksi format YYYY/NNN.
                   </CardDescription>
                 </CardHeader>
 
@@ -1886,7 +1884,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
 
                   <div className="p-4 bg-white rounded-xl border border-gray-200">
                     <label className="text-xs font-bold text-gray-700 block mb-2">
-                      File CSV Realisasi Produksi
+                      File XLSX / CSV Realisasi Produksi
                     </label>
 
                     <Input
@@ -1911,7 +1909,7 @@ export const ProduksiPage: React.FC<{ embedded?: boolean; uploadOnly?: boolean; 
                     />
 
                     <p className="text-[11px] text-gray-500 mt-2">
-                      Gunakan template XLSX terbaru dengan User ID Pemilik Realisasi wajib. Sheet Daftar User ID hanya referensi; sistem membaca Data Realisasi. CSV tetap diterima jika memiliki User ID. Nama PIC tidak digunakan untuk menentukan pemilik.
+                      Sistem menerima template Dashboard (sheet Data Realisasi) maupun master produksi (sheet RINCIAN PREMI). Pada master, Bulan Produksi seperti 2026/001 dibaca sebagai Januari 2026, GROSS PREMI boleh desimal, dan USERID menjadi pemilik Realisasi. Nama PIC hanya untuk cross-check.
                     </p>
                   </div>
 

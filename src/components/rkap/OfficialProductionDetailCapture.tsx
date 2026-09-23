@@ -93,7 +93,7 @@ const parseRupiah = (value: string): number | null => {
   }
   const parsed = Number(cleaned);
   if (!Number.isFinite(parsed)) return null;
-  return Math.round(negative ? -Math.abs(parsed) : parsed);
+  return negative ? -Math.abs(parsed) : parsed;
 };
 
 const normalizeBusinessType = (value: string): 'New Business' | 'Renewal Business' | null => {
