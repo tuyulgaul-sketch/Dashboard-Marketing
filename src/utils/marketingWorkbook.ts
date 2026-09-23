@@ -249,7 +249,7 @@ const getCompatibilityRowValue = (row: SpreadsheetRow, ...aliases: string[]): st
 
 const mapProductionMasterRows = (rows: SpreadsheetRow[]): SpreadsheetRow[] => rows.map((row, index) => {
   const rawPeriod = getCompatibilityRowValue(row, 'Bulan Produksi');
-  const periodMatch = /^(\\d{4})\\s*[\\/-]\\s*0*(\\d{1,3})$/.exec(rawPeriod);
+  const periodMatch = /^(\d{4})\s*[\/-]\s*0*(\d{1,3})$/.exec(rawPeriod);
   const productionYear = periodMatch ? Number(periodMatch[1]) : Number.NaN;
   const productionMonth = periodMatch ? Number(periodMatch[2]) : Number.NaN;
   if (!Number.isInteger(productionYear) || productionYear < 2000 || productionYear > 2100 ||
