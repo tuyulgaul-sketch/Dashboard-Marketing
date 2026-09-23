@@ -224,6 +224,21 @@ export const PRODUCTION_MASTER_REQUIRED_HEADERS = [
   'DISTRIBUSI PEMASARAN', 'STATUS PREMI', 'USERID', 'USERNAME',
 ] as const;
 
+export const PRODUCTION_MASTER_TEMPLATE_HEADERS = [
+  'No.',
+  'Bulan Produksi',
+  'NO POLIS',
+  'NAMA PEMEGANG POLIS',
+  'PERUSAHAAN',
+  'NO. NOTA',
+  'PRODUK',
+  'GROSS PREMI',
+  'DISTRIBUSI PEMASARAN',
+  'STATUS PREMI',
+  'USERID',
+  'USERNAME',
+] as const;
+
 const getCompatibilityRowValue = (row: SpreadsheetRow, ...aliases: string[]): string => {
   for (const alias of aliases) {
     const key = Object.keys(row).find(candidate => normalizeMarketingHeader(candidate) === normalizeMarketingHeader(alias));
@@ -325,6 +340,142 @@ export const readTargetDirectorateSpreadsheet = async (file: File): Promise<Spre
     if (!/Kolom wajib tidak ditemukan/i.test(message)) throw error;
     return readMarketingSpreadsheet(file, { ...baseOptions, headerRow: 1 });
   }
+};
+
+export const buildProductionMasterWorkbook = async (
+  rows: MarketingTemplateRow[],
+  users: User[]
+): Promise<Uint8Array> => {
+  const productionUsers = users.filter(user => {
+    if (
+      user.status !== 'Active' ||
+      !TARGET_ROLES.has(user.role) ||
+      !/^USR-\d{6}$/.test(normalizeMarketingUserId(user.id))
+    ) {
+      return false;
+    }
+    const reportingUnit = user.role === 'ADVISOR_MARKETING_DIRECTOR'
+      ? 'Advisor'
+      : normalizeMarketingUnit(user.unit);
+    return PRODUCTION_UNITS.has(reportingUnit as MarketingProductionFunction);
+  });
+  const directory = getMarketingDirectoryRows(productionUsers);
+  if (!directory.length) throw new Error('User Master Realisasi belum tersedia. Template tidak dapat dibuat.');
+
+  const Excel = await loadExcelJS();
+  const workbook = new Excel.Workbook();
+  workbook.creator = 'PertaLife Marketing Dashboard';
+  workbook.created = new Date();
+
+  const headers = [...PRODUCTION_MASTER_TEMPLATE_HEADERS];
+  const sheet = workbook.addWorksheet(PRODUCTION_MASTER_SHEET, {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  const directorySheet = workbook.addWorksheet(USER_DIRECTORY_SHEET, {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+
+  const headerStyle = (row: ExcelJS.Row) => {
+    row.height = 28;
+    row.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF163C72' } };
+      cell.alignment = { vertical: 'middle', wrapText: true };
+    });
+  };
+
+  sheet.addRow(headers);
+  headerStyle(sheet.getRow(1));
+  const columnWidths = [8, 16, 20, 34, 34, 20, 32, 20, 32, 20, 18, 28];
+  sheet.columns = columnWidths.map(width => ({ width }));
+
+  rows.forEach((row, index) => {
+    const year = String(row['Tahun Produksi'] ?? '').trim();
+    const rawMonth = String(row['Bulan Produksi'] ?? '').trim();
+    const normalizedPeriod = /^\d{4}\s*[\/-]\s*0*\d{1,3}$/.test(rawMonth)
+      ? rawMonth
+      : year && /^\d{1,2}$/.test(rawMonth)
+        ? `${year}/${String(Number(rawMonth)).padStart(3, '0')}`
+        : rawMonth;
+    const rawBusiness = String(row['STATUS PREMI'] ?? row['Jenis Bisnis'] ?? '').trim();
+    const normalizedBusiness = /^new\s*business$/i.test(rawBusiness)
+      ? 'NEW BUSINESS'
+      : /^(renewal|renewal\s*business)$/i.test(rawBusiness)
+        ? 'RENEWAL'
+        : rawBusiness;
+
+    const masterRow: MarketingTemplateRow = {
+      'No.': row['No.'] ?? (index + 1),
+      'Bulan Produksi': normalizedPeriod,
+      'NO POLIS': row['NO POLIS'] ?? row['Nomor Polis'] ?? '',
+      'NAMA PEMEGANG POLIS': row['NAMA PEMEGANG POLIS'] ?? row['Nama Nasabah'] ?? '',
+      'PERUSAHAAN': row['PERUSAHAAN'] ?? row['Nama Nasabah'] ?? '',
+      'NO. NOTA': row['NO. NOTA'] ?? row['Nomor Nota'] ?? '',
+      'PRODUK': row['PRODUK'] ?? row['Nama Produk'] ?? '',
+      'GROSS PREMI': row['GROSS PREMI'] ?? row['Realisasi Produksi (Rp)'] ?? '',
+      'DISTRIBUSI PEMASARAN': row['DISTRIBUSI PEMASARAN'] ?? row['Fungsi Marketing'] ?? '',
+      'STATUS PREMI': normalizedBusiness,
+      'USERID': row['USERID'] ?? row['User ID Pemilik Realisasi'] ?? '',
+      'USERNAME': row['USERNAME'] ?? row['PIC Marketing'] ?? '',
+    };
+    sheet.addRow(headers.map(header => masterRow[header] ?? ''));
+  });
+
+  const dataEnd = Math.max(rows.length + 1, 2);
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: dataEnd, column: headers.length },
+  };
+  sheet.getColumn(2).numFmt = '@';
+  sheet.getColumn(3).numFmt = '@';
+  sheet.getColumn(6).numFmt = '@';
+  sheet.getColumn(8).numFmt = '#,##0.########;[Red](#,##0.########)';
+  sheet.getColumn(11).numFmt = '@';
+
+  directorySheet.addRow(['User ID', 'Nama', 'Jabatan', 'Unit', 'Department', 'Status']);
+  headerStyle(directorySheet.getRow(1));
+  directorySheet.columns = [18, 36, 34, 32, 28, 16].map(width => ({ width }));
+  directory.forEach(row => directorySheet.addRow(Object.values(row)));
+  directorySheet.getColumn(1).numFmt = '@';
+  directorySheet.autoFilter = { from: 'A1', to: `F${directory.length + 1}` };
+  workbook.definedNames.add(
+    `'${USER_DIRECTORY_SHEET}'!$A$2:$A${directory.length + 1}`,
+    'MarketingUserIDs'
+  );
+
+  for (let rowNumber = 2; rowNumber <= Math.max(1001, dataEnd); rowNumber += 1) {
+    sheet.getCell(rowNumber, 9).dataValidation = {
+      type: 'list',
+      allowBlank: false,
+      formulae: ['"CAPTIVE MARKETING,CORPORATE & RETAIL MARKETING,ADVISOR"'],
+      showErrorMessage: true,
+      errorTitle: 'Distribusi pemasaran tidak valid',
+      error: 'Pilih CAPTIVE MARKETING, CORPORATE & RETAIL MARKETING, atau ADVISOR.',
+    };
+    sheet.getCell(rowNumber, 10).dataValidation = {
+      type: 'list',
+      allowBlank: false,
+      formulae: ['"NEW BUSINESS,RENEWAL"'],
+      showErrorMessage: true,
+      errorTitle: 'Status premi tidak valid',
+      error: 'Pilih NEW BUSINESS atau RENEWAL.',
+    };
+    sheet.getCell(rowNumber, 11).dataValidation = {
+      type: 'list',
+      allowBlank: false,
+      formulae: ['MarketingUserIDs'],
+      showErrorMessage: true,
+      errorTitle: 'User ID tidak valid',
+      error: 'Pilih User ID dari User Master.',
+    };
+  }
+
+  // Helper directory is kept inside the workbook for validation but hidden
+  // so the visible upload template stays focused on the RINCIAN PREMI master.
+  directorySheet.state = 'veryHidden';
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new Uint8Array(buffer);
 };
 
 export const buildMarketingWorkbook = async (
@@ -892,7 +1043,9 @@ export const downloadMarketingWorkbook = async (
   users: User[],
   filename: string
 ): Promise<void> => {
-  const binary = await buildMarketingWorkbook(kind, rows, users);
+  const binary = kind === 'production'
+    ? await buildProductionMasterWorkbook(rows, users)
+    : await buildMarketingWorkbook(kind, rows, users);
   const blob = new Blob([binary as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

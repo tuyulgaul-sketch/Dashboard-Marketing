@@ -65,6 +65,32 @@ async function roundtrip(kind, input, required) {
 }
 const production = { 'Tahun Produksi': 2026, 'Bulan Produksi': 8, 'Nomor Polis': 'POL-0001', 'Nama Nasabah': 'PT Contoh', 'Nama Produk': 'PLife Shield', 'Realisasi Produksi (Rp)': 150000000, 'Fungsi Marketing': 'Captive Marketing', 'Jenis Bisnis': 'New Business', 'User ID Pemilik Realisasi': 'USR-000025', 'PIC Marketing': 'Marketing A' };
 const prod = await roundtrip('production', [production], workbook.getMarketingTemplateHeaders('production'));
+const downloadedProductionBytes = await workbook.buildProductionMasterWorkbook([production], users);
+const downloadedProductionBook = new ExcelJS.Workbook();
+await downloadedProductionBook.xlsx.load(downloadedProductionBytes);
+assert.deepEqual(downloadedProductionBook.worksheets.map(sheet => sheet.name), [workbook.PRODUCTION_MASTER_SHEET, workbook.USER_DIRECTORY_SHEET]);
+const downloadedProductionSheet = downloadedProductionBook.getWorksheet(workbook.PRODUCTION_MASTER_SHEET);
+assert.deepEqual(downloadedProductionSheet.getRow(1).values.slice(1), [...workbook.PRODUCTION_MASTER_TEMPLATE_HEADERS]);
+assert.equal(downloadedProductionSheet.getCell('A2').value, 1);
+assert.equal(downloadedProductionSheet.getCell('B2').value, '2026/008');
+assert.equal(downloadedProductionSheet.getCell('C2').value, 'POL-0001');
+assert.equal(downloadedProductionSheet.getCell('E2').value, 'PT Contoh');
+assert.equal(downloadedProductionSheet.getCell('G2').value, 'PLife Shield');
+assert.equal(downloadedProductionSheet.getCell('H2').value, 150000000);
+assert.equal(downloadedProductionSheet.getCell('I2').value, 'Captive Marketing');
+assert.equal(downloadedProductionSheet.getCell('J2').value, 'NEW BUSINESS');
+assert.equal(downloadedProductionSheet.getCell('K2').value, 'USR-000025');
+assert.equal(downloadedProductionSheet.getCell('L2').value, 'Marketing A');
+assert.match(downloadedProductionSheet.getColumn(8).numFmt, /0\.########/);
+assert.ok(downloadedProductionSheet.getCell('K2').dataValidation.formulae.includes('MarketingUserIDs'));
+assert.equal(downloadedProductionBook.getWorksheet(workbook.USER_DIRECTORY_SHEET).state, 'veryHidden');
+const downloadedMasterImported = await workbook.readMarketingSpreadsheet(
+  file('downloaded-production-master.xlsx', downloadedProductionBytes),
+  { sheetName: workbook.MARKETING_SHEETS.production, requiredHeaders: workbook.getMarketingTemplateHeaders('production') }
+);
+assert.equal(downloadedMasterImported[0]['Tahun Produksi'], '2026');
+assert.equal(downloadedMasterImported[0]['Bulan Produksi'], '8');
+assert.equal(downloadedMasterImported[0]['User ID Pemilik Realisasi'], 'USR-000025');
 const target = { Tahun: 2026, 'User ID Penerima': 'USR-000025', Periode: 8, 'NB/RN': 'NB', 'Target (Rp)': 150000000 };
 const targetRoundtrip = await roundtrip('target', [target], workbook.getMarketingTemplateHeaders('target'));
 assert.equal(targetRoundtrip.actual.worksheets[0].getCell('C2').value, 8);
