@@ -91,7 +91,7 @@ type DraftItem = {
   description: string;
   physicalForm:
     DocumentHandoverItem["physicalForm"];
-  quantity: number;
+  quantity: number | "";
   notes: string;
 };
 
@@ -2678,7 +2678,10 @@ const TandaTerimaV14Page:
                                   type="number"
                                   min={1}
                                   value={item.quantity}
-                                  onChange={event =>
+                                  onChange={event => {
+                                    const rawValue =
+                                      event.target.value;
+
                                     setDraftItems(
                                       current =>
                                         current.map(
@@ -2687,12 +2690,35 @@ const TandaTerimaV14Page:
                                               ? {
                                                   ...currentItem,
                                                   quantity:
-                                                    Math.max(
-                                                      1,
-                                                      Number(
-                                                        event.target.value
-                                                      ) || 1
-                                                    ),
+                                                    rawValue === ""
+                                                      ? ""
+                                                      : Math.max(
+                                                          1,
+                                                          Number(
+                                                            rawValue
+                                                          ) || 1
+                                                        ),
+                                                }
+                                              : currentItem
+                                        )
+                                    );
+                                  }}
+                                  onBlur={() =>
+                                    setDraftItems(
+                                      current =>
+                                        current.map(
+                                          (currentItem, itemIndex) =>
+                                            itemIndex === index &&
+                                            (
+                                              currentItem.quantity === "" ||
+                                              Number(
+                                                currentItem.quantity
+                                              ) < 1
+                                            )
+                                              ? {
+                                                  ...currentItem,
+                                                  quantity:
+                                                    1,
                                                 }
                                               : currentItem
                                         )
