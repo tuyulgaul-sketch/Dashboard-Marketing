@@ -78,7 +78,7 @@ export const MarketingToolBrowser: React.FC<Props> = ({ documents, products, onD
         <label className="block text-xs font-bold text-gray-700" id="marketing-tool-product-label">1. Pilih produk</label>
         <AdminProductPicker value={selection.product} options={productOptions} onChange={changeProduct}
           disabled={busy} labelId="marketing-tool-product-label" />
-        <p className="text-xs text-gray-500">Cari dan pilih produk yang sesuai sebelum membuka marketing tools. Pilihan Semua Produk hanya menampilkan jumlah dokumen.</p>
+        <p className="text-xs text-gray-500">Pilih All Produk untuk materi lintas produk, atau pilih produk tertentu. Semua Produk hanya menampilkan ringkasan jumlah dokumen.</p>
       </div>
 
       <div className="space-y-2">
