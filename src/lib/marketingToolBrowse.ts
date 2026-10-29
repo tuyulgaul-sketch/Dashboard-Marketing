@@ -1,5 +1,8 @@
 import type { MarketingToolCategory } from '@/services/store';
 
+/** Marketing Tools only: a file covering multiple products, not the catalogue overview ('ALL'). */
+export const ALL_PRODUCTS_MARKETING_TOOL = 'All Produk';
+
 export const MARKETING_TOOL_BROWSE_CATEGORIES = [
   { value: 'PROPOSAL_PENAWARAN_STANDAR', label: 'Proposal Produk Standar' },
   { value: 'MATERI_PRESENTASI', label: 'Materi Presentasi Produk Standar' },
@@ -51,7 +54,8 @@ export function getMarketingToolProductOptions(
       names.set(normalize(name), name);
     }
   }
-  return [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
+  names.delete(normalize(ALL_PRODUCTS_MARKETING_TOOL));
+  return [ALL_PRODUCTS_MARKETING_TOOL, ...[...names.values()].sort((a, b) => a.localeCompare(b, 'id'))];
 }
 
 /** Presentation guard only; existing authenticated storage authorization remains authoritative. */
