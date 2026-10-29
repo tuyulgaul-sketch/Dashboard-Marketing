@@ -11,6 +11,7 @@ import {
 } from '@/components/layout/AppLayout';
 import { AdminDocumentBrowser } from '@/components/documents/AdminDocumentBrowser';
 import { MarketingToolBrowser } from '@/components/documents/MarketingToolBrowser';
+import { ALL_PRODUCTS_MARKETING_TOOL } from '@/lib/marketingToolBrowse';
 import { ADMIN_DOCUMENT_CATEGORIES } from '@/lib/adminDocumentCategories';
 import {
   ManagedServiceDocument,
@@ -1935,6 +1936,10 @@ export const DokumenPendukungPage:
           return;
         }
 
+        const isAllProductsMarketingTool =
+          ownerArea === 'MARKETING_COMMUNICATION' &&
+          uploadProduct === ALL_PRODUCTS_MARKETING_TOOL;
+
         const product =
           activeProducts.find(
             item =>
@@ -1943,7 +1948,7 @@ export const DokumenPendukungPage:
           );
 
         if (
-          !product
+          !isAllProductsMarketingTool && !product
         ) {
           alert(
             'Produk tidak ditemukan pada Product Master.'
@@ -1980,11 +1985,13 @@ export const DokumenPendukungPage:
             category:
               uploadCategory,
             productName:
-              product.productName,
+              isAllProductsMarketingTool
+                ? ALL_PRODUCTS_MARKETING_TOOL
+                : product!.productName,
             insuranceType:
-              product.insuranceType,
+              product?.insuranceType,
             customerCategory:
-              product.customerCategory,
+              product?.customerCategory,
             title:
               uploadTitle.trim(),
             version,
@@ -4225,6 +4232,9 @@ export const DokumenPendukungPage:
                     <SelectItem value="ALL">
                       Semua Produk
                     </SelectItem>
+                    <SelectItem value={ALL_PRODUCTS_MARKETING_TOOL}>
+                      All Produk (Materi lintas produk)
+                    </SelectItem>
 
                     {activeProducts.map(
                       product => (
@@ -5493,6 +5503,11 @@ export const DokumenPendukungPage:
                         position="popper"
                         className="z-[140] max-h-72"
                       >
+                        {area === 'marketing-tools' && (
+                          <SelectItem value={ALL_PRODUCTS_MARKETING_TOOL}>
+                            All Produk (Materi lintas produk)
+                          </SelectItem>
+                        )}
                         {activeProducts.map(
                           product => (
                             <SelectItem
