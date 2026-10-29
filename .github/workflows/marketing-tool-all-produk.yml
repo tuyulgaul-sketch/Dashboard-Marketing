@@ -1,0 +1,46 @@
+name: Marketing Tool All Produk regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/marketingToolBrowse.ts'
+      - 'src/components/documents/MarketingToolBrowser.tsx'
+      - 'src/pages/DokumenPendukungPage.tsx'
+      - 'scripts/test-marketing-tool-browse.mjs'
+      - '.github/workflows/marketing-tool-all-produk.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+          pnpm install --no-frozen-lockfile
+      - name: Marketing Tool browse and approval-scope tests
+        run: node --experimental-strip-types --test scripts/test-marketing-tool-browse.mjs
+      - name: Lint changed application files
+        run: pnpm exec eslint src/lib/marketingToolBrowse.ts src/components/documents/MarketingToolBrowser.tsx src/pages/DokumenPendukungPage.tsx
+      - name: Production build
+        run: pnpm run build
+      - name: Reject new TypeScript errors in changed files
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/marketing-tool-tsc.txt 2>&1 || true
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const output = readFileSync('/tmp/marketing-tool-tsc.txt', 'utf8');
+          const changed = ['src/lib/marketingToolBrowse.ts', 'src/components/documents/MarketingToolBrowser.tsx', 'src/pages/DokumenPendukungPage.tsx'];
+          // This TS2345 comes from an unchanged useEffect cleanup already present in main.
+          const existingMainError = line => line.startsWith('src/pages/DokumenPendukungPage.tsx(') &&
+            line.includes("error TS2345: Argument of type '() => () => boolean' is not assignable to parameter of type 'EffectCallback'");
+          const errors = output.split('\n').filter(line =>
+            changed.some(path => line.startsWith(path + '(')) && /error TS\d+:/.test(line) && !existingMainError(line));
+          if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
+          console.log('No TypeScript errors in changed application files.');
+          NODE
