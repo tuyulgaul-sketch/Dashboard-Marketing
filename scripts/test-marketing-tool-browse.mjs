@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import {
   MARKETING_TOOL_BROWSE_CATEGORIES,
+  ALL_PRODUCTS_MARKETING_TOOL,
   getMarketingToolProductOptions,
   getMarketingToolBrowseView,
   canDownloadMarketingTool,
@@ -71,8 +72,37 @@ test('active and archived-with-published-file products remain selectable', () =>
     { productName: 'Unpublished Only', status: 'Inactive' },
   ];
   const options = getMarketingToolProductOptions(products, docs);
-  assert.deepEqual(options, ['Credit Shield', 'Empty Product', 'PLife Shield']);
+  assert.deepEqual(options, ['All Produk', 'Credit Shield', 'Empty Product', 'PLife Shield']);
   assert.deepEqual(getMarketingToolBrowseView(docs, selected('Empty Product', categories[0])).visibleDocuments, []);
+});
+
+
+test('All Produk is a separate downloadable marketing-tool scope, not the all-product overview', () => {
+  const allProductsSlides = document('slides-all-products', ALL_PRODUCTS_MARKETING_TOOL, categories[1]);
+  const draftAllProducts = document('draft-all-products', ALL_PRODUCTS_MARKETING_TOOL, categories[1], { status: 'PENDING_APPROVAL' });
+  const crossProductDocs = [...docs, allProductsSlides, draftAllProducts];
+  const scope = selected(ALL_PRODUCTS_MARKETING_TOOL, categories[1]);
+
+  assert.equal(getMarketingToolProductOptions([], crossProductDocs)[0], ALL_PRODUCTS_MARKETING_TOOL);
+  assert.deepEqual(getMarketingToolBrowseView(crossProductDocs, scope).visibleDocuments.map(item => item.id), ['slides-all-products']);
+  assert.equal(canDownloadMarketingTool(crossProductDocs, scope, allProductsSlides), true);
+  assert.equal(canDownloadMarketingTool(crossProductDocs, scope, draftAllProducts), false);
+
+  // The overview remains locked: a category click cannot download anything until an actual scope is chosen.
+  assert.deepEqual(getMarketingToolBrowseView(crossProductDocs, selected('ALL', categories[1])).visibleDocuments, []);
+  assert.equal(canDownloadMarketingTool(crossProductDocs, selected('ALL', categories[1]), allProductsSlides), false);
+  // Per-product catalogues must not accidentally inherit multi-product files.
+  assert.deepEqual(getMarketingToolBrowseView(crossProductDocs, selected('Credit Shield', categories[1])).visibleDocuments.map(item => item.id), ['slides-credit']);
+  assert.equal(canDownloadMarketingTool(crossProductDocs, selected('Credit Shield', categories[1]), allProductsSlides), false);
+});
+
+test('All Produk is offered in upload and publisher filters without changing the administration upload catalogue', () => {
+  const page = readFileSync('src/pages/DokumenPendukungPage.tsx', 'utf8');
+  assert.match(page, /uploadProduct === ALL_PRODUCTS_MARKETING_TOOL/);
+  assert.match(page, /!isAllProductsMarketingTool && !product/);
+  assert.match(page, /productName:\s*isAllProductsMarketingTool/);
+  assert.match(page, /area === 'marketing-tools' && \(\s*<SelectItem value=\{ALL_PRODUCTS_MARKETING_TOOL\}>/);
+  assert.match(page, /<SelectItem value=\{ALL_PRODUCTS_MARKETING_TOOL\}>\s*All Produk \(Materi lintas produk\)/);
 });
 
 test('the existing searchable picker supports partial and multiword product names', () => {
