@@ -10,6 +10,7 @@ on:
       - 'src/services/businessFileStorage.ts'
       - 'supabase/migrations/20261030_marketing_tool_upload_300mb.sql'
       - 'scripts/test-marketing-tool-browse.mjs'
+      - 'supabase/migrations/20261030_published_marketing_tool_reader_v41.sql'
       - '.github/workflows/marketing-tool-all-produk.yml'
 permissions:
   contents: read

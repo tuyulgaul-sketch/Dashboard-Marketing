@@ -9,6 +9,7 @@ import {
   canDownloadMarketingTool,
   getMarketingToolBrowseView,
   getMarketingToolProductOptions,
+  getRecentPublishedMarketingTools,
   type MarketingToolBrowseCategory,
   type MarketingToolBrowseSelection,
 } from '@/lib/marketingToolBrowse';
@@ -37,6 +38,7 @@ export const MarketingToolBrowser: React.FC<Props> = ({ documents, products, onD
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const productOptions = useMemo(() => getMarketingToolProductOptions(products, documents), [products, documents]);
   const view = useMemo(() => getMarketingToolBrowseView(documents, selection), [documents, selection]);
+  const recentDocuments = useMemo(() => getRecentPublishedMarketingTools(documents), [documents]);
 
   useEffect(() => {
     if (loading) return;
@@ -54,6 +56,15 @@ export const MarketingToolBrowser: React.FC<Props> = ({ documents, products, onD
   const changeCategory = (category: MarketingToolBrowseCategory) => {
     if (!view.productSelected || loading || downloadingId) return;
     setSelection(previous => ({ ...previous, category, search: '' }));
+  };
+
+  const showRecentDocument = (document: ManagedServiceDocument) => {
+    if (loading || downloadingId || !productOptions.includes(document.productName || '')) return;
+    setSelection({
+      product: document.productName || 'ALL',
+      category: document.category as MarketingToolBrowseCategory,
+      search: '',
+    });
   };
 
   const handleDownload = async (document: ManagedServiceDocument) => {
@@ -78,7 +89,7 @@ export const MarketingToolBrowser: React.FC<Props> = ({ documents, products, onD
         <label className="block text-xs font-bold text-gray-700" id="marketing-tool-product-label">1. Pilih produk</label>
         <AdminProductPicker value={selection.product} options={productOptions} onChange={changeProduct}
           disabled={busy} labelId="marketing-tool-product-label" />
-        <p className="text-xs text-gray-500">Pilih All Produk untuk materi lintas produk, atau pilih produk tertentu. Semua Produk hanya menampilkan ringkasan jumlah dokumen.</p>
+        <p className="text-xs text-gray-500">Pilih All Produk untuk materi lintas produk, atau pilih produk tertentu. Saat Semua Produk dipilih, lihat daftar materi terbaru di bawah.</p>
       </div>
 
       <div className="space-y-2">
@@ -115,9 +126,33 @@ export const MarketingToolBrowser: React.FC<Props> = ({ documents, products, onD
       {loading ? (
         <p className="text-sm text-gray-500" role="status">Memuat marketing tools...</p>
       ) : !view.productSelected ? (
-        <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500" role="status">
-          Pilih produk terlebih dahulu untuk mengaktifkan kartu Proposal, Materi Presentasi, atau Brosur.
-        </div>
+        <section className="space-y-3" aria-label="Materi Marketing Tool terbaru">
+          <h2 className="text-sm font-bold text-gray-900">Materi terbaru yang sudah dipublikasikan</h2>
+          {recentDocuments.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500" role="status">
+              Belum ada Marketing Tool yang dipublikasikan.
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500">Pilih Lihat Materi untuk membuka dokumen berdasarkan produk dan kategorinya.</p>
+              {recentDocuments.map(document => (
+                <Card key={document.id} className="border-gray-200 bg-white shadow-sm">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                    <div className="min-w-0 space-y-1">
+                      <div className="text-sm font-semibold text-gray-900">{document.title}</div>
+                      <div className="text-xs text-gray-500">{MARKETING_TOOL_BROWSE_CATEGORIES.find(item => item.value === document.category)?.label} • {document.productName}</div>
+                      <div className="text-xs text-gray-400">Published {formatDate(document.approvedAt || document.uploadedAt)}</div>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" disabled={busy}
+                      onClick={() => showRecentDocument(document)}>
+                      Lihat Materi <ChevronRight className="ml-1 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          )}
+        </section>
       ) : !view.category ? (
         <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500" role="status">
           Produk <span className="font-semibold text-gray-700">{selection.product}</span> dipilih. Klik salah satu kartu untuk melihat marketing tools yang tersedia.
