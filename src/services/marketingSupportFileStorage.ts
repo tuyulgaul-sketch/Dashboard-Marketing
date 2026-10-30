@@ -177,7 +177,8 @@ export const saveMarketingSupportFile =
     id:
       string,
     file:
-      File
+      File,
+    onProgress?: (uploadedBytes: number, totalBytes: number) => void
   ) => {
     const maxBytes =
       getMarketingSupportFileMaxBytes();
@@ -194,6 +195,8 @@ export const saveMarketingSupportFile =
         )} MB untuk akun ini.`
       );
     }
+
+    onProgress?.(0, file.size);
 
     const context =
       findDocumentContext(
@@ -243,6 +246,7 @@ export const saveMarketingSupportFile =
         );
       }
 
+      onProgress?.(file.size, file.size);
       return;
     }
 
@@ -342,6 +346,7 @@ export const saveMarketingSupportFile =
         chunkIds.push(
           chunkId
         );
+        onProgress?.(end, file.size);
       }
 
       const manifestFile =
@@ -397,6 +402,7 @@ export const saveMarketingSupportFile =
             file.size,
         },
       });
+      onProgress?.(file.size, file.size);
     } catch (
       error
     ) {
