@@ -824,6 +824,8 @@ export const DokumenPendukungPage:
         false
       );
 
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
     const [
       deletingDocumentId,
       setDeletingDocumentId,
@@ -1841,6 +1843,7 @@ export const DokumenPendukungPage:
           null
         );
         setUploadNotes('');
+        setUploadProgress(null);
         setUploadOpen(
           true
         );
@@ -1960,6 +1963,7 @@ export const DokumenPendukungPage:
         setUploadBusy(
           true
         );
+        setUploadProgress(0);
 
         const version =
           getNextDocumentVersion(
@@ -1976,7 +1980,10 @@ export const DokumenPendukungPage:
         try {
           await saveMarketingSupportFile(
             id,
-            uploadFile
+            uploadFile,
+            (uploadedBytes, totalBytes) => setUploadProgress(
+              totalBytes > 0 ? Math.min(99, Math.round(uploadedBytes / totalBytes * 100)) : 99
+            )
           );
 
           store.saveServiceDocument({
@@ -2014,6 +2021,7 @@ export const DokumenPendukungPage:
               undefined,
           });
 
+          setUploadProgress(100);
           setUploadOpen(
             false
           );
@@ -5393,11 +5401,9 @@ export const DokumenPendukungPage:
           {uploadOpen && (
             <div
               className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
-              onClick={() =>
-                setUploadOpen(
-                  false
-                )
-              }
+              onClick={() => {
+                if (!uploadBusy) setUploadOpen(false);
+              }}
             >
               <div
                 className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
@@ -5424,6 +5430,7 @@ export const DokumenPendukungPage:
                     type="button"
                     size="sm"
                     variant="ghost"
+                    disabled={uploadBusy}
                     onClick={() =>
                       setUploadOpen(
                         false
@@ -5577,6 +5584,15 @@ export const DokumenPendukungPage:
                           1024
                       )} MB per file untuk akun ini.
                     </p>
+                    {uploadBusy && uploadProgress !== null && (
+                      <div className="mt-3 space-y-1" role="status" aria-live="polite">
+                        <p className="text-xs font-semibold text-blue-700">Mengunggah file: {uploadProgress}% — jangan tutup halaman hingga selesai.</p>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                          <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                        <p className="text-[10px] text-gray-500">File besar diunggah bertahap per 5 MB sebelum diajukan untuk approval.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -5605,6 +5621,7 @@ export const DokumenPendukungPage:
                     type="button"
                     size="sm"
                     variant="outline"
+                    disabled={uploadBusy}
                     onClick={() =>
                       setUploadOpen(
                         false
