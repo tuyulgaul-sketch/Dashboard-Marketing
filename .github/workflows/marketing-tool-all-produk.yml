@@ -6,6 +6,9 @@ on:
       - 'src/lib/marketingToolBrowse.ts'
       - 'src/components/documents/MarketingToolBrowser.tsx'
       - 'src/pages/DokumenPendukungPage.tsx'
+      - 'src/services/marketingSupportFileStorage.ts'
+      - 'src/services/businessFileStorage.ts'
+      - 'supabase/migrations/20261030_marketing_tool_upload_300mb.sql'
       - 'scripts/test-marketing-tool-browse.mjs'
       - '.github/workflows/marketing-tool-all-produk.yml'
 permissions:
@@ -26,7 +29,7 @@ jobs:
       - name: Marketing Tool browse and approval-scope tests
         run: node --experimental-strip-types --test scripts/test-marketing-tool-browse.mjs
       - name: Lint changed application files
-        run: pnpm exec eslint src/lib/marketingToolBrowse.ts src/components/documents/MarketingToolBrowser.tsx src/pages/DokumenPendukungPage.tsx
+        run: pnpm exec eslint src/lib/marketingToolBrowse.ts src/components/documents/MarketingToolBrowser.tsx src/pages/DokumenPendukungPage.tsx src/services/marketingSupportFileStorage.ts src/services/businessFileStorage.ts
       - name: Production build
         run: pnpm run build
       - name: Reject new TypeScript errors in changed files
@@ -35,7 +38,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const output = readFileSync('/tmp/marketing-tool-tsc.txt', 'utf8');
-          const changed = ['src/lib/marketingToolBrowse.ts', 'src/components/documents/MarketingToolBrowser.tsx', 'src/pages/DokumenPendukungPage.tsx'];
+          const changed = ['src/lib/marketingToolBrowse.ts', 'src/components/documents/MarketingToolBrowser.tsx', 'src/pages/DokumenPendukungPage.tsx', 'src/services/marketingSupportFileStorage.ts', 'src/services/businessFileStorage.ts'];
           // This TS2345 comes from an unchanged useEffect cleanup already present in main.
           const existingMainError = line => line.startsWith('src/pages/DokumenPendukungPage.tsx(') &&
             line.includes("error TS2345: Argument of type '() => () => boolean' is not assignable to parameter of type 'EffectCallback'");
