@@ -7,7 +7,7 @@ export const BUSINESS_FILE_MAX_BYTES =
   10 * 1024 * 1024;
 
 export const MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES =
-  100 * 1024 * 1024;
+  300 * 1024 * 1024;
 
 export type BusinessFileModule =
   | "PIPELINE_QUOTATION"
@@ -173,7 +173,7 @@ export async function uploadCentralBusinessFile(input: {
       MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES
   ) {
     throw new Error(
-      "Ukuran file terdaftar maksimum 100 MB."
+      `Ukuran file terdaftar maksimum ${MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES / 1024 / 1024} MB.`
     );
   }
 
