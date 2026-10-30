@@ -133,3 +133,24 @@ test('the integrated reader preserves product-first and read-only UI guards', ()
   assert.match(browser, /canDownloadMarketingTool\(documents, selection, document\)/);
   assert.doesNotMatch(browser, /saveMarketingSupportFile|deleteMarketingSupportFile|Review & Approve|Upload Marketing Tool/);
 });
+
+
+test('300 MB Marketing Tool upload keeps 10 MB non-Karina policy and 5 MB storage chunks', () => {
+  const business = readFileSync('src/services/businessFileStorage.ts', 'utf8');
+  const support = readFileSync('src/services/marketingSupportFileStorage.ts', 'utf8');
+  const page = readFileSync('src/pages/DokumenPendukungPage.tsx', 'utf8');
+  const migration = readFileSync('supabase/migrations/20261030_marketing_tool_upload_300mb.sql', 'utf8');
+  assert.match(business, /MARKETING_SUPPORT_KARINA_FILE_MAX_BYTES\s*=\s*300\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(business, /BUSINESS_FILE_MAX_BYTES\s*=\s*10\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(support, /MARKETING_SUPPORT_CHUNK_BYTES\s*=\s*5\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(support, /KARINA_LEGACY_USER_ID\s*=\s*"USR-000031"/);
+  assert.match(support, /onProgress\?\.\(end, file\.size\)/);
+  assert.match(support, /registeredFileSize:\s*file\.size/);
+  assert.match(support, /chunkIds,/);
+  assert.match(page, /uploadBusy && uploadProgress !== null/);
+  assert.match(page, /disabled=\{uploadBusy\}/);
+  assert.match(migration, /file_size <= 314572800/);
+  assert.match(migration, /then 314572800/);
+  assert.match(migration, /else 10485760/);
+  assert.match(migration, /USR-000031/);
+});
