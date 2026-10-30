@@ -58,6 +58,19 @@ export function getMarketingToolProductOptions(
   return [ALL_PRODUCTS_MARKETING_TOOL, ...[...names.values()].sort((a, b) => a.localeCompare(b, 'id'))];
 }
 
+/** Most recent published Marketing Tools; never show pending, inactive or rejected records. */
+export function getRecentPublishedMarketingTools<T extends MarketingToolBrowseItem>(
+  documents: readonly T[], limit = 5,
+): T[] {
+  return documents
+    .filter(isPublishedMarketingTool)
+    .sort((a, b) =>
+      (b.approvedAt || b.uploadedAt || '').localeCompare(a.approvedAt || a.uploadedAt || '') ||
+      normalize(a.title).localeCompare(normalize(b.title), 'id') ||
+      a.id.localeCompare(b.id))
+    .slice(0, Math.max(0, limit));
+}
+
 /** Presentation guard only; existing authenticated storage authorization remains authoritative. */
 export function getMarketingToolBrowseView<T extends MarketingToolBrowseItem>(
   documents: readonly T[],
