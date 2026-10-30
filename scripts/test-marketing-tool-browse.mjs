@@ -5,6 +5,7 @@ import {
   MARKETING_TOOL_BROWSE_CATEGORIES,
   ALL_PRODUCTS_MARKETING_TOOL,
   getMarketingToolProductOptions,
+  getRecentPublishedMarketingTools,
   getMarketingToolBrowseView,
   canDownloadMarketingTool,
 } from '../src/lib/marketingToolBrowse.ts';
@@ -153,4 +154,39 @@ test('300 MB Marketing Tool upload keeps 10 MB non-Karina policy and 5 MB storag
   assert.match(migration, /then 314572800/);
   assert.match(migration, /else 10485760/);
   assert.match(migration, /USR-000031/);
+});
+
+
+test('latest published Marketing Tools are discoverable at the default reader landing', () => {
+  const items = [
+    document('older', 'All Produk', categories[1], { approvedAt: '2026-10-01T00:00:00Z' }),
+    document('newer', 'All Produk', categories[1], { approvedAt: '2026-10-30T00:00:00Z' }),
+    document('proposal', 'PLife Shield', categories[0], { approvedAt: '2026-10-25T00:00:00Z' }),
+    document('pending', 'All Produk', categories[1], { status: 'PENDING_APPROVAL', approvedAt: '2026-10-31T00:00:00Z' }),
+    document('inactive', 'All Produk', categories[1], { status: 'INACTIVE', approvedAt: '2026-10-31T00:00:00Z' }),
+    document('wrong-owner', 'All Produk', categories[1], { ownerArea: 'MARKETING_ADMINISTRATION' }),
+  ];
+  const before = JSON.stringify(items);
+  assert.deepEqual(getRecentPublishedMarketingTools(items).map(item => item.id), ['newer', 'proposal', 'older']);
+  assert.deepEqual(getRecentPublishedMarketingTools(items, 2).map(item => item.id), ['newer', 'proposal']);
+  assert.equal(JSON.stringify(items), before);
+  const browser = readFileSync('src/components/documents/MarketingToolBrowser.tsx', 'utf8');
+  assert.match(browser, /Materi terbaru yang sudah dipublikasikan/);
+  assert.match(browser, /showRecentDocument\(document\)/);
+  assert.match(browser, /getRecentPublishedMarketingTools\(documents\)/);
+});
+
+test('Marketing Tool access migration is read-only and protects each large-file chunk', () => {
+  const sql = readFileSync('supabase/migrations/20261030_published_marketing_tool_reader_v41.sql', 'utf8');
+  assert.match(sql, /MARKETING_COMMUNICATION/);
+  assert.match(sql, /PUBLISHED/);
+  assert.match(sql, /can_read_marketing_tool_catalog_v41/);
+  assert.match(sql, /and p.active = true/);
+  assert.match(sql, /and upper\(trim\(coalesce\(p.role_level, ''\)\)\) <> 'SYSTEM_ADMIN'/);
+  assert.match(sql, /f.metadata ->> 'parentFileId' = e.entity_id/);
+  assert.match(sql, /on public.central_business_entities\s+for select to authenticated/);
+  assert.match(sql, /on public.central_business_files\s+for select to authenticated/);
+  assert.match(sql, /on storage.objects\s+for select to authenticated/);
+  assert.doesNotMatch(sql, /for (insert|update|delete) to authenticated/i);
+  assert.match(sql, /'PROPOSAL_PENAWARAN_STANDAR', 'MATERI_PRESENTASI', 'BROSUR'/);
 });
