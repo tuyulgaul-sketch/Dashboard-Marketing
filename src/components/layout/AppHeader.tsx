@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { isSystemAdminProfile } from "@/lib/accessControl";
+import { canAccessFeature, isSystemAdminProfile } from "@/lib/accessControl";
 import NotificationBell from "@/components/layout/NotificationBell";
 import PasswordControlDialog from "@/components/layout/PasswordControlDialog";
 import {
@@ -27,6 +27,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
   useEffect(() => {
     setImpersonationMarker(getAdminImpersonationMarker());
   }, [profile?.id]);
+
+  // Evaluate due/overdue launch tasks at login/navigation for the two participating teams.
+  // Notifications and emails use server-side dedupe keys, so repeat page visits are safe.
+  useEffect(() => {
+    if (!canAccessFeature(profile, "MYPERTALIFE_LAUNCH")) return;
+    void supabase.rpc("launch_timeline_due_reminders").then(({ error }) => {
+      if (error) console.warn("Launch reminder check failed:", error);
+    });
+  }, [profile?.id, profile?.department, profile?.active]);
 
   const activeImpersonation = profile && impersonationMarker?.target_profile_id === profile.id
     ? impersonationMarker : null;
