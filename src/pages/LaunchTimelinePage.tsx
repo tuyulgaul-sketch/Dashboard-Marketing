@@ -20,7 +20,7 @@ type Task = {
   evidence_required: boolean; is_milestone: boolean;
 };
 type Evidence = { id: string; task_id: string; storage_path: string; file_name: string; file_size: number; created_at: string };
-type Draft = { owner_team: Team; start_date: string; due_date: string; status: Status; notes: string };
+type Draft = { title: string; owner_team: Team; start_date: string; due_date: string; status: Status; notes: string };
 const teamLabel: Record<Team, string> = { DA: "Digital & Affinity", MARCOMM: "Marcomm / Corcomm" };
 const statusLabel: Record<Status, string> = { TODO: "Belum dimulai", IN_PROGRESS: "Sedang dikerjakan", BLOCKED: "Terkendala", DONE: "Selesai" };
 const statusStyle: Record<Status, string> = {
@@ -34,7 +34,7 @@ const todayString = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jak
 const showDate = (s: string) => new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short" }).format(new Date(s + "T12:00:00+07:00"));
 const late = (t: Task, today: string) => t.status !== "DONE" && t.due_date < today;
 const urgent = (t: Task, today: string) => t.status !== "DONE" && t.due_date >= today && days(t.due_date, today) <= 3;
-const draftTask = (t: Task): Draft => ({ owner_team: t.owner_team, start_date: t.start_date, due_date: t.due_date, status: t.status, notes: t.notes || "" });
+const draftTask = (t: Task): Draft => ({ title: t.title, owner_team: t.owner_team, start_date: t.start_date, due_date: t.due_date, status: t.status, notes: t.notes || "" });
 const selectClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm";
 const labelClass = "mb-1 block text-xs font-semibold text-slate-600";
 
@@ -143,15 +143,19 @@ export default function LaunchTimelinePage() {
 
   const save = async () => {
     if (!selected || !draft) return;
-    if (!draft.start_date || !draft.due_date || draft.start_date > draft.due_date) return toast.error("Periksa kembali tanggal mulai dan deadline.");
+    const cleanTitle = draft.title.trim();
+    if (!cleanTitle) return toast.error("Nama task wajib diisi.");
+    if (cleanTitle.length > 200) return toast.error("Nama task maksimal 200 karakter.");
+    if (!draft.start_date || !draft.due_date || draft.start_date > draft.due_date) return toast.error("Tanggal mulai harus sebelum atau sama dengan deadline.");
     setBusy(true);
     try {
       const { error: saveError } = await supabase.from("launch_timeline_tasks").update({
-        owner_team: draft.owner_team, status: draft.status, start_date: draft.start_date,
-        due_date: draft.due_date, notes: draft.notes.trim() || null,
+        title: cleanTitle, owner_team: draft.owner_team, status: draft.status,
+        start_date: draft.start_date, due_date: draft.due_date,
+        notes: draft.notes.trim() || null,
       }).eq("id", selected.id).select("id").single();
       if (saveError) throw saveError;
-      await refresh(); closeTask(); toast.success("Status dan penanggung jawab tersimpan.");
+      await refresh(); closeTask(); toast.success("Perubahan task tersimpan. Nama, tanggal, dan bar Gantt sudah diperbarui.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menyimpan."); }
     finally { setBusy(false); }
   };
@@ -406,8 +410,12 @@ export default function LaunchTimelinePage() {
     <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) closeTask(); }}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         {selected && draft && <>
-          <DialogHeader><DialogTitle className="pr-5">{selected.title}</DialogTitle><DialogDescription>Periksa target, upload evidence, lalu ubah status pekerjaan.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="pr-5">Edit Task • {selected.code}</DialogTitle><DialogDescription>Ubah nama task, tanggal mulai, deadline, PIC, atau status. Simpan agar daftar dan Gantt mengikuti perubahan.</DialogDescription></DialogHeader>
           <div className="space-y-4">
+            <label className="block"><span className={labelClass}>Nama Task</span>
+              <Input aria-label="Nama Task" value={draft.title} maxLength={200} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Tulis nama pekerjaan..." />
+              <span className="mt-1 block text-xs text-slate-500">Nama baru otomatis tampil pada daftar pekerjaan dan Gantt setelah disimpan.</span>
+            </label>
             <div className="rounded-lg bg-blue-50 p-4 text-sm text-slate-800"><p className="text-xs font-bold uppercase text-blue-700">Hasil yang harus disiapkan</p>
               <p className="mt-1">{selected.deliverable || selected.detail || "Belum ditentukan."}</p>
               {selected.supporting_pic && <p className="mt-2 text-xs text-slate-500">Pihak yang terlibat: {selected.supporting_pic}</p>}
@@ -421,9 +429,10 @@ export default function LaunchTimelinePage() {
                 <select className={selectClass} value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as Status })}>
                   {(Object.keys(statusLabel) as Status[]).map(k => <option key={k} value={k}>{statusLabel[k]}</option>)}
                 </select></label>
-              <label><span className={labelClass}>Tanggal mulai</span><Input type="date" value={draft.start_date} onChange={e => setDraft({ ...draft, start_date: e.target.value })} /></label>
-              <label><span className={labelClass}>Deadline</span><Input type="date" value={draft.due_date} onChange={e => setDraft({ ...draft, due_date: e.target.value })} /></label>
+              <label><span className={labelClass}>Tanggal mulai</span><Input aria-label="Tanggal mulai" type="date" max={draft.due_date || undefined} value={draft.start_date} onChange={e => setDraft({ ...draft, start_date: e.target.value })} /></label>
+              <label><span className={labelClass}>Deadline</span><Input aria-label="Deadline" type="date" min={draft.start_date || undefined} value={draft.due_date} onChange={e => setDraft({ ...draft, due_date: e.target.value })} /></label>
             </div>
+            <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Setelah klik <strong>Simpan perubahan</strong>, bar Gantt akan otomatis bergeser atau memanjang mengikuti tanggal yang diperbarui.</p>
             <label className="block"><span className={labelClass}>Catatan / hasil diskusi perubahan PIC</span>
               <Textarea rows={3} value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder="Mis. Sesuai meeting, tim DA mengambil alih materi demo..." /></label>
             <div className="rounded-xl border border-slate-200 p-4">
