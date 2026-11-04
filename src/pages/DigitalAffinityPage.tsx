@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Activity, ClipboardCheck } from "lucide-react";
+import { Activity, ClipboardCheck, Rocket } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,11 @@ const DigitalAffinityPage: React.FC = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
+          <Card className="border-emerald-200 bg-emerald-50/40">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Rocket className="h-5 w-5 text-emerald-700" />Timeline MyPertaLife & HUT Pertamina</CardTitle></CardHeader>
+            <CardContent><p className="mb-4 text-sm leading-6 text-slate-600">Checklist kesiapan aplikasi, koordinasi Marcomm, evidence, reminder dan milestone hingga HUT Pertamina.</p>
+              <Button asChild><Link to="/timeline-mypertalife">Buka Timeline</Link></Button></CardContent>
+          </Card>
           {canSeeSurvey && (
             <Card className="border-blue-200 bg-blue-50/40">
               <CardHeader>
