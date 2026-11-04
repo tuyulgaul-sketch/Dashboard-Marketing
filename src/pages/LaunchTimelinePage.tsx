@@ -13,12 +13,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 type Team = "DA" | "MARCOMM";
 type Status = "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
-type Group = { id: string; group_code: string; title: string; description: string | null; owner_team: Team; sort_order: number };
+type Group = { id: string; group_code: string; title: string; description: string | null; sort_order: number };
 type Task = { id: string; group_id: string; code: string; title: string; owner_team: Team; start_date: string; due_date: string; status: Status; deliverable: string | null; notes: string | null; evidence_required: boolean; is_milestone: boolean };
 type Evidence = { id: string; task_id: string; storage_path: string; file_name: string; file_size: number };
 type ItemDraft = { title: string; owner_team: Team; start_date: string; due_date: string; status: Status; deliverable: string; notes: string };
-type GroupDraft = { title: string; description: string; owner_team: Team };
-type GroupStats = Group & { subtasks: Task[]; count: number; completed: number; progress: number; start: string | null; end: string | null; late: number };
+type GroupDraft = { title: string; description: string };
+type GroupStats = Group & { subtasks: Task[]; count: number; completed: number; daCount: number; marcommCount: number; progress: number; start: string | null; end: string | null; late: number };
 const teamName: Record<Team, string> = { DA: "Digital & Affinity", MARCOMM: "Marketing Communication" };
 const statusName: Record<Status, string> = { TODO: "Belum mulai", IN_PROGRESS: "Dikerjakan", BLOCKED: "Terkendala", DONE: "Selesai" };
 const statusColor: Record<Status, string> = { TODO: "bg-slate-100 text-slate-600", IN_PROGRESS: "bg-blue-50 text-blue-700", BLOCKED: "bg-amber-50 text-amber-700", DONE: "bg-emerald-50 text-emerald-800" };
@@ -54,13 +54,16 @@ export default function LaunchTimelinePage() {
   const [groupDraft, setGroupDraft] = useState<GroupDraft | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [deleteGroupMode, setDeleteGroupMode] = useState<"MOVE" | "ARCHIVE_ALL">("MOVE");
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState("");
   const [adding, setAdding] = useState(false);
   const [newItem, setNewItem] = useState({ title: "", deliverable: "", owner_team: myTeam, start_date: today, due_date: today });
 
   const refresh = useCallback(async () => {
     try {
       const [g, t, e] = await Promise.all([
-        supabase.from("launch_timeline_groups").select("id,group_code,title,description,owner_team,sort_order").order("sort_order"),
+        supabase.from("launch_timeline_groups").select("id,group_code,title,description,sort_order").is("deleted_at", null).order("sort_order"),
         supabase.from("launch_timeline_tasks").select("id,group_id,code,title,owner_team,start_date,due_date,status,deliverable,notes,evidence_required,is_milestone").is("deleted_at", null).order("start_date").order("code"),
         supabase.from("launch_timeline_evidence").select("id,task_id,storage_path,file_name,file_size"),
       ]);
@@ -89,12 +92,15 @@ export default function LaunchTimelinePage() {
     const completed = subtasks.filter(t => t.status === "DONE").length;
     const start = subtasks.length ? subtasks.reduce((v, t) => v < t.start_date ? v : t.start_date, subtasks[0].start_date) : null;
     const end = subtasks.length ? subtasks.reduce((v, t) => v > t.due_date ? v : t.due_date, subtasks[0].due_date) : null;
-    return { ...g, subtasks, count: subtasks.length, completed, progress: percent(completed, subtasks.length),
+    return { ...g, subtasks, count: subtasks.length, completed,
+      daCount: subtasks.filter(t => t.owner_team === "DA").length,
+      marcommCount: subtasks.filter(t => t.owner_team === "MARCOMM").length,
+      progress: percent(completed, subtasks.length),
       start, end, late: subtasks.filter(t => t.status !== "DONE" && t.due_date < today).length };
   }), [groups, tasks, today]);
 
   const visible = useMemo(() => statistics.filter(g => {
-    if (filterTeam !== "ALL" && g.owner_team !== filterTeam) return false;
+    if (filterTeam !== "ALL" && !g.subtasks.some(t => t.owner_team === filterTeam)) return false;
     if (filterStatus === "DONE" && !(g.count > 0 && g.completed === g.count)) return false;
     if (filterStatus === "PENDING" && g.count > 0 && g.completed === g.count) return false;
     if (filterStatus === "LATE" && !g.late) return false;
@@ -117,16 +123,18 @@ export default function LaunchTimelinePage() {
 
   const openGroup = (g: GroupStats, item?: Task) => {
     setActiveGroupId(g.id);
-    setGroupDraft({ title: g.title, description: g.description || "", owner_team: g.owner_team });
+    setGroupDraft({ title: g.title, description: g.description || "" });
     setActiveItemId(item?.id || null);
     setItemDraft(item ? itemDraftFrom(item) : null);
     setDeleteId(null);
+    setDeletingGroup(false); setDeleteGroupMode("MOVE"); setDeleteGroupTarget("");
     setAdding(false);
     setParams(item ? { task: item.id } : { group: g.id });
   };
   const closeGroup = () => {
     setActiveGroupId(null); setActiveItemId(null); setGroupDraft(null); setItemDraft(null);
-    setDeleteId(null); setAdding(false); setParams({});
+    setDeleteId(null); setDeletingGroup(false); setDeleteGroupTarget("");
+    setAdding(false); setParams({});
   };
   useEffect(() => {
     if (activeGroupId || !groups.length) return;
@@ -144,7 +152,7 @@ export default function LaunchTimelinePage() {
     setBusy(true);
     try {
       const { error: saveError } = await supabase.from("launch_timeline_groups").update({
-        title, description: groupDraft.description.trim() || null, owner_team: groupDraft.owner_team,
+        title, description: groupDraft.description.trim() || null,
       }).eq("id", activeGroup.id).select("id").single();
       if (saveError) throw saveError;
       await refresh(); toast.success("Kelompok diperbarui.");
@@ -169,6 +177,21 @@ export default function LaunchTimelinePage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menyimpan checklist."); }
     finally { setBusy(false); }
   };
+  const assignChecklist = async (t: Task, team: Team) => {
+    if (busy || t.owner_team === team) return;
+    setBusy(true);
+    try {
+      const { error: assignError } = await supabase.from("launch_timeline_tasks")
+        .update({ owner_team: team }).eq("id", t.id).select("id").single();
+      if (assignError) throw assignError;
+      setItemDraft(current => activeItemId === t.id && current ? { ...current, owner_team: team } : current);
+      await refresh();
+      toast.success("PIC checklist diperbarui ke " + teamName[team] + ". Progress tim ikut menyesuaikan.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal mengganti PIC checklist.");
+    } finally { setBusy(false); }
+  };
+
   const setChecked = async (t: Task) => {
     if (busy) return;
     const next = t.status === "DONE" ? "TODO" : "DONE";
@@ -219,6 +242,33 @@ export default function LaunchTimelinePage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menghapus checklist."); }
     finally { setBusy(false); }
   };
+  const archiveGroup = async () => {
+    if (!activeGroup || !deletingGroup || busy) return;
+    if (groups.length <= 1) return toast.error("Kategori terakhir tidak dapat dihapus.");
+    const action: "MOVE" | "ARCHIVE_ALL" = activeGroup.count === 0 ? "ARCHIVE_ALL" : deleteGroupMode;
+    if (action === "MOVE" && (!deleteGroupTarget || deleteGroupTarget === activeGroup.id)) {
+      return toast.error("Pilih kategori tujuan untuk memindahkan checklist.");
+    }
+    setBusy(true);
+    try {
+      const { data, error: archiveError } = await supabase.rpc("archive_launch_timeline_group", {
+        p_group_id: activeGroup.id,
+        p_action: action,
+        p_target_group_id: action === "MOVE" ? deleteGroupTarget : null,
+      });
+      if (archiveError) throw archiveError;
+      const result = data as { success?: boolean; affected_checklists?: number } | null;
+      if (!result?.success) throw new Error("Kategori belum berhasil dihapus.");
+      closeGroup();
+      await refresh();
+      toast.success(action === "MOVE"
+        ? "Kategori dihapus; " + result.affected_checklists + " checklist dipindahkan, PIC dan evidence tetap."
+        : "Kategori beserta checklist aktif diarsipkan. Overall progress dan Gantt diperbarui.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Kategori tidak dapat dihapus.");
+    } finally { setBusy(false); }
+  };
+
   const addChecklist = async () => {
     if (!activeGroup || busy) return;
     const title = newItem.title.trim();
@@ -255,7 +305,7 @@ export default function LaunchTimelinePage() {
     <section className="rounded-2xl bg-gradient-to-r from-blue-950 to-blue-700 p-5 text-white sm:p-6">
       <p className="text-xs font-bold uppercase tracking-widest text-blue-200">Digital &amp; Affinity × Marketing Communication</p>
       <h1 className="mt-2 text-2xl font-black sm:text-3xl">Timeline MyPertaLife &amp; HUT Pertamina</h1>
-      <p className="mt-2 text-sm text-blue-100">10 kelompok pekerjaan, setiap kelompok berisi checklist detail dan evidence per checklist.</p>
+      <p className="mt-2 text-sm text-blue-100">Kategori mengelompokkan pekerjaan; penanggung jawab DA/Marcomm ditentukan pada setiap checklist.</p>
       <div className="mt-5 rounded-xl border border-white/20 bg-white/10 p-4">
         <div className="flex items-end justify-between gap-4">
           <div><p className="text-xs font-bold uppercase text-blue-100">Overall Progress • seluruh checklist aktif</p>
@@ -291,7 +341,8 @@ export default function LaunchTimelinePage() {
       </div>
     </CardContent></Card>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="text-lg font-black">10 Kelompok Pekerjaan Utama</h2><p className="text-xs text-slate-500">Klik satu kelompok untuk melihat dan mengelola checklist-nya.</p></div>
+      <div><h2 className="text-lg font-black">{groups.length} Kategori Pekerjaan</h2>
+        <p className="text-xs text-slate-500">Klik kategori untuk mengelola checklist. Filter tim menampilkan kategori yang memuat checklist tim tersebut, tanpa mengubah persentase kategori.</p></div>
       <Button size="sm" variant="outline" onClick={() => void refresh()}><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button>
     </div>
     <div className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-3">
@@ -308,14 +359,14 @@ export default function LaunchTimelinePage() {
       : <div className="grid gap-3 md:grid-cols-2">{visible.map(g => (
         <button key={g.id} className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md" onClick={() => openGroup(g)}>
           <div className="flex items-start justify-between gap-3"><div className="min-w-0">
-            <p className="text-xs font-bold text-blue-700">{g.group_code} • {teamName[g.owner_team]}</p>
+            <p className="text-xs font-bold text-blue-700">{g.group_code} • {g.daCount} DA · {g.marcommCount} Marcomm</p>
             <h3 className="mt-1 text-base font-black text-slate-900">{g.title}</h3>
             <p className="mt-1 text-xs text-slate-500">{g.description}</p>
           </div><ChevronRight className="h-5 w-5 shrink-0 text-slate-400"/></div>
           <div className="mt-4 flex items-baseline justify-between gap-2"><span className="text-xs font-semibold">{g.completed} / {g.count} checklist Done</span>
             <strong className="text-xl font-black tabular-nums">{g.progress}%</strong></div>
           <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
-            <div className={"h-full rounded-full " + (g.owner_team === "DA" ? "bg-blue-600" : "bg-emerald-600")} style={{ width: g.progress + "%" }}/></div>
+            <div className="h-full rounded-full bg-blue-600" style={{ width: g.progress + "%" }}/></div>
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
             <span><CalendarDays className="mr-1 inline h-4 w-4"/>{g.start && g.end ? formatDate(g.start) + " – " + formatDate(g.end) : "Belum ada jadwal"}</span>
             {g.late > 0 && <span className="font-semibold text-red-700"><AlertTriangle className="mr-1 inline h-4 w-4"/>{g.late} terlambat</span>}
@@ -325,9 +376,9 @@ export default function LaunchTimelinePage() {
       ))}</div>}
     <section className="overflow-hidden rounded-xl border bg-white" aria-labelledby="gantt-heading">
       <div className="border-b bg-slate-50 p-4">
-        <h2 id="gantt-heading" className="text-lg font-black">Gantt Chart • 10 Kelompok Utama</h2>
+        <h2 id="gantt-heading" className="text-lg font-black">Gantt Chart • {groups.length} Kategori Pekerjaan</h2>
         <p className="mt-1 text-sm text-slate-600">Rentang bar berasal dari tanggal paling awal hingga deadline terakhir dalam checklist kelompok. Perubahan checklist otomatis memperbarui bar.</p>
-        <div className="mt-3 flex gap-5 text-xs"><span>🔵 Digital &amp; Affinity</span><span>🟢 Marcomm</span></div>
+        <div className="mt-3 flex gap-5 text-xs"><span>🔵 Rentang waktu kategori</span><span>Bagian terang: proporsi checklist selesai</span><span>Garis merah: hari ini</span></div>
       </div>
       {!loading && visible.length > 0 && <div className="overflow-x-auto" role="region" aria-label="Gantt Chart Kelompok" tabIndex={0}>
         <div className="min-w-[1030px]">
@@ -341,7 +392,7 @@ export default function LaunchTimelinePage() {
               <p className="mt-1 text-[11px] text-slate-500">{g.completed}/{g.count} checklist • {g.progress}%</p></div>
             <div className="relative h-14 flex-1">{ticks.map(d => <span key={d} className="pointer-events-none absolute inset-y-0 border-l border-slate-100" style={{ left: left(d) + "%" }}/>)}
               {today >= first && today <= last && <span className="pointer-events-none absolute inset-y-0 z-10 border-l-2 border-dashed border-red-500" style={{ left: left(today) + "%" }}/>}
-              {g.start && g.end && <div className={"absolute top-4 h-6 overflow-hidden rounded-md shadow-sm " + (g.owner_team === "DA" ? "bg-blue-600" : "bg-emerald-600")}
+              {g.start && g.end && <div className="absolute top-4 h-6 overflow-hidden rounded-md bg-blue-700 shadow-sm"
                 title={g.title + ": " + formatDate(g.start) + " – " + formatDate(g.end)}
                 style={{ left: left(g.start) + "%", width: width(g.start, g.end) + "%" }}>
                 <div className="h-full bg-white/30" style={{ width: g.progress + "%" }}/></div>}
@@ -355,7 +406,7 @@ export default function LaunchTimelinePage() {
       <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
         {activeGroup && <><DialogHeader>
           <DialogTitle>{activeGroup.group_code} • {activeGroup.title}</DialogTitle>
-          <DialogDescription>Checklist detail, progress parsial, dan evidence per pekerjaan.</DialogDescription>
+          <DialogDescription>Checklist detail, progress parsial, evidence per item, dan penugasan DA/Marcomm pada masing-masing checklist.</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="rounded-xl bg-blue-50 p-4">
@@ -364,19 +415,65 @@ export default function LaunchTimelinePage() {
               <strong className="text-3xl font-black text-blue-900">{activeGroup.progress}%</strong></div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-blue-200"><div className="h-full rounded-full bg-blue-700" style={{ width: activeGroup.progress + "%" }}/></div>
           </div>
-          <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-bold text-slate-700">Edit nama & tim kelompok utama</summary>
+          <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-bold text-slate-700">Edit nama & deskripsi kategori</summary>
             {groupDraft && <div className="mt-3 space-y-3">
               <label className="block"><span className={labelClass}>Nama kelompok</span><Input maxLength={160} value={groupDraft.title} onChange={e => setGroupDraft({ ...groupDraft, title: e.target.value })}/></label>
               <label className="block"><span className={labelClass}>Deskripsi</span><Textarea value={groupDraft.description} onChange={e => setGroupDraft({ ...groupDraft, description: e.target.value })}/></label>
-              <label className="block"><span className={labelClass}>Tim utama</span><select className={selectClass} value={groupDraft.owner_team} onChange={e => setGroupDraft({ ...groupDraft, owner_team: e.target.value as Team })}>
-                <option value="DA">Digital &amp; Affinity</option><option value="MARCOMM">Marketing Communication</option></select></label>
               <Button size="sm" disabled={busy} onClick={() => void saveGroup()}>Simpan Kelompok</Button>
             </div>}
           </details>
+          <div className="rounded-xl border border-red-200 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-red-800">Hapus kategori pekerjaan</h3>
+                <p className="mt-1 text-xs text-slate-600">Kategori dapat dihapus tanpa menghilangkan evidence atau riwayat audit.</p>
+              </div>
+              {!deletingGroup && <Button type="button" size="sm" variant="destructive"
+                disabled={busy || groups.length <= 1} onClick={() => {
+                  setDeletingGroup(true); setDeleteGroupMode(activeGroup.count ? "MOVE" : "ARCHIVE_ALL");
+                  setDeleteGroupTarget("");
+                }}><Trash2 className="mr-1.5 h-4 w-4"/>Hapus Kategori</Button>}
+            </div>
+            {groups.length <= 1 && <p className="mt-2 text-xs text-amber-700">Kategori terakhir tidak bisa dihapus agar workspace tetap bisa digunakan.</p>}
+            {deletingGroup && <div role="alert" className="mt-3 space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-bold text-red-900">Konfirmasi hapus: {activeGroup.title}</p>
+              <p className="text-xs text-red-800">Kategori ini memiliki <strong>{activeGroup.count} checklist aktif</strong>. Pilihan berikut memengaruhi progress dan Gantt.</p>
+              {activeGroup.count > 0 && <div className="space-y-2">
+                <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-800">
+                  <input type="radio" name="delete-group-mode" value="MOVE" checked={deleteGroupMode === "MOVE"}
+                    onChange={() => setDeleteGroupMode("MOVE")} className="mt-0.5"/>
+                  <span><strong>Pindahkan checklist ke kategori lain</strong> — checklist, PIC, evidence, status, dan kontribusi overall progress tetap ada.</span>
+                </label>
+                {deleteGroupMode === "MOVE" && <label className="block">
+                  <span className={labelClass}>Kategori tujuan</span>
+                  <select className={selectClass} aria-label="Kategori tujuan" value={deleteGroupTarget}
+                    onChange={e => setDeleteGroupTarget(e.target.value)}>
+                    <option value="">Pilih kategori tujuan...</option>
+                    {groups.filter(g => g.id !== activeGroup.id).map(g =>
+                      <option key={g.id} value={g.id}>{g.group_code} • {g.title}</option>)}
+                  </select>
+                </label>}
+                <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-800">
+                  <input type="radio" name="delete-group-mode" value="ARCHIVE_ALL" checked={deleteGroupMode === "ARCHIVE_ALL"}
+                    onChange={() => setDeleteGroupMode("ARCHIVE_ALL")} className="mt-0.5"/>
+                  <span><strong>Arsipkan kategori dan seluruh checklist di dalamnya</strong> — seluruh checklist tersebut dikeluarkan dari progress dan Gantt; evidence tetap tersimpan untuk audit.</span>
+                </label>
+              </div>}
+              {activeGroup.count === 0 && <p className="text-xs text-slate-700">Kategori kosong akan diarsipkan tanpa mengubah jumlah checklist dan overall progress.</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setDeletingGroup(false)}>Batal</Button>
+                <Button type="button" size="sm" variant="destructive"
+                  disabled={busy || groups.length <= 1 || (activeGroup.count > 0 && deleteGroupMode === "MOVE" && !deleteGroupTarget)}
+                  onClick={() => void archiveGroup()}>
+                  {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin"/>Ya, Hapus Kategori
+                </Button>
+              </div>
+            </div>}
+          </div>
           <div className="flex items-center justify-between gap-2"><div><h3 className="font-black">Checklist detail</h3>
               <p className="text-xs text-slate-500">Upload evidence tiap item, baru tandai Done.</p></div>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => {
-              setAdding(true); setNewItem({ title: "", deliverable: "", owner_team: activeGroup.owner_team,
+              setAdding(true); setNewItem({ title: "", deliverable: "", owner_team: myTeam,
                 start_date: activeGroup.start || today, due_date: activeGroup.end || today });
             }}><Plus className="mr-1 h-4 w-4"/>Tambah</Button>
           </div>
@@ -389,7 +486,7 @@ export default function LaunchTimelinePage() {
                   <input type="checkbox" checked={t.status === "DONE"} disabled={busy} aria-label={"Checklist " + t.title}
                     onChange={() => void setChecked(t)} className="mt-1 h-5 w-5 shrink-0 cursor-pointer accent-emerald-600"/>
                   <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">{t.title}</p>
-                    <p className="mt-1 text-xs text-slate-500">{formatDate(t.start_date)} – {formatDate(t.due_date)} • {teamName[t.owner_team]}</p>
+                    <p className="mt-1 text-xs text-slate-500">{formatDate(t.start_date)} – {formatDate(t.due_date)}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className={"rounded-full px-2 py-0.5 " + statusColor[t.status]}>{statusName[t.status]}</span>
                       <span className="text-slate-500">{files.length} evidence</span>
@@ -397,10 +494,18 @@ export default function LaunchTimelinePage() {
                       {t.status !== "DONE" && !files.length && <span className="text-amber-700">Evidence belum ada</span>}
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => {
-                    if (open) { setActiveItemId(null); setItemDraft(null); setDeleteId(null); }
-                    else { setActiveItemId(t.id); setItemDraft(itemDraftFrom(t)); setDeleteId(null); }
-                  }}>{open ? "Tutup" : "Edit / Evidence"}</Button>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <label className="text-[11px] font-bold text-slate-600" htmlFor={"pic-" + t.id}>PIC Checklist</label>
+                    <select id={"pic-" + t.id} aria-label={"Tim PIC untuk " + t.title} className="max-w-[160px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold"
+                      value={t.owner_team} disabled={busy} onChange={e => void assignChecklist(t, e.target.value as Team)}>
+                      <option value="DA">Digital &amp; Affinity</option>
+                      <option value="MARCOMM">Marcomm</option>
+                    </select>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => {
+                      if (open) { setActiveItemId(null); setItemDraft(null); setDeleteId(null); }
+                      else { setActiveItemId(t.id); setItemDraft(itemDraftFrom(t)); setDeleteId(null); }
+                    }}>{open ? "Tutup" : "Edit / Evidence"}</Button>
+                  </div>
                 </div>
                 {open && itemDraft && <div className="space-y-3 border-t bg-slate-50/60 p-4">
                   <div className="grid gap-3 sm:grid-cols-2">
