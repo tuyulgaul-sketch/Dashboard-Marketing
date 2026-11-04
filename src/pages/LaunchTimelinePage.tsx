@@ -465,7 +465,7 @@ export default function LaunchTimelinePage() {
                 <Button type="button" size="sm" variant="destructive"
                   disabled={busy || groups.length <= 1 || (activeGroup.count > 0 && deleteGroupMode === "MOVE" && !deleteGroupTarget)}
                   onClick={() => void archiveGroup()}>
-                  {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin"/>Ya, Hapus Kategori
+                  {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin"/>}Ya, Hapus Kategori
                 </Button>
               </div>
             </div>}
