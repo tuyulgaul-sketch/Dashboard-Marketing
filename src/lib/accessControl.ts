@@ -11,6 +11,7 @@ export type AppFeature =
   | "DOCUMENT_MARCOMM"
   | "TANDA_TERIMA"
   | "SURVEY_PERTALIFE_CARE"
+  | "MYPERTALIFE_LAUNCH"
   | "SYSTEM_ADMIN";
 
 const normalize = (value?: string | null) =>
@@ -134,6 +135,10 @@ export const canAccessFeature = (
 
   if (feature === "SYSTEM_ADMIN") {
     return isSystemAdminProfile(profile);
+  }
+
+  if (feature === "MYPERTALIFE_LAUNCH") {
+    return isDigitalAffinityProfile(profile) || isMarketingCommunicationProfile(profile);
   }
 
   if (feature === "SURVEY_PERTALIFE_CARE") {
