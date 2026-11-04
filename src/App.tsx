@@ -37,6 +37,7 @@ import BookingPipelinePage from './pages/BookingPipelinePage';
 import MasterIntermediaryBulkImportPage from './pages/MasterIntermediaryBulkImportPage';
 import DigitalAffinityPage from './pages/DigitalAffinityPage';
 import PertaLifeCareSurveyPage from './pages/PertaLifeCareSurveyPage';
+import LaunchTimelinePage from './pages/LaunchTimelinePage';
 import RestoredBusinessGuard from './components/common/RestoredBusinessGuard';
 import { isDigitalAffinityProfile, isMarketingSupportProfile } from '@/lib/accessControl';
 import AktivitasUniversalPage from "./pages/AktivitasUniversalPage";
@@ -171,6 +172,8 @@ const AppRoutes = () => (
         </Protected>
       }
     />
+
+    <Route path="/timeline-mypertalife" element={<Protected><FeatureOnly feature="MYPERTALIFE_LAUNCH"><LaunchTimelinePage /></FeatureOnly></Protected>} />
 
     <Route
       path="/survey-pertalife-care"
