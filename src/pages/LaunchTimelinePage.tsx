@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, Plus, RefreshCw, Search, UploadCloud } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, Clock3, FileText, Loader2, Plus, RefreshCw, Search, Trash2, UploadCloud } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -49,9 +49,9 @@ export default function LaunchTimelinePage() {
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState<"MINE" | "ALL" | Team>("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LATE" | "DONE">("ALL");
-  const [view, setView] = useState<"LIST" | "GANTT">("LIST");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("task"));
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -64,7 +64,7 @@ export default function LaunchTimelinePage() {
   const refresh = useCallback(async () => {
     try {
       const [t, e] = await Promise.all([
-        supabase.from("launch_timeline_tasks").select("*").order("start_date").order("code"),
+        supabase.from("launch_timeline_tasks").select("*").is("deleted_at", null).order("start_date").order("code"),
         supabase.from("launch_timeline_evidence").select("id,task_id,storage_path,file_name,file_size,created_at").order("created_at", { ascending: false }),
       ]);
       if (t.error) throw t.error;
@@ -92,7 +92,7 @@ export default function LaunchTimelinePage() {
     setDraft(draftTask(t));
     setSearchParams({ task: t.id });
   };
-  const closeTask = () => { setSelectedId(null); setDraft(null); setSearchParams({}); };
+  const closeTask = () => { setSelectedId(null); setDraft(null); setConfirmDeleteId(null); setSearchParams({}); };
   useEffect(() => {
     const id = searchParams.get("task");
     if (id && tasks.length && (!draft || selectedId !== id)) {
@@ -126,14 +126,19 @@ export default function LaunchTimelinePage() {
     };
   };
   const milestones = tasks.filter(t => t.is_milestone).sort((a, b) => a.due_date.localeCompare(b.due_date));
-  const minStart = tasks.length ? tasks.reduce((v, t) => t.start_date < v ? t.start_date : v, tasks[0].start_date) : "2026-11-02";
-  const maxEnd = tasks.length ? tasks.reduce((v, t) => t.due_date > v ? t.due_date : v, tasks[0].due_date) : "2026-12-12";
+  // Both the readable list and the Gantt use exactly the same filtered rows/order.
+  const minStart = filtered.length ? filtered.reduce((v, t) => t.start_date < v ? t.start_date : v, filtered[0].start_date) : "2026-11-02";
+  const maxEnd = filtered.length ? filtered.reduce((v, t) => t.due_date > v ? t.due_date : v, filtered[0].due_date) : "2026-12-12";
   const span = Math.max(1, days(maxEnd, minStart) + 1);
   const leftPercent = (s: string) => Math.max(0, 100 * days(s, minStart) / span);
   const widthPercent = (a: string, b: string) => Math.max(1, Math.min(100 - leftPercent(a), 100 * (days(b, a) + 1) / span));
   const axis = Array.from({ length: Math.ceil(span / 7) }, (_, i) => {
     const v = new Date(dateValue(minStart) + i * 7 * 86400000);
-    return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" }).format(v);
+    const value = v.toISOString().slice(0, 10);
+    return {
+      date: value,
+      label: new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" }).format(v),
+    };
   });
 
   const save = async () => {
@@ -149,6 +154,23 @@ export default function LaunchTimelinePage() {
       await refresh(); closeTask(); toast.success("Status dan penanggung jawab tersimpan.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menyimpan."); }
     finally { setBusy(false); }
+  };
+
+  const archiveTask = async () => {
+    if (!selected || confirmDeleteId !== selected.id || busy) return;
+    setBusy(true);
+    try {
+      const { data, error: archiveError } = await supabase.rpc("archive_launch_timeline_task", { p_task_id: selected.id });
+      if (archiveError) throw archiveError;
+      if (data !== true) throw new Error("Task belum berhasil dihapus.");
+      await refresh();
+      closeTask();
+      toast.success("Task dihapus dari daftar aktif; persentase dan Gantt diperbarui.");
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Gagal menghapus task.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const addEvidence = async (file: File, t: Task) => {
@@ -236,7 +258,7 @@ export default function LaunchTimelinePage() {
     <Card><CardContent className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-bold text-slate-900">Progress per tim</h2>
-        <span className="text-xs text-slate-500">Bagian dari 47 pekerjaan bersama • selalu menampilkan seluruh data</span>
+        <span className="text-xs text-slate-500">Bagian dari seluruh pekerjaan aktif • tidak terpengaruh filter</span>
       </div>
       <div className="mt-4 grid gap-5 md:grid-cols-2">
         {(["DA", "MARCOMM"] as Team[]).map(team => {
@@ -279,8 +301,7 @@ export default function LaunchTimelinePage() {
     <div className="flex flex-wrap items-center gap-2">
       <h2 className="mr-auto text-lg font-black">Daftar pekerjaan</h2>
       <Button size="sm" variant="outline" onClick={() => void refresh()}><RefreshCw className="mr-1.5 h-4 w-4" />Refresh</Button>
-      <Button size="sm" variant={view === "LIST" ? "default" : "outline"} onClick={() => setView("LIST")}>Daftar mudah</Button>
-      <Button size="sm" variant={view === "GANTT" ? "default" : "outline"} onClick={() => setView("GANTT")}>Timeline durasi</Button>
+      <span className="text-xs text-slate-500">Daftar dan Gantt mengikuti filter yang sama</span>
     </div>
     <div className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-3">
       <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -293,38 +314,92 @@ export default function LaunchTimelinePage() {
       </select>
     </div>
 
-    {loading ? <div className="flex justify-center gap-2 p-12 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />Memuat timeline...</div> :
-      filtered.length === 0 ? <div className="rounded-xl border bg-white p-10 text-center text-sm text-slate-500">Belum ada pekerjaan sesuai filter.</div> :
-      view === "LIST" ? <div className="space-y-3">
-        {filtered.map(t => <button key={t.id} onClick={() => openTask(t)} className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-400 hover:shadow-sm">
-          <div className="flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1">
-            <div className="text-xs text-slate-500">{t.workstream} • {teamLabel[t.owner_team]}</div>
-            <h3 className="mt-1 text-sm font-bold sm:text-base">{t.title}</h3>
-            <p className="mt-1 text-sm text-slate-600">{t.deliverable || "Buka detail untuk melihat output."}</p>
-          </div><span className={"whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold " + statusStyle[t.status]}>{statusLabel[t.status]}</span></div>
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-600">
-            <span className="flex items-center gap-1"><CalendarDays className="h-4 w-4" />{showDate(t.start_date)} – {showDate(t.due_date)}</span>
-            <span className="flex items-center gap-1"><FileText className="h-4 w-4" />{taskEvidence(t.id).length} evidence</span>
-            {late(t, today) && <strong className="text-red-600">Terlambat {days(today, t.due_date)} hari</strong>}
-            {urgent(t, today) && <strong className="text-amber-700">Segera jatuh tempo</strong>}
-            <span className="ml-auto font-semibold text-blue-700">Lihat / update <ChevronRight className="inline h-4 w-4" /></span>
+    {loading ? (
+      <div className="flex justify-center gap-2 p-12 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />Memuat timeline...</div>
+    ) : filtered.length === 0 ? (
+      <div className="rounded-xl border bg-white p-10 text-center text-sm text-slate-500">Belum ada pekerjaan sesuai filter.</div>
+    ) : (<>
+      <div className="space-y-3">
+        {filtered.map(t => (
+          <button key={t.id} onClick={() => openTask(t)}
+            className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-blue-400 hover:shadow-sm">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-slate-500">{t.workstream} • {teamLabel[t.owner_team]}</div>
+                <h3 className="mt-1 text-sm font-bold sm:text-base">{t.title}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t.deliverable || "Buka detail untuk melihat output."}</p>
+              </div>
+              <span className={"whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold " + statusStyle[t.status]}>
+                {statusLabel[t.status]}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-600">
+              <span className="flex items-center gap-1"><CalendarDays className="h-4 w-4" />{showDate(t.start_date)} – {showDate(t.due_date)}</span>
+              <span className="flex items-center gap-1"><FileText className="h-4 w-4" />{taskEvidence(t.id).length} evidence</span>
+              {late(t, today) && <strong className="text-red-600">Terlambat {days(today, t.due_date)} hari</strong>}
+              {urgent(t, today) && <strong className="text-amber-700">Segera jatuh tempo</strong>}
+              <span className="ml-auto font-semibold text-blue-700">Lihat / update <ChevronRight className="inline h-4 w-4" /></span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <section aria-labelledby="gantt-heading" className="overflow-hidden rounded-xl border bg-white">
+        <div className="border-b bg-slate-50 p-4 sm:p-5">
+          <h2 id="gantt-heading" className="text-lg font-black text-slate-900">Gantt Chart • Rentang Waktu Pekerjaan</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Setiap bar menunjukkan tanggal mulai sampai deadline. Urutan dan filter sama dengan daftar pekerjaan di atas.
+            Klik baris untuk melihat detail, mengubah PIC, mengunggah evidence atau menghapus task.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium">
+            <span className="flex items-center gap-2 text-slate-700"><span className="h-3 w-6 rounded bg-blue-600" /> Digital &amp; Affinity</span>
+            <span className="flex items-center gap-2 text-slate-700"><span className="h-3 w-6 rounded bg-emerald-600" /> Marcomm</span>
+            <span className="flex items-center gap-2 text-slate-700"><span className="h-3 w-3 rounded-full border-2 border-dashed border-red-500" /> Hari ini</span>
           </div>
-        </button>)}
-      </div> : <div className="overflow-x-auto rounded-xl border bg-white">
-        <div className="min-w-[940px]"><div className="flex border-b bg-slate-50 text-xs font-bold text-slate-600">
-          <div className="w-[330px] shrink-0 p-3">Pekerjaan (klik untuk detail)</div>
-          <div className="flex flex-1 justify-between p-3">{axis.map((x, i) => <span key={i}>{x}</span>)}</div>
         </div>
-        {filtered.map(t => <button key={t.id} onClick={() => openTask(t)} className="flex w-full items-center border-b border-slate-100 text-left hover:bg-blue-50">
-          <div className="w-[330px] shrink-0 p-3"><p className="truncate text-xs font-semibold" title={t.title}>{t.title}</p><p className="mt-1 text-[11px] text-slate-500">{showDate(t.start_date)} – {showDate(t.due_date)}</p></div>
-          <div className="relative h-12 flex-1 bg-[repeating-linear-gradient(to_right,transparent_0%,transparent_calc(100%/6_-_1px),#e2e8f0_calc(100%/6_-_1px),#e2e8f0_calc(100%/6))]">
-            <div className={"absolute top-4 h-4 rounded-full " + (t.status === "DONE" ? "bg-emerald-400" : t.owner_team === "DA" ? "bg-blue-600" : "bg-emerald-600")}
-              title={showDate(t.start_date) + " – " + showDate(t.due_date)}
-              style={{ left: leftPercent(t.start_date) + "%", width: widthPercent(t.start_date, t.due_date) + "%" }} />
+        <div className="overflow-x-auto" role="region" aria-label="Gantt Chart pekerjaan" tabIndex={0}>
+          <div className="min-w-[1050px]">
+            <div className="flex border-b bg-slate-100 text-xs font-bold text-slate-600">
+              <div className="w-[370px] shrink-0 p-3">Daftar task (tanggal mulai – selesai)</div>
+              <div className="relative h-11 flex-1">
+                {axis.map(tick => (
+                  <span key={tick.date} className="absolute top-3 whitespace-nowrap border-l border-slate-300 pl-1"
+                    style={{ left: leftPercent(tick.date) + "%" }}>{tick.label}</span>
+                ))}
+              </div>
+            </div>
+            {filtered.map(t => (
+              <button key={t.id} onClick={() => openTask(t)}
+                className="flex w-full items-stretch border-b border-slate-100 text-left transition hover:bg-blue-50 focus-visible:bg-blue-50">
+                <div className="w-[370px] shrink-0 px-3 py-2.5">
+                  <p className="truncate text-xs font-semibold text-slate-900" title={t.title}>{t.title}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-600">
+                    <span>{showDate(t.start_date)} – {showDate(t.due_date)}</span>
+                    <span className={"rounded px-1.5 py-0.5 " + statusStyle[t.status]}>{statusLabel[t.status]}</span>
+                  </div>
+                </div>
+                <div className="relative h-[53px] flex-1">
+                  {axis.map(tick => <span key={tick.date} className="pointer-events-none absolute inset-y-0 border-l border-slate-100"
+                    style={{ left: leftPercent(tick.date) + "%" }} />)}
+                  {today >= minStart && today <= maxEnd && (
+                    <span className="pointer-events-none absolute inset-y-0 z-10 border-l-2 border-dashed border-red-400"
+                      title="Hari ini" style={{ left: leftPercent(today) + "%" }} />
+                  )}
+                  <span className={"absolute top-4 h-5 rounded-md shadow-sm " +
+                    (t.owner_team === "DA" ? "bg-blue-600" : "bg-emerald-600") +
+                    (t.status === "DONE" ? " ring-2 ring-emerald-300" : "")}
+                    title={t.title + " | " + showDate(t.start_date) + " – " + showDate(t.due_date)}
+                    style={{ left: leftPercent(t.start_date) + "%", width: widthPercent(t.start_date, t.due_date) + "%" }} />
+                </div>
+              </button>
+            ))}
+            <div className="bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              Menampilkan {filtered.length} task sesuai filter • Task yang dihapus tidak masuk daftar atau Gantt.
+            </div>
           </div>
-        </button>)}
-        <div className="flex flex-wrap gap-4 p-3 text-xs text-slate-500"><span>🔵 Digital & Affinity</span><span>🟢 Marcomm</span><span>Bar menunjukkan tanggal mulai s.d. deadline</span></div></div>
-      </div>}
+        </div>
+      </section>
+    </>)}
 
     <p className="text-xs text-slate-500">Panduan Kado HUT terlampir masih merujuk periode sebelumnya. Corcomm perlu memastikan kategori, batas waktu, spesifikasi, dan portal pengiriman HUT 2026 kepada Intercomm Pertamina.</p>
 
@@ -370,10 +445,34 @@ export default function LaunchTimelinePage() {
             {draft.status === "DONE" && selected.evidence_required && !taskEvidence(selected.id).length &&
               <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Untuk menyelesaikan tugas ini, unggah minimal satu evidence terlebih dahulu.</p>}
           </div>
-          <DialogFooter><Button variant="outline" disabled={busy} onClick={closeTask}>Batal</Button>
-            <Button disabled={busy || (draft.status === "DONE" && selected.evidence_required && !taskEvidence(selected.id).length)} onClick={() => void save()}>
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Simpan perubahan
-            </Button></DialogFooter>
+          {confirmDeleteId === selected.id && (
+            <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4">
+              <p className="text-sm font-bold text-red-800">Yakin ingin menghapus task ini dari timeline?</p>
+              <p className="mt-1 text-xs leading-relaxed text-red-700">
+                Task akan hilang dari daftar, Gantt, reminder dan perhitungan progress tim maupun keseluruhan.
+                Bukti dan riwayat tetap tersimpan secara aman untuk audit.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-red-800">{selected.title}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            {confirmDeleteId === selected.id ? (<>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmDeleteId(null)}>Tidak, batal hapus</Button>
+              <Button type="button" variant="destructive" disabled={busy} onClick={() => void archiveTask()}>
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ya, hapus task
+              </Button>
+            </>) : (<>
+              <Button type="button" variant="destructive" disabled={busy} onClick={() => setConfirmDeleteId(selected.id)}>
+                <Trash2 className="mr-2 h-4 w-4" />Hapus Task
+              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={busy} onClick={closeTask}>Batal</Button>
+                <Button type="button" disabled={busy || (draft.status === "DONE" && selected.evidence_required && !taskEvidence(selected.id).length)} onClick={() => void save()}>
+                  {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Simpan perubahan
+                </Button>
+              </div>
+            </>)}
+          </DialogFooter>
         </>}
       </DialogContent>
     </Dialog>
