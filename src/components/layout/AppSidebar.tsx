@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Upload,
   Megaphone,
+  Rocket,
   Settings,
 } from "lucide-react";
 
@@ -372,6 +373,12 @@ export const AppSidebar:
             <NavLink to="/" end onClick={onNavigate} className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
               <LayoutDashboard className="h-4 w-4 shrink-0" /><span>Dashboard</span>
+            </NavLink>
+          )}
+          {canAccessFeature(profile, 'MYPERTALIFE_LAUNCH') && (
+            <NavLink to="/timeline-mypertalife" onClick={onNavigate} className={({isActive}) =>
+              `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
+              <Rocket className="h-4 w-4 shrink-0"/><span>Timeline MyPertaLife</span>
             </NavLink>
           )}
           {renderFlyoutGroup('Target & Realisasi', Target, targetRealizationItems)}
