@@ -8,6 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTargetRealizationPublisher } from "@/hooks/useTargetRealizationPublisher";
 import {
   canAccessFeature,
+  isDigitalAffinityProfile,
+  isMarketingCommunicationProfile,
   isSystemAdminProfile,
 } from "@/lib/accessControl";
 import {
@@ -93,6 +95,8 @@ export const AppSidebar:
         profile,
         "DOCUMENT_MARCOMM"
       );
+
+    const canSeeLaunchTimeline = canAccessFeature(profile, "MYPERTALIFE_LAUNCH");
 
     const canBulkManageIntermediaryMaster = Boolean(
       profile?.active &&
@@ -184,6 +188,9 @@ export const AppSidebar:
 
     const digitalAffinityItems:
       FlyoutItem[] = [
+        ...(canSeeLaunchTimeline && isDigitalAffinityProfile(profile)
+          ? [{ label: "Timeline MyPertaLife & HUT", path: "/timeline-mypertalife", icon: Rocket }]
+          : []),
         ...(canSeePertaLifeCareSurvey
           ? [{
               label: "Survey PertaLife Care",
@@ -195,6 +202,9 @@ export const AppSidebar:
 
     const communicationItems:
       FlyoutItem[] = [
+        ...(canSeeLaunchTimeline && isMarketingCommunicationProfile(profile)
+          ? [{ label: "Timeline MyPertaLife & HUT", path: "/timeline-mypertalife", icon: Rocket }]
+          : []),
         ...(canSeeMarcommDocs
           ? [
               {

@@ -47,7 +47,7 @@ export default function LaunchTimelinePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [teamFilter, setTeamFilter] = useState<"MINE" | "ALL" | Team>("MINE");
+  const [teamFilter, setTeamFilter] = useState<"MINE" | "ALL" | Team>("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LATE" | "DONE">("ALL");
   const [view, setView] = useState<"LIST" | "GANTT">("LIST");
   const [query, setQuery] = useState("");
@@ -114,7 +114,17 @@ export default function LaunchTimelinePage() {
   const completed = tasks.filter(t => t.status === "DONE").length;
   const overdue = tasks.filter(t => late(t, today)).length;
   const upcoming = tasks.filter(t => urgent(t, today)).length;
+  // All progress figures are computed from the complete task set, never filtered.
   const progress = tasks.length ? Math.round(completed / tasks.length * 100) : 0;
+  const teamProgress = (team: Team) => {
+    const teamTasks = tasks.filter(t => t.owner_team === team);
+    const done = teamTasks.filter(t => t.status === "DONE").length;
+    return {
+      total: teamTasks.length,
+      done,
+      pct: teamTasks.length ? Math.round(done / teamTasks.length * 100) : 0,
+    };
+  };
   const milestones = tasks.filter(t => t.is_milestone).sort((a, b) => a.due_date.localeCompare(b.due_date));
   const minStart = tasks.length ? tasks.reduce((v, t) => t.start_date < v ? t.start_date : v, tasks[0].start_date) : "2026-11-02";
   const maxEnd = tasks.length ? tasks.reduce((v, t) => t.due_date > v ? t.due_date : v, tasks[0].due_date) : "2026-12-12";
@@ -193,9 +203,22 @@ export default function LaunchTimelinePage() {
         </div>
         <Button variant="secondary" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />Tambah tugas</Button>
       </div>
-      <div className="mt-5 flex items-center gap-3"><div className="h-3 flex-1 overflow-hidden rounded-full bg-white/20">
-        <div className="h-full rounded-full bg-emerald-400" style={{ width: progress + "%" }} />
-      </div><span className="text-sm font-bold">{progress}% selesai</span></div>
+      <div className="mt-6 rounded-xl border border-white/20 bg-white/10 p-4 sm:p-5" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-100">Overall Progress • seluruh pekerjaan</p>
+            <p className="mt-1 text-sm text-blue-100">Total gabungan Digital &amp; Affinity dan Marcomm, tidak berubah karena filter.</p>
+          </div>
+          <strong className="text-4xl font-black tabular-nums sm:text-5xl">{loading ? "—" : progress + "%"}</strong>
+        </div>
+        <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Persentase seluruh task yang selesai" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: progress + "%" }} />
+        </div>
+        <div className="mt-2 flex flex-wrap justify-between gap-2 text-sm">
+          <span className="font-semibold">{loading ? "Memuat data..." : completed + " dari " + tasks.length + " pekerjaan selesai"}</span>
+          <span className="text-blue-100">Dihitung dari tugas berstatus Selesai (Done)</span>
+        </div>
+      </div>
     </section>
 
     {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}
@@ -209,6 +232,28 @@ export default function LaunchTimelinePage() {
       <div><p className="text-xs text-slate-500">{x.label}</p><p className="mt-1 text-3xl font-black text-slate-900">{x.n}</p></div>
       <x.icon className={"h-6 w-6 " + x.color} />
     </CardContent></Card>)}</div>
+
+    <Card><CardContent className="p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-bold text-slate-900">Progress per tim</h2>
+        <span className="text-xs text-slate-500">Bagian dari 47 pekerjaan bersama • selalu menampilkan seluruh data</span>
+      </div>
+      <div className="mt-4 grid gap-5 md:grid-cols-2">
+        {(["DA", "MARCOMM"] as Team[]).map(team => {
+          const stats = teamProgress(team);
+          return <div key={team} className="rounded-xl bg-slate-50 p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm font-bold text-slate-800">{teamLabel[team]}</span>
+              <strong className="text-2xl font-black tabular-nums text-slate-900">{stats.pct}%</strong>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200">
+              <div className={"h-full rounded-full transition-all " + (team === "DA" ? "bg-blue-600" : "bg-emerald-600")} style={{ width: stats.pct + "%" }} />
+            </div>
+            <p className="mt-2 text-xs text-slate-600">{stats.done} dari {stats.total} pekerjaan tim selesai</p>
+          </div>;
+        })}
+      </div>
+    </CardContent></Card>
 
     {overdue > 0 && <button onClick={() => { setTeamFilter("ALL"); setStatusFilter("LATE"); }}
       className="flex w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-left text-sm text-red-800">
