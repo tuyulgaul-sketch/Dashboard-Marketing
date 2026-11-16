@@ -21,6 +21,7 @@ import {
   FileText,
   FileUp,
   LayoutDashboard,
+  MonitorPlay,
   Target,
   TrendingUp,
   Upload,
@@ -97,6 +98,7 @@ export const AppSidebar:
       );
 
     const canSeeLaunchTimeline = canAccessFeature(profile, "MYPERTALIFE_LAUNCH");
+    const canSeeWeeklyReview = canAccessFeature(profile, "WEEKLY_MARKETING_REVIEW");
 
     const canBulkManageIntermediaryMaster = Boolean(
       profile?.active &&
@@ -389,6 +391,12 @@ export const AppSidebar:
             <NavLink to="/timeline-mypertalife" onClick={onNavigate} className={({isActive}) =>
               `flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
               <Rocket className="h-4 w-4 shrink-0"/><span>Timeline MyPertaLife</span>
+            </NavLink>
+          )}
+          {canSeeWeeklyReview && (
+            <NavLink to="/weekly-marketing-review" onClick={onNavigate} className={({ isActive }) =>
+              "flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-all " + (isActive ? "bg-blue-600 text-white shadow-md shadow-blue-900/40" : "text-slate-400 hover:bg-slate-800 hover:text-slate-100")}>
+              <MonitorPlay className="h-4 w-4 shrink-0" /><span>Weekly Marketing Review</span>
             </NavLink>
           )}
           {renderFlyoutGroup('Target & Realisasi', Target, targetRealizationItems)}
