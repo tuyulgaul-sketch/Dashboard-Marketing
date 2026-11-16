@@ -8,7 +8,7 @@ import { deleteWeeklyInspireRow, loadWeeklyInspireRows, saveWeeklyInspireRow, ty
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown,
   ClipboardList, Download, FileSpreadsheet, FileText, Info, LayoutDashboard,
-  Megaphone, MonitorPlay, Plus, Printer, ShieldCheck, Trash2, UploadCloud
+  Maximize2, Megaphone, Minimize2, MonitorPlay, Plus, Printer, ShieldCheck, Trash2, UploadCloud
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -95,6 +95,12 @@ const Panel: React.FC<{ title: string; subtitle?: string; children: React.ReactN
 const WeeklyMarketingReviewPage: React.FC = () => {
   const { profile } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
+  const inspireRootRef = useRef<HTMLDivElement>(null);
+  const inspireScrollRef = useRef<HTMLDivElement>(null);
+  const dragOrigin = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const [inspireFullscreen, setInspireFullscreen] = useState(false);
+  const [inspireZoom, setInspireZoom] = useState(1);
+  const [inspireDragging, setInspireDragging] = useState(false);
   const [view, setView] = useState<View>("inspire");
   const [week, setWeek] = useState(currentDate);
   const [demoMode, setDemoMode] = useState(true);
@@ -111,6 +117,91 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   const ownUnit: Unit | null = department === "digital & affinity" ? "DA" : department === "marketing communication" ? "MARCOMM" : department === "marketing administration" ? "MAS" : null;
   const [inputUnit, setInputUnit] = useState<Unit>(ownUnit || "DA");
   const [draft, setDraft] = useState({ title: "", issue: "", nextPlan: "", support: "", deliverable: "", status: "On Progress" as WorkStatus });
+
+  // Native browser fullscreen when allowed; fixed viewport acts as fallback.
+  // Keep INSPIRE mounted so partially completed entries are not lost.
+  const enterInspireFullscreen = () => {
+    setInspireFullscreen(true);
+    setInspireZoom(1);
+    const element = inspireRootRef.current;
+    if (element?.requestFullscreen && !document.fullscreenElement) {
+      void element.requestFullscreen().catch(() => {});
+    }
+  };
+  const leaveInspireFullscreen = () => {
+    setInspireFullscreen(false);
+    setInspireZoom(1);
+    setInspireDragging(false);
+    dragOrigin.current = null;
+    if (document.fullscreenElement === inspireRootRef.current) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  };
+  useEffect(() => {
+    if (!inspireFullscreen) return;
+    const onChange = () => {
+      if (!document.fullscreenElement) {
+        setInspireFullscreen(false);
+        setInspireZoom(1);
+        setInspireDragging(false);
+        dragOrigin.current = null;
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !document.fullscreenElement) {
+        setInspireFullscreen(false);
+        setInspireZoom(1);
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [inspireFullscreen]);
+  useEffect(() => {
+    if (!inspireFullscreen) return;
+    const container = inspireScrollRef.current;
+    if (!container) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setInspireZoom(value =>
+        Math.min(2, Math.max(0.55, Number((value + (event.deltaY < 0 ? 0.1 : -0.1)).toFixed(2))))
+      );
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [inspireFullscreen]);
+  const startInspirePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!inspireFullscreen || event.button !== 0 || event.pointerType !== "mouse") return;
+    if ((event.target as Element).closest("button,input,textarea,select,a,[contenteditable='true']")) return;
+    const viewport = event.currentTarget;
+    dragOrigin.current = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: viewport.scrollLeft, top: viewport.scrollTop
+    };
+    viewport.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const moveInspirePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const origin = dragOrigin.current;
+    if (!origin || origin.pointerId !== event.pointerId) return;
+    const dx = event.clientX - origin.x;
+    const dy = event.clientY - origin.y;
+    event.currentTarget.scrollLeft = origin.left - dx;
+    event.currentTarget.scrollTop = origin.top - dy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) setInspireDragging(true);
+  };
+  const endInspirePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragOrigin.current?.pointerId !== event.pointerId) return;
+    dragOrigin.current = null;
+    setInspireDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   useEffect(() => { if (ownUnit) setSelectedInspireUnit(ownUnit); }, [ownUnit]);
   const toActivity = (row: InspireRow): Activity => ({
