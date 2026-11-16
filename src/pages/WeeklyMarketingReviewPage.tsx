@@ -476,21 +476,50 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           {attention.length ? <div className="grid gap-3 md:grid-cols-2">{attention.map(item => <div key={item.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-4"><p className="text-[10px] font-bold uppercase text-rose-700">{UNITS.find(unit => unit.id === item.unit)?.name}</p><p className="mt-2 text-sm font-bold">{item.title}</p><p className="mt-1 text-xs text-slate-600">{item.support || "Dukungan belum diisi."}</p></div>)}</div> : <p className="text-sm text-slate-500">Belum ada item yang memerlukan perhatian Direktur.</p>}
         </Panel>
       </div>}
-      {view === "inspire" && <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
+      {view === "inspire" && <div
+        ref={inspireRootRef}
+        className={inspireFullscreen
+          ? "fixed inset-0 z-[1000] flex min-h-0 flex-col gap-3 overflow-hidden bg-slate-100 p-3 sm:p-4"
+          : "space-y-4"}
+      >
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="Pilih unit INSPIRE">
             {UNITS.map(unit => <button key={unit.id} type="button" role="tab" aria-selected={selectedInspireUnit === unit.id} onClick={() => setSelectedInspireUnit(unit.id)} className={"rounded-lg px-5 py-2.5 text-xs font-bold transition " + (selectedInspireUnit === unit.id ? "bg-[#17487d] text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-slate-100")}>{unit.short.toUpperCase()}</button>)}
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {inspireFullscreen && <span className="hidden text-xs font-medium text-slate-500 sm:inline">Ctrl + Scroll: zoom ({Math.round(inspireZoom * 100)}%) · Klik-tahan & geser: pan · Esc: keluar</span>}
+            <button type="button" onClick={inspireFullscreen ? leaveInspireFullscreen : enterInspireFullscreen}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#10365e]">
+              {inspireFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {inspireFullscreen ? "Keluar Full Screen" : "Full Screen"}
+            </button>
+          </div>
         </div>
-        <InspireTable
-          key={week + selectedInspireUnit}
-          unit={selectedInspireUnit}
-          rows={inspireRows.filter(row => row.unit === selectedInspireUnit)}
-          canEdit={!ownUnit || ownUnit === selectedInspireUnit}
-          loading={actionsLoading}
-          onSave={saveInspire}
-          onDelete={deleteInspire}
-        />
+        <div
+          ref={inspireScrollRef}
+          className={inspireFullscreen
+            ? "min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg bg-slate-100"
+            : "overflow-visible"}
+          style={inspireFullscreen ? { cursor: inspireDragging ? "grabbing" : "grab", userSelect: inspireDragging ? "none" : "auto" } : undefined}
+          onPointerDown={startInspirePan}
+          onPointerMove={moveInspirePan}
+          onPointerUp={endInspirePan}
+          onPointerCancel={endInspirePan}
+          onLostPointerCapture={() => { dragOrigin.current = null; setInspireDragging(false); }}
+        >
+          <div style={inspireFullscreen ? { zoom: inspireZoom } : undefined}>
+            <InspireTable
+              key={week + selectedInspireUnit}
+              unit={selectedInspireUnit}
+              rows={inspireRows.filter(row => row.unit === selectedInspireUnit)}
+              canEdit={!ownUnit || ownUnit === selectedInspireUnit}
+              loading={actionsLoading}
+              fullscreen={inspireFullscreen}
+              onSave={saveInspire}
+              onDelete={deleteInspire}
+            />
+          </div>
+        </div>
       </div>}
       {view === "presentation" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><Info className="mr-1 inline h-4 w-4" />Preview gabungan 8 slide. Bagian INSPIRE sudah mengambil data tersimpan per tanggal meeting; grafik MAS masih menggunakan data sesi browser. Gunakan Cetak / Simpan PDF untuk ekspor.</div>}
     </div>
