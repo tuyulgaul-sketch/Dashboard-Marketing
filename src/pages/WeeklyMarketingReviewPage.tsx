@@ -311,7 +311,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
     if (i === 0) return <div className="flex min-h-[400px] flex-col justify-between rounded-xl bg-gradient-to-br from-[#102e55] to-[#1874bd] p-8 text-white sm:p-12">
       <div className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">PertaLife · Marketing Directorate</div>
       <div><p className="mb-3 text-sm font-semibold text-blue-200">Executive presentation</p><h2 className="max-w-2xl text-4xl font-black leading-tight sm:text-5xl">Weekly Marketing Review</h2><p className="mt-5 text-base text-blue-100">{week} · Digital & Affinity · Marcomm · MAS</p></div>
-      <div className="flex justify-between border-t border-white/25 pt-5 text-xs text-blue-100"><span>Life, Health & Pension</span><span>{demoMode ? "DATA DEMO" : "PREVIEW LOKAL"}</span></div>
+      <div className="flex justify-between border-t border-white/25 pt-5 text-xs text-blue-100"><span>Life, Health & Pension</span><span>{demoMode ? "CHART ILUSTRASI" : "CHART SESI BROWSER"}</span></div>
     </div>;
     if (i === 1) return <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2">{cards.map(card => <div key={card.label} className="rounded-xl border border-slate-200 p-4"><p className="text-xs font-medium text-slate-500">{card.label}</p><p className="mt-2 text-3xl font-black text-slate-900">{card.value}</p></div>)}</div>
@@ -336,7 +336,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           <div className="rounded-xl border border-white/20 bg-white/10 p-3"><label htmlFor="weekly-date" className="block text-[10px] font-semibold uppercase text-blue-200">Tanggal meeting</label><input id="weekly-date" type="date" value={week} onChange={e => setWeek(e.target.value)} className="mt-2 block rounded-md border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-900" /></div>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{demoMode ? "Mode contoh · Bukan data aktual" : "Preview sesi ini · Belum tersimpan"}</span>
+          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{demoMode ? "INSPIRE tersimpan · CHART data contoh" : "INSPIRE tersimpan · CHART sesi browser"}</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">Tanpa approval koordinator</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">PDF dari tampilan presentasi</span>
         </div>
@@ -411,7 +411,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       {slideTitle.map((title, index) => <section key={title} className={"weekly-print-slide rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 " + (view === "presentation" && slide === index ? "block" : "hidden")}>
         {index !== 0 && <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">PertaLife · Weekly Marketing Review</p><h2 className="mt-2 text-2xl font-black text-slate-900">{title}</h2></div><p className="text-xs text-slate-400">{week} · {String(index + 1).padStart(2, "0")}/08</p></div>}
         {slideBody(index)}
-        {index !== 0 && <div className="mt-8 flex justify-between border-t border-slate-100 pt-4 text-[10px] text-slate-400"><span>Marketing Support · Internal Working Material</span><span>{demoMode ? "DATA ILUSTRASI" : "PREVIEW — BELUM TERSIMPAN"}</span></div>}
+        {index !== 0 && <div className="mt-8 flex justify-between border-t border-slate-100 pt-4 text-[10px] text-slate-400"><span>Marketing Support · Internal Working Material</span><span>{demoMode ? "CHART ILUSTRASI" : "CHART SESI BROWSER"}</span></div>}
       </section>)}
       {view === "presentation" && <div className="no-print mt-4 flex flex-wrap gap-2">{slideTitle.map((title, i) => <button key={title} type="button" onClick={() => setSlide(i)} className={"rounded-md px-3 py-2 text-[11px] font-semibold " + (slide === i ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-600")}>{i + 1}. {title}</button>)}</div>}
     </div>
