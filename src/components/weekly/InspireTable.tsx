@@ -50,6 +50,56 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
   const cancel = () => { setEditingId(null); setDraft(makeEmpty(unit)); };
   const setField = (key: keyof InspireDraft, value: string) =>
     setDraft(current => ({ ...current, [key]: value }));
+  // Root Cause and Next Plan behave like a numbered list while typing.
+  // Shift+Enter remains a regular line break, and pasting text is untouched.
+  const handleNumberedEnter = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    field: "rootCause" | "nextPlan"
+  ) => {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
+      event.nativeEvent.isComposing
+    ) return;
+
+    const textarea = event.currentTarget;
+    const value = draft[field];
+    const { selectionStart, selectionEnd } = textarea;
+    // Never rewrite selected text or split a line in the middle.
+    if (selectionStart !== selectionEnd || selectionStart !== value.length) return;
+
+    const lineStart = value.lastIndexOf("\n") + 1;
+    const line = value.slice(lineStart);
+    const numbered = line.match(/^(\s*)(\d+)([.)])\s*(.*)$/);
+    let nextValue: string;
+    let caret: number;
+
+    if (numbered) {
+      const [, indent, index, separator, text] = numbered;
+      if (!text.trim()) {
+        // Enter on an empty numbered item ends the list, like a text editor.
+        nextValue = value.slice(0, lineStart);
+        caret = nextValue.length;
+      } else {
+        const nextNumber = Number(index) + 1;
+        if (!Number.isSafeInteger(nextNumber)) return;
+        nextValue = value + "\n" + indent + nextNumber + separator + " ";
+        caret = nextValue.length;
+      }
+    } else if (!value.includes("\n") && line.trim()) {
+      // Starting a new list does not require the user to type "1." first.
+      nextValue = "1. " + line.trim() + "\n2. ";
+      caret = nextValue.length;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    setField(field, nextValue);
+    requestAnimationFrame(() => {
+      if (textarea.isConnected) textarea.setSelectionRange(caret, caret);
+    });
+  };
   const save = async () => {
     if (!draft.title.trim() || saving) return;
     setSaving(true);
@@ -74,6 +124,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
           aria-label={field.placeholder}
           value={draft[field.name]}
           onChange={event => setField(field.name, event.target.value)}
+          onKeyDown={field.name === "rootCause" || field.name === "nextPlan" ? event => handleNumberedEnter(event, field.name as "rootCause" | "nextPlan") : undefined}
           placeholder={field.placeholder}
           rows={field.name === "title" || field.name === "rangeTime" ? 3 : 5}
           className="min-h-[88px] w-full resize-y rounded-md border border-blue-200 bg-white p-2 text-xs leading-relaxed outline-none focus:ring-2 focus:ring-blue-300"
@@ -139,7 +190,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs text-slate-500">
         <AlertTriangle className="h-4 w-4 shrink-0 text-slate-400" />
-        {canEdit ? "Isi langsung per baris, lalu klik Simpan. Perubahan tersimpan untuk tanggal meeting ini dan dapat dibuka kembali oleh tim MS." : "Mode baca: akun Anda hanya dapat mengedit unit sendiri. Seluruh unit Marketing Support tetap bisa dilihat."}
+        {canEdit ? "Isi per baris, lalu Simpan. Di Root Cause dan Next Plan, Enter melanjutkan nomor otomatis; Shift+Enter membuat baris biasa. Tekan Enter pada nomor kosong untuk berhenti. Data tersimpan per tanggal meeting." : "Mode baca: akun Anda hanya dapat mengedit unit sendiri. Seluruh unit Marketing Support tetap bisa dilihat."}
       </div>
     </section>
   );
