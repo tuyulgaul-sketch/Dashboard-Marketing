@@ -420,7 +420,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   };
 
   return <AppLayout>
-    <style>{"@media print { @page { size: landscape; margin: 10mm; } body { background: white!important; } header, aside, .no-print { display:none!important; } main { max-width: none!important; padding: 0!important; } #weekly-print[data-active="true"] { display:block!important; } .weekly-print-slide { display:block!important; break-after:page; page-break-after:always; padding:8mm; min-height:165mm; box-shadow:none!important; border:0!important; } .weekly-print-slide:last-child { break-after:auto;page-break-after:auto; } }"}</style>
+    <style>{"@media print { @page { size: landscape; margin: 10mm; } body { background: white!important; } header, aside, .no-print { display:none!important; } main { max-width: none!important; padding: 0!important; } #weekly-print[data-active=true] { display:block!important; } .weekly-print-slide { display:block!important; break-after:page; page-break-after:always; padding:8mm; min-height:165mm; box-shadow:none!important; border:0!important; } .weekly-print-slide:last-child { break-after:auto;page-break-after:auto; } }"}</style>
     <div className={view === "chart" ? "space-y-6" : "no-print space-y-6"}>
       <div className="no-print overflow-hidden rounded-2xl bg-gradient-to-r from-[#0e2b4f] to-[#155c9f] px-5 py-6 text-white sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
