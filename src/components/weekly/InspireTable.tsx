@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, ClipboardCheck, ClipboardList, Edit3, FileText, Lightbulb, Plus, Save, Trash2, X } from "lucide-react";
 import type { InspireDraft, InspireRow, InspireStatus, InspireUnit } from "@/services/weeklyMarketingReviewService";
 
@@ -42,6 +42,14 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<InspireDraft>(() => makeEmpty(unit));
   const [saving, setSaving] = useState(false);
+  const newRowRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    if (editingId !== "NEW") return;
+    const frame = requestAnimationFrame(() => {
+      newRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingId]);
   useEffect(() => { setEditingId(null); setDraft(makeEmpty(unit)); }, [unit]);
   const beginAdd = () => { setDraft(makeEmpty(unit)); setEditingId("NEW"); };
   const beginEdit = (row: InspireRow) => {
@@ -132,7 +140,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
     finally { setSaving(false); }
   };
   const inputRow = (id: string, index: number) => (
-    <tr key={id} className="bg-blue-50/80 align-top">
+    <tr key={id} ref={id === "new-row" ? newRowRef : undefined} className="bg-blue-50/80 align-top">
       <td className="border border-slate-300 bg-[#2563a2] px-2 py-4 text-center text-xs font-bold text-white">{index}</td>
       {fields.map(field => <td key={field.name} className="border border-slate-300 p-2">
         <textarea
