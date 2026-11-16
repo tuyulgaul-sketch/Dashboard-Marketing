@@ -1,8 +1,10 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadExcelJS } from "@/utils/exceljsLoader";
 import { toast } from "sonner";
+import InspireTable from "@/components/weekly/InspireTable";
+import { deleteWeeklyInspireRow, loadWeeklyInspireRows, saveWeeklyInspireRow, type InspireDraft, type InspireRow } from "@/services/weeklyMarketingReviewService";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown,
   ClipboardList, Download, FileSpreadsheet, FileText, Info, LayoutDashboard,
@@ -24,7 +26,7 @@ type Activity = {
 };
 type ProductRow = { product: string; unit: "Captive" | "CRM"; segment: "Tender" | "Non Tender"; cases: number; premium: number };
 type StatusRow = { segment: "Tender" | "Non Tender"; unit: "Captive" | "CRM"; status: string; cases: number; premium: number };
-type View = "overview" | "input" | "presentation";
+type View = "inspire" | "chart" | "input" | "presentation";
 
 const UNITS: { id: Unit; name: string; short: string }[] = [
   { id: "DA", name: "Digital & Affinity", short: "DA" },
@@ -93,10 +95,13 @@ const Panel: React.FC<{ title: string; subtitle?: string; children: React.ReactN
 const WeeklyMarketingReviewPage: React.FC = () => {
   const { profile } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>("inspire");
   const [week, setWeek] = useState(currentDate);
   const [demoMode, setDemoMode] = useState(true);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [inspireRows, setInspireRows] = useState<InspireRow[]>([]);
+  const [actionsLoading, setActionsLoading] = useState(false);
+  const [selectedInspireUnit, setSelectedInspireUnit] = useState<Unit>("DA");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [statuses, setStatuses] = useState<StatusRow[]>([]);
   const [importName, setImportName] = useState("");
@@ -107,7 +112,46 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   const [inputUnit, setInputUnit] = useState<Unit>(ownUnit || "DA");
   const [draft, setDraft] = useState({ title: "", issue: "", nextPlan: "", support: "", deliverable: "", status: "On Progress" as WorkStatus });
 
-  const shownActivities = demoMode ? DEMO_ACTIVITIES : activities;
+  useEffect(() => { if (ownUnit) setSelectedInspireUnit(ownUnit); }, [ownUnit]);
+  const toActivity = (row: InspireRow): Activity => ({
+    id: row.id, unit: row.unit, title: row.title, issue: row.rootCause,
+    nextPlan: row.nextPlan, support: row.support, deliverable: row.deliverable, status: row.status
+  });
+  useEffect(() => {
+    let alive = true;
+    setActionsLoading(true);
+    loadWeeklyInspireRows(week).then(rows => {
+      if (!alive) return;
+      setInspireRows(rows);
+      setActivities(rows.map(toActivity));
+    }).catch(error => {
+      if (!alive) return;
+      toast.error("Gagal memuat INSPIRE: " + (error instanceof Error ? error.message : "Coba ulang."));
+    }).finally(() => { if (alive) setActionsLoading(false); });
+    return () => { alive = false; };
+  }, [week, profile?.id]);
+  const saveInspire = async (draft: InspireDraft, id?: string) => {
+    if (ownUnit && ownUnit !== draft.unit) throw new Error("Tidak boleh mengubah baris unit lain.");
+    try {
+      const saved = await saveWeeklyInspireRow(week, draft, id);
+      const next = id ? inspireRows.map(row => row.id === id ? saved : row) : [...inspireRows, saved];
+      setInspireRows(next);
+      setActivities(next.map(toActivity));
+      toast.success("Baris INSPIRE berhasil disimpan.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal menyimpan baris."); throw error; }
+  };
+  const deleteInspire = async (id: string) => {
+    const existing = inspireRows.find(row => row.id === id);
+    if (!existing || (ownUnit && ownUnit !== existing.unit)) throw new Error("Akses tidak diizinkan.");
+    try {
+      await deleteWeeklyInspireRow(week, id);
+      const next = inspireRows.filter(row => row.id !== id);
+      setInspireRows(next);
+      setActivities(next.map(toActivity));
+      toast.success("Baris berhasil dihapus.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal menghapus baris."); throw error; }
+  };
+  const shownActivities = activities;
   const shownProducts = demoMode ? DEMO_PRODUCTS : products;
   const shownStatuses = demoMode ? DEMO_STATUS : statuses;
   const totalCases = shownProducts.reduce((sum, row) => sum + row.cases, 0);
@@ -156,7 +200,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
     return issues;
   }, [shownProducts, shownStatuses]);
 
-  const resetDemo = () => { setDemoMode(false); setActivities([]); setProducts([]); setStatuses([]); setImportName(""); toast.info("Data contoh dihapus dari tampilan. Data belum disimpan ke server."); };
+  const resetDemo = () => { setDemoMode(false); setProducts([]); setStatuses([]); setImportName(""); toast.info("Data contoh grafik dikosongkan; data INSPIRE tetap tersimpan."); };
   const addActivity = () => {
     if (!draft.title.trim()) return toast.error("Nama aktivitas wajib diisi.");
     if (ownUnit && inputUnit !== ownUnit) return toast.error("Input dibatasi untuk unit akun Anda.");
@@ -234,9 +278,8 @@ const WeeklyMarketingReviewPage: React.FC = () => {
     { label: "Proyeksi premi", value: rupiahCompact(totalPremium), foot: "Dari Excel MAS", icon: FileSpreadsheet, color: "text-emerald-700", tint: "bg-emerald-50" }
   ];
   const viewTabs: { id: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: "overview", label: "Executive Overview", icon: LayoutDashboard },
-    { id: "input", label: "Input & Upload", icon: UploadCloud },
-    { id: "presentation", label: "Presentation Mode", icon: MonitorPlay }
+    { id: "inspire", label: "INSPIRE", icon: ClipboardList },
+    { id: "chart", label: "CHART", icon: BarChart3 }
   ];
 
   const slideTitle = ["Cover", "Executive Summary", "Digital & Affinity", "Marketing Communication", "Marketing Administration", "Quotation & Premi", "Director Attention", "Action Plan"];
@@ -268,7 +311,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
     if (i === 0) return <div className="flex min-h-[400px] flex-col justify-between rounded-xl bg-gradient-to-br from-[#102e55] to-[#1874bd] p-8 text-white sm:p-12">
       <div className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">PertaLife · Marketing Directorate</div>
       <div><p className="mb-3 text-sm font-semibold text-blue-200">Executive presentation</p><h2 className="max-w-2xl text-4xl font-black leading-tight sm:text-5xl">Weekly Marketing Review</h2><p className="mt-5 text-base text-blue-100">{week} · Digital & Affinity · Marcomm · MAS</p></div>
-      <div className="flex justify-between border-t border-white/25 pt-5 text-xs text-blue-100"><span>Life, Health & Pension</span><span>{demoMode ? "DATA DEMO" : "PREVIEW LOKAL"}</span></div>
+      <div className="flex justify-between border-t border-white/25 pt-5 text-xs text-blue-100"><span>Life, Health & Pension</span><span>{demoMode ? "CHART ILUSTRASI" : "CHART SESI BROWSER"}</span></div>
     </div>;
     if (i === 1) return <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2">{cards.map(card => <div key={card.label} className="rounded-xl border border-slate-200 p-4"><p className="text-xs font-medium text-slate-500">{card.label}</p><p className="mt-2 text-3xl font-black text-slate-900">{card.value}</p></div>)}</div>
@@ -293,7 +336,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           <div className="rounded-xl border border-white/20 bg-white/10 p-3"><label htmlFor="weekly-date" className="block text-[10px] font-semibold uppercase text-blue-200">Tanggal meeting</label><input id="weekly-date" type="date" value={week} onChange={e => setWeek(e.target.value)} className="mt-2 block rounded-md border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-900" /></div>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{demoMode ? "Mode contoh · Bukan data aktual" : "Preview sesi ini · Belum tersimpan"}</span>
+          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{demoMode ? "INSPIRE tersimpan · CHART data contoh" : "INSPIRE tersimpan · CHART sesi browser"}</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">Tanpa approval koordinator</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">PDF dari tampilan presentasi</span>
         </div>
@@ -302,7 +345,18 @@ const WeeklyMarketingReviewPage: React.FC = () => {
         {viewTabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setView(tab.id)} className={"flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition " + (view === tab.id ? "bg-[#154a83] text-white" : "text-slate-500 hover:bg-slate-100")}><Icon className="h-4 w-4" />{tab.label}</button>; })}
         {demoMode && <button type="button" onClick={resetDemo} className="ml-auto rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Kosongkan contoh</button>}
       </div>
-      {view === "overview" && <div className="space-y-6">
+      {view === "chart" && <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <div><h2 className="text-sm font-bold text-slate-900">CHART · Quotation, Premi & Pipeline</h2><p className="mt-1 text-xs text-slate-500">Grafik MAS diperbarui dari satu workbook master. Data yang diunggah di tab ini belum disimpan ke server.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importExcel(file); }} />
+            <button type="button" disabled={importBusy || Boolean(ownUnit && ownUnit !== "MAS")} onClick={() => inputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"><UploadCloud className="h-4 w-4" />{importBusy ? "Membaca..." : "Upload Excel MAS"}</button>
+            <button type="button" onClick={() => void downloadTemplate()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700"><Download className="h-4 w-4" />Template Excel</button>
+            <button type="button" onClick={() => setView("presentation")} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700"><MonitorPlay className="h-4 w-4" />Lihat Presentasi</button>
+          </div>
+          {importName && <p className="basis-full text-xs font-semibold text-emerald-700">File aktif: {importName}</p>}
+          {ownUnit && ownUnit !== "MAS" && <p className="basis-full text-xs text-slate-500">Upload Excel MAS hanya dapat dilakukan Marketing Administration atau root Marketing Support. Grafik tetap dapat dilihat semua tim MS.</p>}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{cards.map(card => { const Icon = card.icon; return <div key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">{card.label}</span><div className={"rounded-lg p-2 " + card.tint}><Icon className={"h-4 w-4 " + card.color} /></div></div><p className="mt-3 text-2xl font-black text-slate-900">{card.value}</p><p className="mt-1 text-xs text-slate-400">{card.foot}</p></div>; })}</div>
         <div className="grid gap-4 lg:grid-cols-3">{UNITS.map(unit => { const items = activityList(unit.id); const done = items.filter(item => item.status === "Done").length; return <div key={unit.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center gap-2">{unit.id === "MARCOMM" ? <Megaphone className="h-5 w-5 text-blue-700" /> : <ClipboardList className="h-5 w-5 text-blue-700" />}<h2 className="text-sm font-bold">{unit.name}</h2></div><p className="mt-4 text-2xl font-black">{items.length} <span className="text-xs font-medium text-slate-500">aktivitas</span></p><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: (items.length ? done / items.length * 100 : 0) + "%" }} /></div><p className="mt-2 text-xs text-slate-500">{done} selesai · {items.filter(item => item.status === "Need Attention").length} perlu perhatian</p></div>; })}</div>
         <div className="grid gap-4 xl:grid-cols-2">
@@ -331,39 +385,33 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           {attention.length ? <div className="grid gap-3 md:grid-cols-2">{attention.map(item => <div key={item.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-4"><p className="text-[10px] font-bold uppercase text-rose-700">{UNITS.find(unit => unit.id === item.unit)?.name}</p><p className="mt-2 text-sm font-bold">{item.title}</p><p className="mt-1 text-xs text-slate-600">{item.support || "Dukungan belum diisi."}</p></div>)}</div> : <p className="text-sm text-slate-500">Belum ada item yang memerlukan perhatian Direktur.</p>}
         </Panel>
       </div>}
-      {view === "input" && <div className="space-y-5">
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-900"><b>Versi tampilan awal:</b> Excel MAS diproses langsung di browser, tanpa upload ke server. Input aktivitas juga hanya berlaku pada sesi ini. Ekstraksi PDF/Word, penyimpanan lintas user, dan auto-carry forward akan disambungkan pada tahap backend berikutnya.</div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Upload Excel Marketing Administration" subtitle="Baca satu sheet INPUT_MAS untuk seluruh chart quotation, premi dan status case.">
-            <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center"><FileSpreadsheet className="mx-auto h-9 w-9 text-emerald-600" /><p className="mt-3 text-sm font-bold">Master Data Weekly MAS</p><p className="mt-2 text-xs text-slate-500">.xlsx · Struktur INPUT_MAS dari template sebelumnya</p><input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) void importExcel(file); }} /><button type="button" disabled={importBusy || Boolean(ownUnit && ownUnit !== "MAS")} onClick={() => inputRef.current?.click()} className="mt-4 rounded-lg bg-[#174f8d] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#103c70] disabled:cursor-not-allowed disabled:opacity-40">{importBusy ? "Membaca file..." : "Pilih & Baca Excel"}</button><div><button type="button" onClick={() => void downloadTemplate()} className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:underline"><Download className="h-3.5 w-3.5" />Unduh template kosong</button></div></div>
-            {ownUnit && ownUnit !== "MAS" && <p className="mt-3 text-xs text-amber-700">Upload data MAS hanya tersedia untuk akun Marketing Administration atau root Marketing Support.</p>}
-            {importName && <p className="mt-3 text-xs font-semibold text-emerald-700"><CheckCircle2 className="mr-1 inline h-4 w-4" />{importName}</p>}
-          </Panel>
-          <Panel title="Tambah Action Item" subtitle="Tulis pembaruan kegiatan yang nantinya masuk otomatis dalam satu presentasi gabungan.">
-            <div className="space-y-3">
-              <label className="block text-xs font-semibold text-slate-700">Unit<input disabled={Boolean(ownUnit)} value={ownUnit ? UNITS.find(item => item.id === ownUnit)?.name : undefined} className={ownUnit ? "mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm" : "hidden"} readOnly /></label>
-              {!ownUnit && <select value={inputUnit} onChange={e => setInputUnit(e.target.value as Unit)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">{UNITS.map(unit => <option value={unit.id} key={unit.id}>{unit.name}</option>)}</select>}
-              <label className="block text-xs font-semibold text-slate-700">Nama aktivitas / issue<input value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Contoh: Finalisasi materi komunikasi" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" /></label>
-              {([{ key: "issue", label: "Issue / Root Cause" }, { key: "nextPlan", label: "Tindak Lanjut" }, { key: "support", label: "Support Needed" }, { key: "deliverable", label: "Deliverable" }] as const).map(field => <label key={field.key} className="block text-xs font-semibold text-slate-700">{field.label}<textarea rows={2} value={draft[field.key]} onChange={e => setDraft(d => ({ ...d, [field.key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>)}
-              <label className="block text-xs font-semibold text-slate-700">Status<select value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value as WorkStatus }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"><option>On Progress</option><option>Done</option><option>Need Attention</option></select></label>
-              <button type="button" onClick={addActivity} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#174f8d] px-4 py-3 text-xs font-bold text-white hover:bg-[#103c70]"><Plus className="h-4 w-4" />Tambah ke Preview</button>
-            </div>
-          </Panel>
+      {view === "inspire" && <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Pilih unit INSPIRE">
+            {UNITS.map(unit => <button key={unit.id} type="button" role="tab" aria-selected={selectedInspireUnit === unit.id} onClick={() => setSelectedInspireUnit(unit.id)} className={"rounded-lg px-5 py-2.5 text-xs font-bold transition " + (selectedInspireUnit === unit.id ? "bg-[#17487d] text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-slate-100")}>{unit.short.toUpperCase()}</button>)}
+          </div>
         </div>
-        {UNITS.map(unit => (!ownUnit || ownUnit === unit.id) && <Panel key={unit.id} title={"Action Item · " + unit.name}>{activityDetail(unit.id)}</Panel>)}
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-4 text-xs text-slate-600"><FileText className="mr-2 inline h-4 w-4" /><b>PDF/Word:</b> area upload dan ekstraksi otomatis dokumen non-Excel belum diaktifkan pada versi tampilan awal. Jangan gunakan halaman ini untuk menyimpan dokumen sensitif.</div>
+        <InspireTable
+          key={week + selectedInspireUnit}
+          unit={selectedInspireUnit}
+          rows={inspireRows.filter(row => row.unit === selectedInspireUnit)}
+          canEdit={!ownUnit || ownUnit === selectedInspireUnit}
+          loading={actionsLoading}
+          onSave={saveInspire}
+          onDelete={deleteInspire}
+        />
       </div>}
-      {view === "presentation" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><Info className="mr-1 inline h-4 w-4" />Preview gabungan 8 slide. Gunakan tombol Cetak / Simpan PDF untuk mencetak seluruh slide melalui browser. Data tetap hanya berlaku pada sesi ini.</div>}
+      {view === "presentation" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><Info className="mr-1 inline h-4 w-4" />Preview gabungan 8 slide. Bagian INSPIRE sudah mengambil data tersimpan per tanggal meeting; grafik MAS masih menggunakan data sesi browser. Gunakan Cetak / Simpan PDF untuk ekspor.</div>}
     </div>
     <div id="weekly-print" className={view === "presentation" ? "mt-5" : "hidden"}>
       {view === "presentation" && <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div><p className="text-xs font-bold uppercase text-slate-500">Slide {slide + 1} dari 8</p><h3 className="mt-1 text-lg font-bold">{slideTitle[slide]}</h3></div>
+        <div><button type="button" onClick={() => setView("chart")} className="mb-2 inline-flex items-center gap-1 text-xs font-bold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>Kembali ke CHART</button><p className="text-xs font-bold uppercase text-slate-500">Slide {slide + 1} dari 8</p><h3 className="mt-1 text-lg font-bold">{slideTitle[slide]}</h3></div>
         <div className="flex gap-2"><button type="button" disabled={slide === 0} onClick={() => setSlide(v => Math.max(0, v - 1))} className="rounded-lg border border-slate-200 bg-white p-2.5 disabled:opacity-40"><ArrowLeft className="h-4 w-4" /></button><button type="button" disabled={slide === 7} onClick={() => setSlide(v => Math.min(7, v + 1))} className="rounded-lg border border-slate-200 bg-white p-2.5 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#154a83] px-4 py-2 text-xs font-bold text-white"><Printer className="h-4 w-4" />Cetak / Simpan PDF</button></div>
       </div>}
       {slideTitle.map((title, index) => <section key={title} className={"weekly-print-slide rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 " + (view === "presentation" && slide === index ? "block" : "hidden")}>
         {index !== 0 && <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">PertaLife · Weekly Marketing Review</p><h2 className="mt-2 text-2xl font-black text-slate-900">{title}</h2></div><p className="text-xs text-slate-400">{week} · {String(index + 1).padStart(2, "0")}/08</p></div>}
         {slideBody(index)}
-        {index !== 0 && <div className="mt-8 flex justify-between border-t border-slate-100 pt-4 text-[10px] text-slate-400"><span>Marketing Support · Internal Working Material</span><span>{demoMode ? "DATA ILUSTRASI" : "PREVIEW — BELUM TERSIMPAN"}</span></div>}
+        {index !== 0 && <div className="mt-8 flex justify-between border-t border-slate-100 pt-4 text-[10px] text-slate-400"><span>Marketing Support · Internal Working Material</span><span>{demoMode ? "CHART ILUSTRASI" : "CHART SESI BROWSER"}</span></div>}
       </section>)}
       {view === "presentation" && <div className="no-print mt-4 flex flex-wrap gap-2">{slideTitle.map((title, i) => <button key={title} type="button" onClick={() => setSlide(i)} className={"rounded-md px-3 py-2 text-[11px] font-semibold " + (slide === i ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-600")}>{i + 1}. {title}</button>)}</div>}
     </div>
