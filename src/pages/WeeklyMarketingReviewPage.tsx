@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { loadExcelJS } from "@/utils/exceljsLoader";
 import { toast } from "sonner";
 import InspireTable from "@/components/weekly/InspireTable";
+import WeeklyMasCharts from "@/components/weekly/WeeklyMasCharts";
 import { deleteWeeklyInspireRow, loadWeeklyInspireRows, saveWeeklyInspireRow, type InspireDraft, type InspireRow } from "@/services/weeklyMarketingReviewService";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown,
@@ -419,9 +420,9 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   };
 
   return <AppLayout>
-    <style>{"@media print { @page { size: landscape; margin: 10mm; } body { background: white!important; } header, aside, .no-print { display:none!important; } main { max-width: none!important; padding: 0!important; } #weekly-print { display:block!important; } .weekly-print-slide { display:block!important; break-after:page; page-break-after:always; padding:8mm; min-height:165mm; box-shadow:none!important; border:0!important; } .weekly-print-slide:last-child { break-after:auto;page-break-after:auto; } }"}</style>
-    <div className="no-print space-y-6">
-      <div className="overflow-hidden rounded-2xl bg-gradient-to-r from-[#0e2b4f] to-[#155c9f] px-5 py-6 text-white sm:px-8">
+    <style>{"@media print { @page { size: landscape; margin: 10mm; } body { background: white!important; } header, aside, .no-print { display:none!important; } main { max-width: none!important; padding: 0!important; } #weekly-print[data-active=true] { display:block!important; } .weekly-print-slide { display:block!important; break-after:page; page-break-after:always; padding:8mm; min-height:165mm; box-shadow:none!important; border:0!important; } .weekly-print-slide:last-child { break-after:auto;page-break-after:auto; } }"}</style>
+    <div className={view === "chart" ? "space-y-6" : "no-print space-y-6"}>
+      <div className="no-print overflow-hidden rounded-2xl bg-gradient-to-r from-[#0e2b4f] to-[#155c9f] px-5 py-6 text-white sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-200"><ShieldCheck className="h-4 w-4" /> Khusus Marketing Support</div><h1 className="mt-3 text-2xl font-black sm:text-3xl">Weekly Marketing Review</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100">Satu bahan presentasi gabungan Digital & Affinity, Marketing Communication, dan Marketing Administration.</p></div>
           <div className="rounded-xl border border-white/20 bg-white/10 p-3"><label htmlFor="weekly-date" className="block text-[10px] font-semibold uppercase text-blue-200">Tanggal meeting</label><input id="weekly-date" type="date" value={week} onChange={e => setWeek(e.target.value)} className="mt-2 block rounded-md border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-900" /></div>
@@ -432,50 +433,11 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">PDF dari tampilan presentasi</span>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+      <div className="no-print flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
         {viewTabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setView(tab.id)} className={"flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition " + (view === tab.id ? "bg-[#154a83] text-white" : "text-slate-500 hover:bg-slate-100")}><Icon className="h-4 w-4" />{tab.label}</button>; })}
         {demoMode && <button type="button" onClick={resetDemo} className="ml-auto rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Kosongkan contoh</button>}
       </div>
-      {view === "chart" && <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
-          <div><h2 className="text-sm font-bold text-slate-900">CHART · Quotation, Premi & Pipeline</h2><p className="mt-1 text-xs text-slate-500">Grafik MAS diperbarui dari satu workbook master. Data yang diunggah di tab ini belum disimpan ke server.</p></div>
-          <div className="flex flex-wrap gap-2">
-            <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importExcel(file); }} />
-            <button type="button" disabled={importBusy || Boolean(ownUnit && ownUnit !== "MAS")} onClick={() => inputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"><UploadCloud className="h-4 w-4" />{importBusy ? "Membaca..." : "Upload Excel MAS"}</button>
-            <button type="button" onClick={() => void downloadTemplate()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700"><Download className="h-4 w-4" />Template Excel</button>
-            <button type="button" onClick={() => setView("presentation")} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700"><MonitorPlay className="h-4 w-4" />Lihat Presentasi</button>
-          </div>
-          {importName && <p className="basis-full text-xs font-semibold text-emerald-700">File aktif: {importName}</p>}
-          {ownUnit && ownUnit !== "MAS" && <p className="basis-full text-xs text-slate-500">Upload Excel MAS hanya dapat dilakukan Marketing Administration atau root Marketing Support. Grafik tetap dapat dilihat semua tim MS.</p>}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{cards.map(card => { const Icon = card.icon; return <div key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">{card.label}</span><div className={"rounded-lg p-2 " + card.tint}><Icon className={"h-4 w-4 " + card.color} /></div></div><p className="mt-3 text-2xl font-black text-slate-900">{card.value}</p><p className="mt-1 text-xs text-slate-400">{card.foot}</p></div>; })}</div>
-        <div className="grid gap-4 lg:grid-cols-3">{UNITS.map(unit => { const items = activityList(unit.id); const done = items.filter(item => item.status === "Done").length; return <div key={unit.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center gap-2">{unit.id === "MARCOMM" ? <Megaphone className="h-5 w-5 text-blue-700" /> : <ClipboardList className="h-5 w-5 text-blue-700" />}<h2 className="text-sm font-bold">{unit.name}</h2></div><p className="mt-4 text-2xl font-black">{items.length} <span className="text-xs font-medium text-slate-500">aktivitas</span></p><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: (items.length ? done / items.length * 100 : 0) + "%" }} /></div><p className="mt-2 text-xs text-slate-500">{done} selesai · {items.filter(item => item.status === "Need Attention").length} perlu perhatian</p></div>; })}</div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Panel title="Quotation per Produk" subtitle="Top 6 produk berdasarkan jumlah case · Captive dibandingkan CRM">
-            {productChart.length ? <div className="h-[295px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={productChart} layout="vertical" margin={{ left: 15, right: 15 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" tick={{ fontSize: 10 }} /><YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} /><Tooltip formatter={(value: number) => compactNumber(value)} /><Bar dataKey="captive" name="Captive" stackId="c" fill="#185ba5" radius={[0, 0, 0, 0]} /><Bar dataKey="crm" name="CRM" stackId="c" fill="#88b923" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div> : <p className="py-16 text-center text-sm text-slate-500">Belum ada data. Upload Excel MAS.</p>}
-            <p className="mt-2 text-[11px] text-slate-500">Biru: Captive · Hijau: CRM</p>
-          </Panel>
-          <Panel title="Tender vs Non Tender" subtitle="Komposisi jumlah quotation per channel">
-            {totalCases ? <div className="h-[295px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={segmentChart} margin={{ left: 0, right: 20 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 12 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(value: number) => compactNumber(value)} /><Bar dataKey="tender" name="Tender" stackId="a" fill="#185ba5" /><Bar dataKey="nonTender" name="Non Tender" stackId="a" fill="#88b923" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <p className="py-16 text-center text-sm text-slate-500">Belum ada data. Upload Excel MAS.</p>}
-            <p className="mt-2 text-[11px] text-slate-500">Biru: Tender · Hijau: Non Tender</p>
-          </Panel>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Panel title="Pipeline Status" subtitle="Closing, outstanding, dan cancel berdasarkan unit dan jenis bisnis">
-            <div className="space-y-5">{statusChart.length ? statusChart.map(item => { const sum = item.closing + item.pending + item.cancel; return <div key={item.name}><div className="mb-2 flex justify-between text-xs"><span className="font-semibold">{item.name}</span><span className="text-slate-500">{compactNumber(sum)} case</span></div><div className="flex h-3 overflow-hidden rounded-full bg-slate-100">{sum > 0 && <><div className="bg-emerald-500" style={{ width: item.closing / sum * 100 + "%" }} /><div className="bg-amber-400" style={{ width: item.pending / sum * 100 + "%" }} /><div className="bg-rose-400" style={{ width: item.cancel / sum * 100 + "%" }} /></>}</div></div>; }) : <p className="text-sm text-slate-500">Belum ada breakdown status.</p>}</div><p className="mt-5 text-[11px] text-slate-500">Hijau: Closing · Kuning: Outstanding · Merah: Cancel</p>
-          </Panel>
-          <Panel title="Kesiapan & Validasi" subtitle="Data yang perlu diperhatikan sebelum dipakai dalam weekly meeting">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-4 w-4 text-emerald-600" />Struktur input: satu file Excel MAS</div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700"><Info className="h-4 w-4 text-blue-600" />{importName ? "File terbaca: " + importName : "Belum ada file MAS yang diunggah"}</div>
-              {qc.length ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-800">Perlu pemeriksaan angka ({qc.length})</p>{qc.slice(0, 5).map(issue => <p key={issue} className="mt-2 text-xs text-amber-700">• {issue}</p>)}</div> : shownProducts.length && shownStatuses.length ? <p className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">Total case dan premi pada rincian produk dan status cocok per segmen.</p> : <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Validasi otomatis muncul setelah file Excel diimpor.</p>}
-            </div>
-          </Panel>
-        </div>
-        <Panel title="Issue & Director Attention" subtitle="Terisi otomatis dari aktivitas yang ditandai Need Attention">
-          {attention.length ? <div className="grid gap-3 md:grid-cols-2">{attention.map(item => <div key={item.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-4"><p className="text-[10px] font-bold uppercase text-rose-700">{UNITS.find(unit => unit.id === item.unit)?.name}</p><p className="mt-2 text-sm font-bold">{item.title}</p><p className="mt-1 text-xs text-slate-600">{item.support || "Dukungan belum diisi."}</p></div>)}</div> : <p className="text-sm text-slate-500">Belum ada item yang memerlukan perhatian Direktur.</p>}
-        </Panel>
-      </div>}
+      {view === "chart" && <WeeklyMasCharts meetingDate={week} canManage={department === "marketing administration" || department === ""} />}
       {view === "inspire" && <div
         ref={inspireRootRef}
         className={inspireFullscreen
@@ -523,7 +485,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       </div>}
       {view === "presentation" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900"><Info className="mr-1 inline h-4 w-4" />Preview gabungan 8 slide. Bagian INSPIRE sudah mengambil data tersimpan per tanggal meeting; grafik MAS masih menggunakan data sesi browser. Gunakan Cetak / Simpan PDF untuk ekspor.</div>}
     </div>
-    <div id="weekly-print" className={view === "presentation" ? "mt-5" : "hidden"}>
+    <div id="weekly-print" data-active={view === "presentation" ? "true" : "false"} className={view === "presentation" ? "mt-5" : "hidden"}>
       {view === "presentation" && <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
         <div><button type="button" onClick={() => setView("chart")} className="mb-2 inline-flex items-center gap-1 text-xs font-bold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>Kembali ke CHART</button><p className="text-xs font-bold uppercase text-slate-500">Slide {slide + 1} dari 8</p><h3 className="mt-1 text-lg font-bold">{slideTitle[slide]}</h3></div>
         <div className="flex gap-2"><button type="button" disabled={slide === 0} onClick={() => setSlide(v => Math.max(0, v - 1))} className="rounded-lg border border-slate-200 bg-white p-2.5 disabled:opacity-40"><ArrowLeft className="h-4 w-4" /></button><button type="button" disabled={slide === 7} onClick={() => setSlide(v => Math.min(7, v + 1))} className="rounded-lg border border-slate-200 bg-white p-2.5 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#154a83] px-4 py-2 text-xs font-bold text-white"><Printer className="h-4 w-4" />Cetak / Simpan PDF</button></div>
