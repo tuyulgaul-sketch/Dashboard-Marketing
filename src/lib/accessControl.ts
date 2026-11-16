@@ -12,6 +12,7 @@ export type AppFeature =
   | "TANDA_TERIMA"
   | "SURVEY_PERTALIFE_CARE"
   | "MYPERTALIFE_LAUNCH"
+  | "WEEKLY_MARKETING_REVIEW"
   | "SYSTEM_ADMIN";
 
 const normalize = (value?: string | null) =>
@@ -135,6 +136,11 @@ export const canAccessFeature = (
 
   if (feature === "SYSTEM_ADMIN") {
     return isSystemAdminProfile(profile);
+  }
+
+  // Independent MS reporting workspace; no legacy identity is required.
+  if (feature === "WEEKLY_MARKETING_REVIEW") {
+    return isMarketingSupportProfile(profile);
   }
 
   if (feature === "MYPERTALIFE_LAUNCH") {
