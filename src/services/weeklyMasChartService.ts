@@ -47,12 +47,14 @@ export const saveMasOverride = async (date: string, draft: MasManualDraft): Prom
   if (draft.cases === null && draft.premium === null) throw new Error("Isi jumlah case dan/atau nilai premi.");
   if (draft.cases !== null && (!Number.isSafeInteger(draft.cases) || (draft.method === "REPLACE" && draft.cases < 0))) throw new Error("Jumlah case harus bilangan bulat. Nilai pengganti tidak boleh negatif.");
   if (draft.premium !== null && (!Number.isFinite(draft.premium) || (draft.method === "REPLACE" && draft.premium < 0))) throw new Error("Nilai premi pengganti harus tidak negatif.");
+  const {data: auth, error: authError} = await supabase.auth.getUser();
+  if (authError || !auth.user) throw new Error("Sesi login tidak valid. Login kembali.");
   const {data,error} = await supabase.from("weekly_marketing_chart_overrides")
     .upsert({
       meeting_date: date, unit: draft.unit, business_type: draft.business_type,
       product: draft.product.trim(), status: draft.status, method: draft.method,
       cases: draft.cases, premium: draft.premium, reason: draft.reason.trim(),
-      updated_at: new Date().toISOString()
+      modified_by: auth.user.id, updated_at: new Date().toISOString()
     }, {onConflict: "meeting_date,unit,business_type,product,status"})
     .select("id,meeting_date,unit,business_type,product,status,method,cases,premium,reason").single();
   if (error || !data) throw new Error(error?.message || "Penyesuaian gagal disimpan.");
