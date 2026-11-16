@@ -159,7 +159,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
     </tr>
   );
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className={fullscreen ? "overflow-visible rounded-xl border border-slate-200 bg-white shadow-sm" : "overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"}>
       <div className="flex flex-wrap items-end justify-between gap-4 p-5">
         <div>
           <h2 className="text-xl font-extrabold uppercase tracking-wide text-[#3377ae] sm:text-2xl">LIST ACTION - {UNIT_TITLES[unit]}</h2>
