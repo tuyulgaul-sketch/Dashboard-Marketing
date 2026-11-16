@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, ClipboardCheck, ClipboardList, Edit3, FileText, Lightbulb, Plus, Save, Trash2, X } from "lucide-react";
 import type { InspireDraft, InspireRow, InspireStatus, InspireUnit } from "@/services/weeklyMarketingReviewService";
 
@@ -33,14 +33,23 @@ type Props = {
   rows: InspireRow[];
   canEdit: boolean;
   loading: boolean;
+  fullscreen?: boolean;
   onSave: (draft: InspireDraft, existingId?: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
-const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, onDelete }) => {
+const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscreen = false, onSave, onDelete }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<InspireDraft>(() => makeEmpty(unit));
   const [saving, setSaving] = useState(false);
+  const newRowRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    if (editingId !== "NEW") return;
+    const frame = requestAnimationFrame(() => {
+      newRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingId]);
   useEffect(() => { setEditingId(null); setDraft(makeEmpty(unit)); }, [unit]);
   const beginAdd = () => { setDraft(makeEmpty(unit)); setEditingId("NEW"); };
   const beginEdit = (row: InspireRow) => {
@@ -131,7 +140,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
     finally { setSaving(false); }
   };
   const inputRow = (id: string, index: number) => (
-    <tr key={id} className="bg-blue-50/80 align-top">
+    <tr key={id} ref={id === "new-row" ? newRowRef : undefined} className="bg-blue-50/80 align-top">
       <td className="border border-slate-300 bg-[#2563a2] px-2 py-4 text-center text-xs font-bold text-white">{index}</td>
       {fields.map(field => <td key={field.name} className="border border-slate-300 p-2">
         <textarea
@@ -158,7 +167,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
     </tr>
   );
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className={fullscreen ? "overflow-visible rounded-xl border border-slate-200 bg-white shadow-sm" : "overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"}>
       <div className="flex flex-wrap items-end justify-between gap-4 p-5">
         <div>
           <h2 className="text-xl font-extrabold uppercase tracking-wide text-[#3377ae] sm:text-2xl">LIST ACTION - {UNIT_TITLES[unit]}</h2>
@@ -167,7 +176,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
         </div>
         {canEdit && <button type="button" disabled={Boolean(editingId) || loading || saving} onClick={beginAdd} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#12375d] disabled:opacity-40"><Plus className="h-4 w-4" />Tambah Baris</button>}
       </div>
-      <div className="overflow-x-auto px-3 pb-5 sm:px-5">
+      <div className={fullscreen ? "overflow-visible px-3 pb-5 sm:px-5" : "overflow-x-auto px-3 pb-5 sm:px-5"}>
         <table className="w-full min-w-[1470px] table-fixed border-collapse text-xs text-slate-900">
           <colgroup><col style={{ width: "4%" }} /><col style={{ width: "13%" }} /><col style={{ width: "16%" }} /><col style={{ width: "20%" }} /><col style={{ width: "14%" }} /><col style={{ width: "14%" }} /><col style={{ width: "10%" }} /><col style={{ width: "9%" }} />{canEdit && <col style={{ width: "9%" }} />}</colgroup>
           <thead className="bg-[#223963] text-white">
@@ -183,7 +192,6 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
             <tr className="h-12"><th className="border border-white/30 px-2 py-3 text-center">APA (ISSUE)</th><th className="border border-white/30 px-2 py-3 text-center">MENGAPA (ROOT CAUSE)</th></tr>
           </thead>
           <tbody>
-            {editingId === "NEW" && inputRow("new-row", 1)}
             {!loading && rows.length === 0 && editingId !== "NEW" && <tr><td colSpan={canEdit ? 9 : 8} className="border border-slate-300 px-6 py-16 text-center text-sm text-slate-500">Belum ada action item untuk unit dan tanggal meeting ini. {canEdit ? "Klik Tambah Baris untuk mulai mengisi." : ""}</td></tr>}
             {loading && <tr><td colSpan={canEdit ? 9 : 8} className="border border-slate-300 px-6 py-12 text-center text-sm text-slate-500">Memuat list action...</td></tr>}
             {!loading && rows.map((row, index) => editingId === row.id ? inputRow(row.id, index + 1) :
@@ -199,6 +207,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
                 </div></td>}
               </tr>
             )}
+            {!loading && editingId === "NEW" && inputRow("new-row", rows.length + 1)}
           </tbody>
         </table>
       </div>
