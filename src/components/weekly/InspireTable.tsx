@@ -50,8 +50,9 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
   const cancel = () => { setEditingId(null); setDraft(makeEmpty(unit)); };
   const setField = (key: keyof InspireDraft, value: string) =>
     setDraft(current => ({ ...current, [key]: value }));
-  // Root Cause and Next Plan behave like a numbered list while typing.
-  // Shift+Enter remains a regular line break, and pasting text is untouched.
+  // Keep numbering when editing pasted multi-line text, not only at the
+  // very end of the textarea. Read the live DOM value and current caret.
+  // Shift+Enter remains a regular line break and paste content is untouched.
   const handleNumberedEnter = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
     field: "rootCause" | "nextPlan"
@@ -63,33 +64,46 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, onSave, o
     ) return;
 
     const textarea = event.currentTarget;
-    const value = draft[field];
+    const value = textarea.value;
     const { selectionStart, selectionEnd } = textarea;
-    // Never rewrite selected text or split a line in the middle.
-    if (selectionStart !== selectionEnd || selectionStart !== value.length) return;
+    if (selectionStart !== selectionEnd) return;
 
-    const lineStart = value.lastIndexOf("\n") + 1;
-    const line = value.slice(lineStart);
-    const numbered = line.match(/^(\s*)(\d+)([.)])\s*(.*)$/);
+    const lineStart = value.slice(0, selectionStart).lastIndexOf("\n") + 1;
+    const lineEndIndex = value.indexOf("\n", selectionStart);
+    const lineEnd = lineEndIndex < 0 ? value.length : lineEndIndex;
+    const prefix = value.slice(lineStart, selectionStart);
+    const currentLine = value.slice(lineStart, lineEnd);
+    const match = prefix.match(/^([ \t]*)(\d+)([.)])[ \t]*(.*)$/);
+
     let nextValue: string;
     let caret: number;
-
-    if (numbered) {
-      const [, indent, index, separator, text] = numbered;
-      if (!text.trim()) {
-        // Enter on an empty numbered item ends the list, like a text editor.
-        nextValue = value.slice(0, lineStart);
-        caret = nextValue.length;
+    if (match) {
+      const [, indent, index, separator] = match;
+      const itemText = currentLine.replace(/^[ \t]*\d+[.)][ \t]*/, "");
+      if (!itemText.trim()) {
+        // A second Enter on a blank numbered item ends the list.
+        nextValue = value.slice(0, lineStart) +
+          value.slice(lineEndIndex < 0 ? lineEnd : lineEnd + 1);
+        caret = lineStart;
       } else {
         const nextNumber = Number(index) + 1;
         if (!Number.isSafeInteger(nextNumber)) return;
-        nextValue = value + "\n" + indent + nextNumber + separator + " ";
-        caret = nextValue.length;
+        const insert = "\n" + indent + nextNumber + separator + " ";
+        nextValue = value.slice(0, selectionStart) + insert + value.slice(selectionStart);
+        caret = selectionStart + insert.length;
       }
-    } else if (!value.includes("\n") && line.trim()) {
-      // Starting a new list does not require the user to type "1." first.
-      nextValue = "1. " + line.trim() + "\n2. ";
-      caret = nextValue.length;
+    } else if (
+      // Pasted unnumbered paragraphs can start their first numbered list
+      // even if more pasted lines exist below the caret.
+      lineStart === 0 &&
+      selectionStart === lineEnd &&
+      prefix.trim() &&
+      !/^[ \t]*\d+[.)][ \t]*/.test(currentLine)
+    ) {
+      const insert = "\n2. ";
+      nextValue = "1. " + value.slice(0, selectionStart) +
+        insert + value.slice(selectionStart);
+      caret = 3 + selectionStart + insert.length;
     } else {
       return;
     }
