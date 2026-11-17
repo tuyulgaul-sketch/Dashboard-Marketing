@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, FileDown, FileSpreadsheet, Maximize2, Mini
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import MasExecutiveSummary from "@/components/weekly/MasExecutiveSummary";
+import WeeklyMasReferenceCharts from "@/components/weekly/WeeklyMasReferenceCharts";
 import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverride, type MasStatus, type MasUnit } from "@/utils/weeklyMasChartEngine";
 import { readMasPeriod, removeMasOverride, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
 
@@ -148,6 +149,8 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     {!loading&&!hasData&&<div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-500">Belum ada data CHART pada periode ini. Upload Excel sumber untuk memulai.</div>}
     {!loading&&hasData&&<>
       <MasExecutiveSummary meetingDate={meetingDate} results={result}/>
+      <WeeklyMasReferenceCharts results={result} meetingDate={meetingDate}/>
+      <div className="mas-controls mt-4">
       <Box title="Validasi Data dan Catatan Rekonsiliasi" note="Pastikan seluruh selisih diperiksa sebelum bahan digunakan untuk Direktur">
         <div className={"rounded-lg border p-3 "+(issues.length?"border-amber-200 bg-amber-50":"border-emerald-200 bg-emerald-50")}>
           <div className="flex items-center gap-2 text-xs font-bold">{issues.length?<AlertTriangle className="h-4 w-4 text-amber-700"/>:<CheckCircle2 className="h-4 w-4 text-emerald-700"/>}{issues.length?issues.length+" catatan perlu pemeriksaan":"Tidak ada masalah yang terdeteksi"}</div>
@@ -155,34 +158,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
           {issues.length>0&&<div className="mt-2 grid gap-1 text-xs text-amber-800 sm:grid-cols-2">{issues.slice(0,12).map((issue,i)=><p key={i}>• {issue}</p>)}</div>}
         </div>
       </Box>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Box title="Quotation per Produk" note="Top 10 produk berdasarkan total case; Captive vs CRM">
-          <div className="h-[340px]"><ResponsiveContainer width="100%" height="100%"><BarChart layout="vertical" data={caseRank} margin={{top:8,bottom:8,left:10,right:20}}><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" tick={{fontSize:10}}/><YAxis type="category" dataKey="product" width={155} tick={{fontSize:10}}/><Tooltip formatter={(v:number)=>int(v)}/><Legend/><Bar dataKey="Captive" stackId="a" fill="#286db5"/><Bar dataKey="CRM" stackId="a" fill="#93b72a"/></BarChart></ResponsiveContainer></div>
-        </Box>
-        <Box title="Tender vs Non Tender" note="Volume quotation menurut jenis bisnis">
-          <div className="h-[340px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={tender}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name"/><YAxis/><Tooltip formatter={(v:number)=>int(v)}/><Legend/><Bar dataKey="Tender" stackId="a" fill="#286db5"/><Bar dataKey="Non Tender" stackId="a" fill="#93b72a"/><Bar dataKey="Tidak Terklasifikasi" stackId="a" fill="#a3a3a3"/></BarChart></ResponsiveContainer></div>
-        </Box>
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Box title="Top Produk berdasarkan Premi" note="Proyeksi premi per produk dalam miliar rupiah">
-          <div className="h-[330px]"><ResponsiveContainer width="100%" height="100%"><BarChart layout="vertical" data={premiumRank} margin={{left:10,right:20}}><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number"/><YAxis type="category" dataKey="product" width={155} tick={{fontSize:10}}/><Tooltip formatter={(v:number)=>"Rp "+v.toLocaleString("id-ID",{maximumFractionDigits:2})+" M"}/><Bar dataKey="billion" name="Premi (Rp M)" fill="#286db5"/></BarChart></ResponsiveContainer></div>
-        </Box>
-        <Box title="Status Quotation" note="Persentase berdasarkan unit & Tender/Non Tender, bukan 4 pie chart kecil">
-          <div className="space-y-5">{statusSummaries.map(group=><div key={group.unit+group.segment}>
-            <div className="flex justify-between text-xs font-bold"><span>{group.unit} · {group.segment}</span><span>{int(group.cases)} case</span></div>
-            <div className="mt-2 flex h-4 overflow-hidden rounded-full bg-slate-100">{group.categories.filter(c=>c.cases>0&&group.cases>0).map(c=><div key={c.status} title={c.status+" "+int(c.cases)} style={{width:(c.cases/group.cases*100)+"%",background:colors[c.status]}}/>)}</div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{group.categories.filter(c=>c.cases>0).map(c=><span key={c.status} className="text-[10px] text-slate-600"><span className="mr-1 inline-block h-2 w-2" style={{background:colors[c.status]}}/>{c.status}: {int(c.cases)} ({group.cases>0?(100*c.cases/group.cases).toFixed(1):0}%)</span>)}</div>
-          </div>)}</div>
-        </Box>
-      </div>
-      <Box title="Detail Produk · Rekonsiliasi" note="Angka sumber dan final dipisahkan agar mudah ditelusuri">
-        <div className="max-h-[420px] overflow-auto"><table className="min-w-[840px] w-full border-collapse text-xs"><thead className="sticky top-0 bg-[#203b69] text-white"><tr>{["Produk","Unit","Jenis Bisnis","Case Sumber","Case Final","Premi Sumber (Rp)","Premi Final (Rp)"].map(x=><th key={x} className="p-3 text-left">{x}</th>)}</tr></thead>
-          <tbody>{[...result.groups].sort((a,b)=>a.product.localeCompare(b.product)).map((x,i)=><tr key={x.unit+x.segment+x.product} className={i%2?"bg-slate-50":"bg-white"}><td className="p-3 font-semibold">{x.product}</td><td className="p-3">{x.unit}</td><td className="p-3">{x.segment}</td><td className="p-3 text-right">{int(x.baselineCases)}</td><td className="p-3 text-right font-bold">{int(x.cases)}</td><td className="p-3 text-right">{int(x.baselinePremium)}</td><td className="p-3 text-right font-bold">{int(x.premium)}</td></tr>)}</tbody>
-        </table></div>
-      </Box>
-      <Box title="Rincian Status Case & Premi" note="Termasuk status Belum Terklasifikasi dari angka penyesuaian">
-        <div className="max-h-[400px] overflow-auto"><table className="min-w-[750px] w-full text-xs"><thead className="sticky top-0 bg-[#203b69] text-white"><tr>{["Unit","Jenis Bisnis","Status","Jumlah Case","Proyeksi Premi (Rp)"].map(x=><th key={x} className="p-3 text-left">{x}</th>)}</tr></thead><tbody>{statusSummaries.flatMap(group=>group.categories.filter(c=>c.cases!==0||Math.abs(c.premium)>1).map(c=>({...c,unit:group.unit,segment:group.segment}))).map((c,i)=><tr key={c.unit+c.segment+c.status} className={i%2?"bg-slate-50":"bg-white"}><td className="p-3">{c.unit}</td><td className="p-3">{c.segment}</td><td className="p-3">{c.status}</td><td className="p-3 text-right">{int(c.cases)}</td><td className="p-3 text-right">{rup(c.premium)}</td></tr>)}</tbody></table></div>
-      </Box>
     </>}
     <section id="mas-manual-form" className="mas-controls rounded-2xl border border-slate-200 bg-white p-5">
       <div className="flex items-center gap-2"><PencilLine className="h-5 w-5 text-blue-700"/><h3 className="text-lg font-black text-[#173f73]">Penyesuaian Data Manual</h3></div>
