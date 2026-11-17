@@ -55,7 +55,9 @@ export const loadWeeklyInspireRows = async (meetingDate: string): Promise<Inspir
     .from("weekly_marketing_actions")
     .select(fields)
     .eq("meeting_date", meetingDate)
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw new Error(error.message);
   return (data || []).map(row => asRow(row as DbRow));
 };
@@ -93,4 +95,22 @@ export const deleteWeeklyInspireRow = async (meetingDate: string, id: string): P
     .eq("meeting_date", meetingDate)
     .eq("id", id);
   if (error || count !== 1) throw new Error(error?.message || "Baris tidak ditemukan atau akses ditolak.");
+};
+
+/** Persist a complete unit's row order atomically; RLS limits writers to their own unit. */
+export const reorderWeeklyInspireRows = async (
+  meetingDate: string,
+  unit: InspireUnit,
+  rowIds: string[]
+): Promise<void> => {
+  if (new Set(rowIds).size !== rowIds.length || rowIds.length === 0) {
+    throw new Error("Daftar urutan baris tidak valid.");
+  }
+  const { data, error } = await supabase.rpc("reorder_weekly_marketing_actions", {
+    p_meeting_date: meetingDate,
+    p_unit: unit,
+    p_row_ids: rowIds
+  });
+  if (error) throw new Error(error.message);
+  if (data !== rowIds.length) throw new Error("Jumlah baris yang diperbarui tidak sesuai.");
 };
