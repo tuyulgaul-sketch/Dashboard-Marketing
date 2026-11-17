@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, LabelList, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
 import { ClipboardList, Coins, Users, TrendingUp } from "lucide-react";
 import type { MasResults, MasStatus, MasUnit } from "@/utils/weeklyMasChartEngine";
 
@@ -48,35 +48,56 @@ const SmallTotal: React.FC<{label:string;value:number;color?:string}> = ({label,
     <div><p className="text-xs font-bold text-slate-700">{label}</p><p className={"text-2xl font-black "+color}>{count(value)} <span className="text-xs font-medium text-slate-500">Case</span></p></div>
   </div>;
 
-const QuotationGraph: React.FC<{data:ProductBar[]; mode:"units"|"segments"; color?:string}> = ({data,mode}) => {
-  const min = Math.max(680, data.length * 62);
-  return <div className="overflow-x-auto rounded-lg bg-white p-2">
-    <div style={{minWidth:min+"px"}} className="h-[365px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{top:22,right:15,bottom:78,left:0}} barCategoryGap="23%">
-          <CartesianGrid stroke="#d6dde6" strokeDasharray="3 3" vertical={false}/>
-          <XAxis dataKey="product" interval={0} angle={-38} textAnchor="end" height={95} tick={{fontSize:10,fill:"#293c57"}}/>
-          <YAxis allowDecimals={false} tickFormatter={count} width={55} tick={{fontSize:10}}/>
-          <Tooltip formatter={(value:number,name:string) => [count(value)+" case",name]}/>
-          <Legend align="center" verticalAlign="top" wrapperStyle={{fontSize:11}}/>
-          {mode==="units" ? <>
-            <Bar dataKey="Captive" fill={BLUE} name="Captive" radius={[4,4,0,0]}>
-              <LabelList dataKey="Captive" position="top" formatter={(v:number)=>v>0?count(v):""} style={{fontSize:9,fill:"#174b89"}}/>
-            </Bar>
-            <Bar dataKey="CRM" fill={LIME} name="CRM" radius={[4,4,0,0]}>
-              <LabelList dataKey="CRM" position="top" formatter={(v:number)=>v>0?count(v):""} style={{fontSize:9,fill:"#5a7c1b"}}/>
-            </Bar>
-          </> : <>
-            <Bar dataKey="Tender" fill={BLUE} name="Tender" radius={[4,4,0,0]}>
-              <LabelList dataKey="Tender" position="top" formatter={(v:number)=>v>0?count(v):""} style={{fontSize:9,fill:"#174b89"}}/>
-            </Bar>
-            <Bar dataKey="Non Tender" fill={LIME} name="Non Tender" radius={[4,4,0,0]}>
-              <LabelList dataKey="Non Tender" position="top" formatter={(v:number)=>v>0?count(v):""} style={{fontSize:9,fill:"#5a7c1b"}}/>
-            </Bar>
-          </>}
-        </BarChart>
-      </ResponsiveContainer>
+/**
+ * Render the per-product comparison as native horizontal bars.
+ *
+ * The previous Recharts component nested <Bar> inside a React.Fragment.
+ * Recharts v2 discovers graphical children by direct child type, so it
+ * rendered the axes and legend but no bars. DOM bars remove that fragile
+ * dependency and keep every product readable when printed to PDF.
+ */
+const QuotationGraph: React.FC<{
+  data: ProductBar[];
+  mode: "units" | "segments";
+  sharedScale?: number;
+}> = ({ data, mode, sharedScale }) => {
+  const series = mode === "units"
+    ? [{ key: "Captive" as const, label: "Captive", color: BLUE }, { key: "CRM" as const, label: "CRM", color: LIME }]
+    : [{ key: "Tender" as const, label: "Tender", color: BLUE }, { key: "Non Tender" as const, label: "Non Tender", color: LIME }];
+  const localMax = Math.max(0, ...data.flatMap(row => series.map(item => row[item.key])));
+  const scale = Math.max(1, sharedScale || localMax);
+  return <div className="rounded-lg bg-white p-3 sm:p-4">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      <div className="flex flex-wrap items-center gap-4">
+        {series.map(item => <div key={item.key} className="flex items-center gap-2 text-xs font-bold text-slate-700">
+          <span className="h-3 w-3 rounded-sm" style={{backgroundColor:item.color}}/>{item.label}
+        </div>)}
+      </div>
+      <span className="text-[10px] font-medium text-slate-500">Skala maksimum: {count(scale)} case</span>
     </div>
+    <div className="space-y-2.5">
+      {data.map(row => <div key={row.product} className="grid grid-cols-[minmax(105px,165px)_minmax(0,1fr)] items-center gap-3 border-b border-slate-100/80 pb-2.5 last:border-b-0 last:pb-0">
+        <p className="break-words text-[11px] font-semibold leading-snug text-[#214779]" title={row.product}>{row.product}</p>
+        <div className="space-y-1.5">
+          {series.map(item => {
+            const raw = row[item.key];
+            const value = Math.max(0,raw);
+            return <div key={item.key} className="grid grid-cols-[minmax(0,1fr)_45px] items-center gap-2" title={item.label+" · "+count(raw)+" case"}>
+              <div className="relative h-3.5 overflow-hidden rounded-sm bg-[#edf2f8]">
+                <div className="h-full rounded-r-sm transition-[width] duration-200" style={{
+                  width:Math.min(100,100*value/scale)+"%",
+                  minWidth:value>0?"3px":undefined,
+                  backgroundColor:item.color
+                }}/>
+              </div>
+              <span className="text-right text-[11px] font-extrabold tabular-nums text-[#1c426f]">{raw===0?"–":count(raw)}</span>
+            </div>;
+          })}
+        </div>
+      </div>)}
+      {!data.length&&<p className="py-10 text-center text-xs text-slate-500">Belum ada data produk untuk kategori ini.</p>}
+    </div>
+    <p className="mt-3 text-[10px] text-slate-500">Panjang batang mengikuti jumlah case; angka tepat ditampilkan di sisi kanan setiap batang.</p>
   </div>;
 };
 
@@ -170,6 +191,10 @@ const WeeklyMasReferenceCharts: React.FC<Props> = ({results,meetingDate}) => {
     const sort=(a:ProductBar,b:ProductBar)=> (b.Captive+b.CRM+b.Tender+b["Non Tender"])-(a.Captive+a.CRM+a.Tender+a["Non Tender"])||a.product.localeCompare(b.product);
     const unitTotals=(unit:MasUnit,seg?:string)=>results.groups.filter(x=>x.unit===unit&&(!seg||x.segment===seg)).reduce((n,x)=>n+x.cases,0);
     const unclassified=results.groups.filter(x=>x.segment==="Unclassified").reduce((n,x)=>n+x.cases,0);
+    const segmentMax = Math.max(1,
+      ...[...unitMap.Captive.values(), ...unitMap.CRM.values()]
+        .flatMap(row => [row.Tender, row["Non Tender"]]));
+
     return {
       overall:[...map.values()].sort(sort),
       captive:[...unitMap.Captive.values()].filter(x=>x.Tender+x["Non Tender"]>0).sort(sort),
@@ -177,7 +202,8 @@ const WeeklyMasReferenceCharts: React.FC<Props> = ({results,meetingDate}) => {
       cTotal:unitTotals("Captive"),rTotal:unitTotals("CRM"),
       cTender:unitTotals("Captive","Tender"),cNon:unitTotals("Captive","Non Tender"),
       rTender:unitTotals("CRM","Tender"),rNon:unitTotals("CRM","Non Tender"),
-      unclassified
+      unclassified,
+      segmentMax
     };
   },[results]);
   return <>
@@ -199,7 +225,7 @@ const WeeklyMasReferenceCharts: React.FC<Props> = ({results,meetingDate}) => {
           {unit:"CRM" as MasUnit,rows:data.crm,tender:data.rTender,non:data.rNon}
         ]).map(card=><div key={card.unit} className="overflow-hidden rounded-xl border border-blue-200 bg-white">
           <h3 className={"py-2 text-center text-sm font-extrabold text-white "+(card.unit==="Captive"?"bg-[#3973b5]":"bg-[#a2c42c]")}>{card.unit} Tender vs Non Tender</h3>
-          <QuotationGraph data={card.rows} mode="segments"/>
+          <QuotationGraph data={card.rows} mode="segments" sharedScale={data.segmentMax}/>
           <div className="mx-3 mb-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-2 text-center">
             <div><p className="text-xs font-semibold text-slate-600">Total Tender</p><p className="text-xl font-black text-blue-700">{count(card.tender)} <span className="text-xs font-medium">Case</span></p></div>
             <div className="border-l border-slate-200"><p className="text-xs font-semibold text-slate-600">Total Non Tender</p><p className="text-xl font-black text-[#7ca51c]">{count(card.non)} <span className="text-xs font-medium">Case</span></p></div>
