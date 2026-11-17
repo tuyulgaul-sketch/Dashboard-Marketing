@@ -62,7 +62,7 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
  const max=Math.max(leader?.premium||0,1);
  const cell=(n:number)=><span>{n===0?"–":number(n)}</span>;
  return <section id="mas-overall-dashboard" className="mas-report mas-overall-dashboard overflow-hidden rounded-2xl border border-blue-200 bg-[#f5faff] p-3 shadow-sm sm:p-5">
- <style>{"@media print {.mas-overall-dashboard {background:white!important;break-after:page;page-break-after:always}.mas-overall-dashboard .mas-overall-scroll{overflow:visible!important}.mas-overall-dashboard .mas-overall-matrix{min-width:0!important;width:100%!important}.mas-overall-dashboard .mas-overall-matrix th,.mas-overall-dashboard .mas-overall-matrix td{padding:2px!important;font-size:5.4px!important}.mas-overall-dashboard .mas-overall-kpis{grid-template-columns:repeat(7,minmax(0,1fr))!important}.mas-overall-dashboard .mas-overall-insights{grid-template-columns:repeat(4,minmax(0,1fr))!important} }"}</style>
+ <style>{"@media print {.mas-overall-dashboard {background:white!important;break-after:page;page-break-after:always}.mas-overall-dashboard .mas-overall-scroll{overflow:visible!important}.mas-overall-dashboard .mas-overall-matrix{min-width:0!important;width:100%!important}.mas-overall-dashboard .mas-overall-matrix th,.mas-overall-dashboard .mas-overall-matrix td{padding:2px!important;font-size:5.4px!important}.mas-overall-dashboard .mas-overall-kpis{grid-template-columns:repeat(7,minmax(0,1fr))!important}.mas-overall-dashboard .mas-overall-insights{grid-template-columns:repeat(5,minmax(0,1fr))!important} }"}</style>
  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 pb-3">
   <div><p className="text-[10px] font-bold uppercase tracking-widest text-[#3377b5]">PertaLife · Marketing Support</p>
    <h2 className="mt-1 text-xl font-black leading-tight text-[#173568] sm:text-[26px]">Dashboard Overall Progress &amp; Proyeksi Premi</h2>
@@ -132,14 +132,15 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
   Catatan: {number(missing.cases)} case dan {money(missing.premium)} belum diklasifikasikan sebagai Tender/Non Tender.
   Nilai itu tetap masuk Total tetapi tidak diasumsikan ke salah satu kategori.</p>}
 
- <div className="mas-overall-insights mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+ <div className="mas-overall-insights mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
   <div className="flex items-center gap-2 rounded-xl bg-[#123f85] p-3 text-white"><Lightbulb className="h-6 w-6 shrink-0"/><b className="text-xs uppercase">Insight Utama</b></div>
   <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white p-3"><Users className="h-6 w-6 shrink-0 text-[#227ee4]"/>
    <p className="text-[11px] leading-5 text-slate-700">Captive membukukan <b>{number(total.captive)} quotation</b> ({portion(total.captive,quotation)} dari total).</p></div>
   <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white p-3"><BarChart3 className="h-6 w-6 shrink-0 text-[#227ee4]"/>
    <p className="text-[11px] leading-5 text-slate-700">Non Tender mencakup <b>{number(nonTender)} case</b> dari {number(quotation)} quotation ({portion(nonTender,quotation)}).</p></div>
   <div className="flex items-center gap-2 rounded-xl border border-green-100 bg-white p-3"><TrendingUp className="h-6 w-6 shrink-0 text-[#168c64]"/>
-   <p className="text-[11px] leading-5 text-slate-700">{leader?<><b>{leader.product}</b> memiliki proyeksi premi tertinggi: <b>{short(leader.premium)}</b>.</>:"Belum ada nilai premi positif."} Total seluruh premi: <b>{short(total.premium)}</b>.</p></div>
+   <p className="text-[11px] leading-5 text-slate-700">{leader?<><b>{leader.product}</b> memiliki proyeksi premi tertinggi: <b>{short(leader.premium)}</b>.</>:"Belum ada nilai premi positif."}</p></div>
+  <div className="flex items-center gap-2 rounded-xl border border-purple-100 bg-white p-3"><Coins className="h-6 w-6 shrink-0 text-[#8034b8]"/><p className="text-[11px] leading-5 text-slate-700">Total proyeksi premi keseluruhan mencapai <b className="text-[#8034b8]">{short(total.premium)}</b>.</p></div>
  </div>
  <p className="mt-2 text-right text-[10px] font-medium text-slate-500">Berdasarkan data upload dan penyesuaian manual MAS untuk periode yang dipilih.</p>
  </section>;
