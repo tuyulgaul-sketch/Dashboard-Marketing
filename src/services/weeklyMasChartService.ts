@@ -65,3 +65,26 @@ export const removeMasOverride = async (id: string) => {
     .delete({count: "exact"}).eq("id", id);
   if (error || count !== 1) throw new Error(error?.message || "Penyesuaian tidak ditemukan atau akses ditolak.");
 };
+
+export type MasResetResult = {
+  meeting_date: string;
+  upload_versions_deleted: number;
+  manual_adjustments_deleted: number;
+};
+
+/** Permanently clear only the selected weekly period's CHART data.
+ * Atomic RPC with server-side Marketing Administration RLS checks.
+ */
+export const resetMasPeriod = async (meetingDate: string): Promise<MasResetResult> => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(meetingDate)) {
+    throw new Error("Tanggal meeting tidak valid.");
+  }
+  const { data, error } = await supabase.rpc("reset_weekly_marketing_chart", {
+    p_meeting_date: meetingDate
+  });
+  if (error) throw new Error(error.message);
+  if (!data || data.meeting_date !== meetingDate) {
+    throw new Error("Konfirmasi reset dari server tidak sesuai tanggal laporan.");
+  }
+  return data as MasResetResult;
+};

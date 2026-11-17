@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import MasExecutiveSummary from "@/components/weekly/MasExecutiveSummary";
 import WeeklyMasReferenceCharts from "@/components/weekly/WeeklyMasReferenceCharts";
 import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverride, type MasStatus, type MasUnit } from "@/utils/weeklyMasChartEngine";
-import { readMasPeriod, removeMasOverride, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
+import { readMasPeriod, removeMasOverride, resetMasPeriod, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
 
 type Props = { meetingDate: string; canManage: boolean };
 const statusNames: (MasStatus | "ALL")[] = ["ALL","Closing","Cancel","Feedback Marketing","Feedback Teknik","On Proses","Belum Terklasifikasi"];
@@ -100,6 +100,38 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan Excel.");}
     finally{setBusy(false);}
   };
+  const resetChart = async () => {
+    if (!canManage || busy || (!upload && manual.length === 0)) return;
+    const accepted = window.confirm(
+      "HAPUS DATA CHART — " + meetingDate + "\n\n" +
+      "Seluruh versi upload Excel dan " + manual.length + " penyesuaian manual pada tanggal ini akan DIHAPUS PERMANEN.\n" +
+      "Semua grafik akan kembali kosong sehingga MAS bisa upload ulang.\n\n" +
+      "Data INSPIRE dan laporan tanggal lain tidak akan berubah.\n\n" +
+      "Yakin ingin melanjutkan?"
+    );
+    if (!accepted) return;
+    setBusy(true);
+    try {
+      const deleted = await resetMasPeriod(meetingDate);
+      setUpload(null);
+      setManual([]);
+      setCandidate(null);
+      setDraft(emptyDraft());
+      setCaseInput("");
+      setPremiumInput("");
+      if (picker.current) picker.current.value = "";
+      await refresh();
+      toast.success(
+        "CHART " + meetingDate + " dikosongkan. " +
+        deleted.upload_versions_deleted + " versi upload dan " +
+        deleted.manual_adjustments_deleted + " penyesuaian manual dihapus."
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus data CHART.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const saveManual=async()=>{
     if(!canManage)return;
     const cases=numeric(caseInput),premi=numeric(premiumInput);
@@ -126,6 +158,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Periode {meetingDate}</p></div>
         <div className="flex flex-wrap gap-2">
+          {hasData&&canManage&&<button type="button" disabled={busy||loading} onClick={()=>void resetChart()} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" title={"Hapus data CHART khusus periode "+meetingDate}><Trash2 className="h-4 w-4"/>Hapus Data CHART</button>}
           {hasData&&<a href="#mas-overall-dashboard" className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs font-bold text-[#1b4a86] hover:bg-blue-100">Lihat Dashboard Overall</a>}
           <button onClick={()=>setFull(v=>!v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold">{full?<Minimize2 className="h-4 w-4"/>:<Maximize2 className="h-4 w-4"/>}{full?"Keluar Full Screen":"Full Screen"}</button>
           <button disabled={!hasData} onClick={()=>window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileDown className="h-4 w-4"/>Cetak / Simpan PDF</button>
@@ -134,6 +167,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
       <div className="mt-4 rounded-xl border border-dashed border-blue-300 bg-blue-50/50 p-4">
         <p className="flex items-center gap-2 text-sm font-bold"><UploadCloud className="h-5 w-5 text-blue-700"/>01 · Upload Excel Sumber</p>
         <p className="mt-2 text-xs text-slate-600">Pilih satu workbook yang memuat sheet <b>DATA CAPTIVE</b> dan <b>DATA CRM</b>. Sistem menyimpan rekap angka, bukan nama perusahaan atau data nasabah.</p>
+        {canManage && hasData && <p className="mt-2 text-xs text-slate-500">Untuk mulai ulang sepenuhnya pada periode ini, gunakan <b>Hapus Data CHART</b> di kanan atas. Tindakan itu juga menghapus semua versi upload dan penyesuaian manual periode ini.</p>}
         <input ref={picker} type="file" accept=".xlsx" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void readFile(file);}}/>
         {canManage?<button disabled={busy} onClick={()=>picker.current?.click()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>Pilih Excel</button>:<p className="mt-2 text-xs text-amber-800">Upload hanya untuk MAS atau root Marketing Support.</p>}
         {upload&&<p className="mt-3 text-xs text-slate-700">Upload aktif: <b>{upload.source_filename}</b> · {new Date(upload.created_at).toLocaleString("id-ID")}</p>}
