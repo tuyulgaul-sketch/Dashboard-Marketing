@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, ClipboardCheck, ClipboardList, Edit3, FileText, Lightbulb, Plus, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, ClipboardCheck, ClipboardList, Edit3, FileText, GripVertical, Lightbulb, Plus, Save, Trash2, X } from "lucide-react";
 import type { InspireDraft, InspireRow, InspireStatus, InspireUnit } from "@/services/weeklyMarketingReviewService";
 
 const UNIT_TITLES: Record<InspireUnit, string> = {
@@ -36,12 +36,17 @@ type Props = {
   fullscreen?: boolean;
   onSave: (draft: InspireDraft, existingId?: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onReorder: (unit: InspireUnit, orderedIds: string[]) => Promise<void>;
 };
 
-const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscreen = false, onSave, onDelete }) => {
+const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscreen = false, onSave, onDelete, onReorder }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<InspireDraft>(() => makeEmpty(unit));
   const [saving, setSaving] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
+  const reorderEnabled = canEdit && !loading && !saving && !reordering && !editingId && rows.length > 1;
   const newRowRef = useRef<HTMLTableRowElement>(null);
   useEffect(() => {
     if (editingId !== "NEW") return;
@@ -51,7 +56,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
     return () => cancelAnimationFrame(frame);
   }, [editingId]);
   useEffect(() => { setEditingId(null); setDraft(makeEmpty(unit)); }, [unit]);
-  const beginAdd = () => { setDraft(makeEmpty(unit)); setEditingId("NEW"); };
+  const beginAdd = () => { if (reordering) return; setDraft(makeEmpty(unit)); setEditingId("NEW"); };
   const beginEdit = (row: InspireRow) => {
     setDraft({ unit: row.unit, title: row.title, rootCause: row.rootCause, nextPlan: row.nextPlan, support: row.support, deliverable: row.deliverable, rangeTime: row.rangeTime, status: row.status });
     setEditingId(row.id);
@@ -139,6 +144,63 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
     catch { /* The parent will display the backend failure. */ }
     finally { setSaving(false); }
   };
+  const moveRow = async (sourceId: string, targetId: string, after: boolean) => {
+    if (!reorderEnabled || sourceId === targetId) return;
+    const sourceIndex = rows.findIndex(row => row.id === sourceId);
+    const targetIndex = rows.findIndex(row => row.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const next = [...rows];
+    const [moved] = next.splice(sourceIndex, 1);
+    let destination = targetIndex + (after ? 1 : 0);
+    if (sourceIndex < destination) destination--;
+    next.splice(destination, 0, moved);
+    if (next.every((row, index) => row.id === rows[index].id)) return;
+
+    setReordering(true);
+    try {
+      await onReorder(unit, next.map(row => row.id));
+    } catch {
+      // The parent shows a toast and reloads the canonical saved order.
+    } finally {
+      setReordering(false);
+    }
+  };
+  const dragRow = (event: React.DragEvent<HTMLButtonElement>, id: string) => {
+    if (!reorderEnabled) { event.preventDefault(); return; }
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+    setDraggedId(id);
+    setDropTarget(null);
+  };
+  const dragOverRow = (event: React.DragEvent<HTMLTableRowElement>, targetId: string) => {
+    if (!reorderEnabled || !draggedId || draggedId === targetId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    setDropTarget(previous => previous?.id === targetId && previous.after === after ? previous : { id: targetId, after });
+  };
+  const dropOnRow = (event: React.DragEvent<HTMLTableRowElement>, targetId: string) => {
+    if (!draggedId || !reorderEnabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    const sourceId = draggedId;
+    setDraggedId(null);
+    setDropTarget(null);
+    void moveRow(sourceId, targetId, after);
+  };
+  const keyboardMove = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!reorderEnabled || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const offset = event.key === "ArrowUp" ? -1 : 1;
+    const target = rows[index + offset];
+    if (target) void moveRow(rows[index].id, target.id, offset > 0);
+  };
   const inputRow = (id: string, index: number) => (
     <tr key={id} ref={id === "new-row" ? newRowRef : undefined} className="bg-blue-50/80 align-top">
       <td className="border border-slate-300 bg-[#2563a2] px-2 py-4 text-center text-xs font-bold text-white">{index}</td>
@@ -174,7 +236,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
           <div className="mt-2 flex h-1 w-48 gap-1"><span className="w-1/2 bg-[#347eb8]" /><span className="w-1/3 bg-[#8fae2d]" /><span className="flex-1 bg-[#e11d38]" /></div>
           <p className="mt-3 text-xs font-bold italic tracking-wide text-slate-900">LIST ACTION ITEM YANG PERLU DIMONITOR DAN DITINDAKLANJUTI</p>
         </div>
-        {canEdit && <button type="button" disabled={Boolean(editingId) || loading || saving} onClick={beginAdd} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#12375d] disabled:opacity-40"><Plus className="h-4 w-4" />Tambah Baris</button>}
+        {canEdit && <button type="button" disabled={Boolean(editingId) || loading || saving || reordering} onClick={beginAdd} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#12375d] disabled:opacity-40"><Plus className="h-4 w-4" />Tambah Baris</button>}
       </div>
       <div className={fullscreen ? "overflow-visible px-3 pb-5 sm:px-5" : "overflow-x-auto px-3 pb-5 sm:px-5"}>
         <table className="w-full min-w-[1470px] table-fixed border-collapse text-xs text-slate-900">
@@ -195,15 +257,35 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
             {!loading && rows.length === 0 && editingId !== "NEW" && <tr><td colSpan={canEdit ? 9 : 8} className="border border-slate-300 px-6 py-16 text-center text-sm text-slate-500">Belum ada action item untuk unit dan tanggal meeting ini. {canEdit ? "Klik Tambah Baris untuk mulai mengisi." : ""}</td></tr>}
             {loading && <tr><td colSpan={canEdit ? 9 : 8} className="border border-slate-300 px-6 py-12 text-center text-sm text-slate-500">Memuat list action...</td></tr>}
             {!loading && rows.map((row, index) => editingId === row.id ? inputRow(row.id, index + 1) :
-              <tr key={row.id} className="align-middle hover:bg-slate-50">
-                <td className={"border border-slate-300 px-2 py-6 text-center font-bold text-white " + markerColors[index % markerColors.length]}>{index + 1}</td>
+              <tr key={row.id}
+                onDragOver={event => dragOverRow(event, row.id)}
+                onDrop={event => dropOnRow(event, row.id)}
+                className={"align-middle hover:bg-slate-50 " +
+                  (draggedId === row.id ? "opacity-50 " : "") +
+                  (dropTarget?.id === row.id ? (dropTarget.after ? "[&>td]:border-b-4 [&>td]:border-b-blue-500" : "[&>td]:border-t-4 [&>td]:border-t-blue-500") : "")}>
+                <td className={"border border-slate-300 px-2 py-4 text-center font-bold text-white " + markerColors[index % markerColors.length]}>
+                  <div className="flex flex-col items-center gap-2">
+                    <span>{index + 1}</span>
+                    {canEdit && rows.length > 1 && <button type="button"
+                      draggable={Boolean(reorderEnabled)}
+                      disabled={!reorderEnabled}
+                      onDragStart={event => dragRow(event, row.id)}
+                      onDragEnd={() => { setDraggedId(null); setDropTarget(null); }}
+                      onKeyDown={event => keyboardMove(event, index)}
+                      title="Tarik untuk pindahkan baris; Alt + panah atas/bawah untuk mengatur urutan"
+                      aria-label={"Pindahkan baris " + (index + 1) + " " + row.title}
+                      className="inline-flex cursor-grab items-center justify-center rounded-md border border-white/40 bg-white/20 p-1.5 text-white hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing">
+                      <GripVertical className="h-4 w-4" />
+                    </button>}
+                  </div>
+                </td>
                 {[row.title, row.rootCause, row.nextPlan, row.support, row.deliverable, row.rangeTime].map((value, column) =>
                   <td key={column} className={"whitespace-pre-wrap break-words border border-slate-300 px-3 py-6 leading-5 " + ([0, 4, 5].includes(column) ? "text-center" : "text-left")}>{value || "—"}</td>
                 )}
                 <td className="border border-slate-300 px-2 py-6 text-center font-medium">{row.status}</td>
                 {canEdit && <td className="border border-slate-300 px-2 py-6 text-center"><div className="flex flex-col gap-2">
-                  <button type="button" disabled={Boolean(editingId) || saving} onClick={() => beginEdit(row)} className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40"><Edit3 className="h-3.5 w-3.5" />Edit</button>
-                  <button type="button" disabled={Boolean(editingId) || saving} onClick={() => void remove(row)} className="inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Hapus</button>
+                  <button type="button" disabled={Boolean(editingId) || saving || reordering} onClick={() => beginEdit(row)} className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40"><Edit3 className="h-3.5 w-3.5" />Edit</button>
+                  <button type="button" disabled={Boolean(editingId) || saving || reordering} onClick={() => void remove(row)} className="inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />Hapus</button>
                 </div></td>}
               </tr>
             )}
@@ -213,7 +295,7 @@ const InspireTable: React.FC<Props> = ({ unit, rows, canEdit, loading, fullscree
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs text-slate-500">
         <AlertTriangle className="h-4 w-4 shrink-0 text-slate-400" />
-        {canEdit ? "Isi per baris, lalu Simpan. Di Root Cause dan Next Plan, Enter melanjutkan nomor otomatis; Shift+Enter membuat baris biasa. Tekan Enter pada nomor kosong untuk berhenti. Data tersimpan per tanggal meeting." : "Mode baca: akun Anda hanya dapat mengedit unit sendiri. Seluruh unit Marketing Support tetap bisa dilihat."}
+        {canEdit ? "Tarik ikon titik di samping nomor untuk ubah urutan baris (atau Alt + panah atas/bawah). Urutan otomatis tersimpan. Root Cause dan Next Plan: Enter melanjutkan nomor, Shift+Enter baris biasa." : "Mode baca: akun Anda hanya dapat mengedit unit sendiri. Seluruh unit Marketing Support tetap bisa dilihat."}
       </div>
     </section>
   );

@@ -5,7 +5,7 @@ import { loadExcelJS } from "@/utils/exceljsLoader";
 import { toast } from "sonner";
 import InspireTable from "@/components/weekly/InspireTable";
 import WeeklyMasCharts from "@/components/weekly/WeeklyMasCharts";
-import { deleteWeeklyInspireRow, loadWeeklyInspireRows, saveWeeklyInspireRow, type InspireDraft, type InspireRow } from "@/services/weeklyMarketingReviewService";
+import { deleteWeeklyInspireRow, loadWeeklyInspireRows, reorderWeeklyInspireRows, saveWeeklyInspireRow, type InspireDraft, type InspireRow } from "@/services/weeklyMarketingReviewService";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown,
   ClipboardList, Download, FileSpreadsheet, FileText, Info, LayoutDashboard,
@@ -243,6 +243,35 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       toast.success("Baris berhasil dihapus.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal menghapus baris."); throw error; }
   };
+  const reorderInspire = async (unit: Unit, orderedIds: string[]) => {
+    if (ownUnit && ownUnit !== unit) throw new Error("Urutan unit lain tidak boleh diubah.");
+    const unitRows = inspireRows.filter(row => row.unit === unit);
+    const lookup = new Map(unitRows.map(row => [row.id, row]));
+    if (unitRows.length !== orderedIds.length || new Set(orderedIds).size !== orderedIds.length ||
+        orderedIds.some(id => !lookup.has(id))) {
+      toast.error("Daftar baris berubah. Muat ulang halaman sebelum mengurutkan.");
+      throw new Error("Urutan tidak valid.");
+    }
+    const sorted = orderedIds.map(id => lookup.get(id)!);
+    let nextIndex = 0;
+    const updated = inspireRows.map(row => row.unit === unit ? sorted[nextIndex++] : row);
+    setInspireRows(updated);
+    setActivities(updated.map(toActivity));
+    try {
+      await reorderWeeklyInspireRows(week, unit, orderedIds);
+      toast.success("Urutan baris INSPIRE tersimpan.");
+    } catch (error) {
+      try {
+        const canonical = await loadWeeklyInspireRows(week);
+        setInspireRows(canonical);
+        setActivities(canonical.map(toActivity));
+      } catch {
+        // Keep the visible rows, but tell the user this order was not saved.
+      }
+      toast.error("Urutan gagal disimpan: " + (error instanceof Error ? error.message : "Coba ulang."));
+      throw error;
+    }
+  };
   const shownActivities = activities;
   const shownProducts = demoMode ? DEMO_PRODUCTS : products;
   const shownStatuses = demoMode ? DEMO_STATUS : statuses;
@@ -479,6 +508,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
               fullscreen={inspireFullscreen}
               onSave={saveInspire}
               onDelete={deleteInspire}
+              onReorder={reorderInspire}
             />
           </div>
         </div>
