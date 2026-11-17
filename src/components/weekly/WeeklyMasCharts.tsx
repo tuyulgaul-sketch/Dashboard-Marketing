@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileDown, FileSpreadsheet, Maximize2, Minimize2, PencilLine, Save, Trash2, UploadCloud, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+import MasExecutiveSummary from "@/components/weekly/MasExecutiveSummary";
 import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverride, type MasStatus, type MasUnit } from "@/utils/weeklyMasChartEngine";
 import { readMasPeriod, removeMasOverride, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
 
@@ -123,7 +124,8 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     <section className="mas-controls rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Periode {meetingDate}</p></div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {hasData&&<a href="#mas-overall-dashboard" className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs font-bold text-[#1b4a86] hover:bg-blue-100">Lihat Dashboard Overall</a>}
           <button onClick={()=>setFull(v=>!v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold">{full?<Minimize2 className="h-4 w-4"/>:<Maximize2 className="h-4 w-4"/>}{full?"Keluar Full Screen":"Full Screen"}</button>
           <button disabled={!hasData} onClick={()=>window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileDown className="h-4 w-4"/>Cetak / Simpan PDF</button>
         </div>
@@ -145,14 +147,12 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     {loading&&<div className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Memuat laporan...</div>}
     {!loading&&!hasData&&<div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-500">Belum ada data CHART pada periode ini. Upload Excel sumber untuk memulai.</div>}
     {!loading&&hasData&&<>
-      <Box title="Executive Overview — Quotation & Proyeksi Premi" note={"Periode "+meetingDate+" · Hasil upload dan penyesuaian manual"}>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat title="Total Quotation" value={int(totals.cases)+" case"}/><Stat title="Captive" value={int(totals.captive)+" case"}/><Stat title="CRM" value={int(totals.crm)+" case"}/><Stat title="Total Proyeksi Premi" value={shortRp(totals.premium)} detail={rup(totals.premium)}/>
-        </div>
-        <div className={"mt-4 rounded-lg border p-3 "+(issues.length?"border-amber-200 bg-amber-50":"border-emerald-200 bg-emerald-50")}>
+      <MasExecutiveSummary meetingDate={meetingDate} results={result}/>
+      <Box title="Validasi Data dan Catatan Rekonsiliasi" note="Pastikan seluruh selisih diperiksa sebelum bahan digunakan untuk Direktur">
+        <div className={"rounded-lg border p-3 "+(issues.length?"border-amber-200 bg-amber-50":"border-emerald-200 bg-emerald-50")}>
           <div className="flex items-center gap-2 text-xs font-bold">{issues.length?<AlertTriangle className="h-4 w-4 text-amber-700"/>:<CheckCircle2 className="h-4 w-4 text-emerald-700"/>}{issues.length?issues.length+" catatan perlu pemeriksaan":"Tidak ada masalah yang terdeteksi"}</div>
-          <p className="mt-1 text-xs">Case belum terklasifikasi setelah penyesuaian: <b>{int(noStatus)}</b>. Nilai tambahan manual tidak otomatis dianggap Closing.</p>
-          {issues.length>0&&<div className="mt-2 grid gap-1 text-xs text-amber-800 sm:grid-cols-2">{issues.slice(0,8).map((issue,i)=><p key={i}>• {issue}</p>)}</div>}
+          <p className="mt-1 text-xs">Case dengan status belum terklasifikasi setelah penyesuaian: <b>{int(noStatus)}</b>. Nilai tambahan manual tidak otomatis dianggap Closing.</p>
+          {issues.length>0&&<div className="mt-2 grid gap-1 text-xs text-amber-800 sm:grid-cols-2">{issues.slice(0,12).map((issue,i)=><p key={i}>• {issue}</p>)}</div>}
         </div>
       </Box>
       <div className="grid gap-4 xl:grid-cols-2">
