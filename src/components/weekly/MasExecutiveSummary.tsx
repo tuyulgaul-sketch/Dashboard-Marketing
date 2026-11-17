@@ -137,7 +137,7 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
   <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white p-3"><Users className="h-6 w-6 shrink-0 text-[#227ee4]"/>
    <p className="text-[11px] leading-5 text-slate-700">Captive membukukan <b>{number(total.captive)} quotation</b> ({portion(total.captive,quotation)} dari total).</p></div>
   <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white p-3"><BarChart3 className="h-6 w-6 shrink-0 text-[#227ee4]"/>
-   <p className="text-[11px] leading-5 text-slate-700">Non Tender mendominasi dengan <b>{number(nonTender)} case</b> dari {number(quotation)} quotation ({portion(nonTender,quotation)}).</p></div>
+   <p className="text-[11px] leading-5 text-slate-700">Non Tender mencakup <b>{number(nonTender)} case</b> dari {number(quotation)} quotation ({portion(nonTender,quotation)}).</p></div>
   <div className="flex items-center gap-2 rounded-xl border border-green-100 bg-white p-3"><TrendingUp className="h-6 w-6 shrink-0 text-[#168c64]"/>
    <p className="text-[11px] leading-5 text-slate-700">{leader?<><b>{leader.product}</b> memiliki proyeksi premi tertinggi: <b>{short(leader.premium)}</b>.</>:"Belum ada nilai premi positif."} Total seluruh premi: <b>{short(total.premium)}</b>.</p></div>
  </div>
