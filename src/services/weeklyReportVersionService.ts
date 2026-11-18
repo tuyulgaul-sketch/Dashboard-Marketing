@@ -42,11 +42,21 @@ export async function readInspireVersions(
 }
 
 export async function listWeeklyRevisions():Promise<VersionHeader[]>{
-  const {data,error} = await supabase.from("weekly_marketing_revisions")
-    .select("id,revision_no,area,effective_date,created_at,created_by,source")
-    .order("revision_no",{ascending:false}).limit(300);
-  if(error)throw new Error(error.message);
-  return (data||[]) as VersionHeader[];
+  // Fetch history metadata in pages; the 17 November baseline must remain
+  // reachable after many years of weekly changes, not disappear after 300 saves.
+  const all:VersionHeader[]=[];
+  const size=500;
+  for(let offset=0;offset<10000;offset+=size){
+    const {data,error}=await supabase.from("weekly_marketing_revisions")
+      .select("id,revision_no,area,effective_date,created_at,created_by,source")
+      .order("revision_no",{ascending:false})
+      .range(offset,offset+size-1);
+    if(error)throw new Error(error.message);
+    const page=(data||[]) as VersionHeader[];
+    all.push(...page);
+    if(page.length<size)break;
+  }
+  return all;
 }
 
 /** Append a new immutable version. On concurrent edits, the server rejects a stale expected ID. */
