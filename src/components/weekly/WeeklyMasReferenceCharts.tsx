@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
 
 import { ClipboardList, Coins, Users, TrendingUp } from "lucide-react";
-import type { MasResults, MasStatus, MasUnit } from "@/utils/weeklyMasChartEngine";
+import type { MasResults, MasStatus, MasUnit, MasSegment } from "@/utils/weeklyMasChartEngine";
+import { DrillValue } from "@/components/weekly/MasDrilldown";
 
 type Props = { results: MasResults; meetingDate: string };
 type ProductBar = { product: string; Captive: number; CRM: number; Tender: number; "Non Tender": number };
@@ -42,10 +43,10 @@ const Slide: React.FC<{title: string; subheading?: string; children: React.React
     {children}
   </section>;
 
-const SmallTotal: React.FC<{label:string;value:number;color?:string}> = ({label,value,color="text-blue-700"}) =>
+const SmallTotal: React.FC<{label:string;value:number;color?:string;unit?:MasUnit;segment?:MasSegment}> = ({label,value,color="text-blue-700",unit,segment}) =>
   <div className="flex items-center justify-center gap-3 rounded-xl border border-blue-100 bg-white px-4 py-3">
     <Users className={"h-7 w-7 shrink-0 "+color}/>
-    <div><p className="text-xs font-bold text-slate-700">{label}</p><p className={"text-2xl font-black "+color}>{count(value)} <span className="text-xs font-medium text-slate-500">Case</span></p></div>
+    <div><p className="text-xs font-bold text-slate-700">{label}</p><p className={"text-2xl font-black "+color}><DrillValue target={{unit,segment,metric:"cases",title:label}}>{count(value)} <span className="text-xs font-medium text-slate-500">Case</span></DrillValue></p></div>
   </div>;
 
 /**
@@ -60,7 +61,8 @@ const QuotationGraph: React.FC<{
   data: ProductBar[];
   mode: "units" | "segments";
   sharedScale?: number;
-}> = ({ data, mode, sharedScale }) => {
+  unit?: MasUnit;
+}> = ({ data, mode, sharedScale, unit }) => {
   const series = mode === "units"
     ? [{ key: "Captive" as const, label: "Captive", color: BLUE }, { key: "CRM" as const, label: "CRM", color: LIME }]
     : [{ key: "Tender" as const, label: "Tender", color: BLUE }, { key: "Non Tender" as const, label: "Non Tender", color: LIME }];
@@ -90,7 +92,7 @@ const QuotationGraph: React.FC<{
                   backgroundColor:item.color
                 }}/>
               </div>
-              <span className="text-right text-[11px] font-extrabold tabular-nums text-[#1c426f]">{raw===0?"–":count(raw)}</span>
+              <DrillValue target={{product:row.product,unit:mode==="units"?item.key as MasUnit:unit,segment:mode==="segments"?item.key as MasSegment:undefined,metric:"cases"}} className="text-right text-[11px] font-extrabold tabular-nums text-[#1c426f]">{raw===0?"–":count(raw)}</DrillValue>
             </div>;
           })}
         </div>
@@ -120,18 +122,18 @@ const SummaryStatus: React.FC<{kind:"Tender"|"Non Tender";results:MasResults;mee
       <div className="rounded-xl border border-blue-300 bg-white p-4">
         <div className="flex items-center gap-2"><Users className="h-6 w-6 text-blue-600"/><p className="text-sm font-extrabold uppercase text-[#174c9a]">Total Case</p></div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-center">
-          <div className="border-r border-blue-200"><div className="text-3xl font-black text-blue-700">{count(capt.cases)}</div><p className="text-xs font-semibold">Captive</p></div>
-          <div><div className="text-3xl font-black text-blue-700">{count(crm.cases)}</div><p className="text-xs font-semibold">CRM</p></div>
+          <div className="border-r border-blue-200"><div className="text-3xl font-black text-blue-700"><DrillValue target={{unit:"Captive",segment:kind,metric:"cases"}}>{count(capt.cases)}</DrillValue></div><p className="text-xs font-semibold">Captive</p></div>
+          <div><div className="text-3xl font-black text-blue-700"><DrillValue target={{unit:"CRM",segment:kind,metric:"cases"}}>{count(crm.cases)}</DrillValue></div><p className="text-xs font-semibold">CRM</p></div>
         </div>
-        <p className="mx-auto mt-4 max-w-[240px] rounded-full bg-[#123b84] py-1.5 text-center text-sm font-black text-white">{count(totalCase)} TOTAL CASE</p>
+        <p className="mx-auto mt-4 max-w-[240px] rounded-full bg-[#123b84] py-1.5 text-center text-sm font-black text-white"><DrillValue target={{segment:kind,metric:"cases"}}>{count(totalCase)} TOTAL CASE</DrillValue></p>
       </div>
       <div className="rounded-xl border border-emerald-300 bg-white p-4">
         <div className="flex items-center gap-2"><Coins className="h-6 w-6 text-green-700"/><p className="text-sm font-extrabold uppercase text-green-800">Total Proyeksi Premi</p></div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-center">
-          <div className="border-r border-green-200"><div className="text-xl font-black text-green-800">{compact(capt.premium)}</div><p className="text-xs font-semibold">Captive</p></div>
-          <div><div className="text-xl font-black text-green-800">{compact(crm.premium)}</div><p className="text-xs font-semibold">CRM</p></div>
+          <div className="border-r border-green-200"><div className="text-xl font-black text-green-800"><DrillValue target={{unit:"Captive",segment:kind,metric:"premium"}}>{compact(capt.premium)}</DrillValue></div><p className="text-xs font-semibold">Captive</p></div>
+          <div><div className="text-xl font-black text-green-800"><DrillValue target={{unit:"CRM",segment:kind,metric:"premium"}}>{compact(crm.premium)}</DrillValue></div><p className="text-xs font-semibold">CRM</p></div>
         </div>
-        <p className="mx-auto mt-4 max-w-[290px] rounded-full bg-green-700 py-1.5 text-center text-sm font-black text-white">{compact(totalPremium)} TOTAL PROYEKSI PREMI</p>
+        <p className="mx-auto mt-4 max-w-[290px] rounded-full bg-green-700 py-1.5 text-center text-sm font-black text-white"><DrillValue target={{segment:kind,metric:"premium"}}>{compact(totalPremium)} TOTAL PROYEKSI PREMI</DrillValue></p>
       </div>
     </div>
     <div className="mt-3 overflow-x-auto rounded-xl border border-blue-200 bg-white">
@@ -145,12 +147,12 @@ const SummaryStatus: React.FC<{kind:"Tender"|"Non Tender";results:MasResults;mee
         <tbody>
           {details.map((row,i)=><tr key={row.name} className={i%2?"bg-[#f2f7ff]":"bg-white"}>
             <td className="border border-slate-200 px-3 py-3 font-semibold"><span className="mr-2">{statusIcons[row.name]}</span>{row.name}</td>
-            <td className="border border-slate-200 p-2 text-center font-bold text-blue-800">{count(row.captive)}</td>
-            <td className="border border-slate-200 p-2 text-center font-bold text-blue-800">{count(row.crm)}</td>
-            <td className="border border-slate-200 p-2 text-right">{row.captivePremium===0?"–":money(row.captivePremium)}</td>
-            <td className="border border-slate-200 p-2 text-right">{row.crmPremium===0?"–":money(row.crmPremium)}</td>
+            <td className="border border-slate-200 p-2 text-center font-bold text-blue-800"><DrillValue target={{unit:"Captive",segment:kind,status:row.name,metric:"cases"}}>{count(row.captive)}</DrillValue></td>
+            <td className="border border-slate-200 p-2 text-center font-bold text-blue-800"><DrillValue target={{unit:"CRM",segment:kind,status:row.name,metric:"cases"}}>{count(row.crm)}</DrillValue></td>
+            <td className="border border-slate-200 p-2 text-right"><DrillValue target={{unit:"Captive",segment:kind,status:row.name,metric:"premium"}}>{row.captivePremium===0?"–":money(row.captivePremium)}</DrillValue></td>
+            <td className="border border-slate-200 p-2 text-right"><DrillValue target={{unit:"CRM",segment:kind,status:row.name,metric:"premium"}}>{row.crmPremium===0?"–":money(row.crmPremium)}</DrillValue></td>
             {([{value:row.captive,total:capt.cases},{value:row.crm,total:crm.cases}]).map((entry,j)=><td key={j} className="border border-slate-200 px-2 py-2">
-              <div className="flex items-center gap-2"><span className="w-11 shrink-0 text-right font-medium">{percentage(entry.value,entry.total)}</span>
+              <div className="flex items-center gap-2"><span className="w-11 shrink-0 text-right font-medium"><DrillValue target={{unit:j===0?"Captive":"CRM",segment:kind,status:row.name,metric:"cases"}}>{percentage(entry.value,entry.total)}</DrillValue></span>
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-green-700" style={{width:(entry.total?Math.max(0,Math.min(100,100*entry.value/entry.total)):0)+"%"}}/></div></div>
             </td>)}
           </tr>)}
@@ -214,8 +216,8 @@ const WeeklyMasReferenceCharts: React.FC<Props> = ({results,meetingDate}) => {
         <QuotationGraph data={data.overall} mode="units"/>
       </div>
       <div className="mx-auto mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
-        <SmallTotal label="Total Captive" value={data.cTotal} color="text-[#2f72c1]"/>
-        <SmallTotal label="Total CRM" value={data.rTotal} color="text-[#8aae22]"/>
+        <SmallTotal label="Total Captive" value={data.cTotal} unit="Captive" color="text-[#2f72c1]"/>
+        <SmallTotal label="Total CRM" value={data.rTotal} unit="CRM" color="text-[#8aae22]"/>
       </div>
     </Slide>
     <Slide title="LIST ACTION - DH MARKETING ADMINISTRATION" id="mas-reference-business-type" index={3} meetingDate={meetingDate}>
@@ -225,10 +227,10 @@ const WeeklyMasReferenceCharts: React.FC<Props> = ({results,meetingDate}) => {
           {unit:"CRM" as MasUnit,rows:data.crm,tender:data.rTender,non:data.rNon}
         ]).map(card=><div key={card.unit} className="overflow-hidden rounded-xl border border-blue-200 bg-white">
           <h3 className={"py-2 text-center text-sm font-extrabold text-white "+(card.unit==="Captive"?"bg-[#3973b5]":"bg-[#a2c42c]")}>{card.unit} Tender vs Non Tender</h3>
-          <QuotationGraph data={card.rows} mode="segments" sharedScale={data.segmentMax}/>
+          <QuotationGraph data={card.rows} mode="segments" sharedScale={data.segmentMax} unit={card.unit}/>
           <div className="mx-3 mb-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-2 text-center">
-            <div><p className="text-xs font-semibold text-slate-600">Total Tender</p><p className="text-xl font-black text-blue-700">{count(card.tender)} <span className="text-xs font-medium">Case</span></p></div>
-            <div className="border-l border-slate-200"><p className="text-xs font-semibold text-slate-600">Total Non Tender</p><p className="text-xl font-black text-[#7ca51c]">{count(card.non)} <span className="text-xs font-medium">Case</span></p></div>
+            <div><p className="text-xs font-semibold text-slate-600">Total Tender</p><p className="text-xl font-black text-blue-700"><DrillValue target={{unit:card.unit,segment:"Tender",metric:"cases"}}>{count(card.tender)} <span className="text-xs font-medium">Case</span></DrillValue></p></div>
+            <div className="border-l border-slate-200"><p className="text-xs font-semibold text-slate-600">Total Non Tender</p><p className="text-xl font-black text-[#7ca51c]"><DrillValue target={{unit:card.unit,segment:"Non Tender",metric:"cases"}}>{count(card.non)} <span className="text-xs font-medium">Case</span></DrillValue></p></div>
           </div>
         </div>)}
       </div>

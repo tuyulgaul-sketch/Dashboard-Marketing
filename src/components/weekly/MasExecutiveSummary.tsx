@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { BarChart3, Boxes, Building2, ClipboardList, Coins, Lightbulb, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import type { MasResults } from "@/utils/weeklyMasChartEngine";
+import { DrillValue, type MasDrillTarget } from "@/components/weekly/MasDrilldown";
 
 type Props = { meetingDate: string; results: MasResults };
 type Line = {
@@ -60,7 +61,18 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
  const nonTender=total.cNon+total.rNon;
  const leader=top[0];
  const max=Math.max(leader?.premium||0,1);
- const cell=(n:number)=><span>{n===0?"–":number(n)}</span>;
+ const filters: Omit<MasDrillTarget,"metric"|"product">[] = [
+   {unit:"Captive"},{unit:"CRM"},
+   {unit:"Captive",segment:"Tender"},{unit:"Captive",segment:"Non Tender"},{unit:"Captive"},
+   {unit:"CRM",segment:"Tender"},{unit:"CRM",segment:"Non Tender"},{unit:"CRM"},
+   {unit:"Captive",segment:"Tender"},{unit:"Captive",segment:"Non Tender"},{unit:"Captive"},
+   {unit:"CRM",segment:"Tender"},{unit:"CRM",segment:"Non Tender"},{unit:"CRM"},
+   {}
+ ];
+ const cell=(value:number, index:number, product?:string)=><DrillValue
+   target={{...filters[index],product,metric:index>=8?"premium":"cases",title:product||"Grand Total"}}>
+   {value===0?"–":number(value)}
+ </DrillValue>;
  return <section id="mas-overall-dashboard" className="mas-report mas-overall-dashboard overflow-hidden rounded-2xl border border-blue-200 bg-[#f5faff] p-3 shadow-sm sm:p-5">
  <style>{"@media print {.mas-overall-dashboard {background:white!important;break-after:page;page-break-after:always}.mas-overall-dashboard .mas-overall-scroll{overflow:visible!important}.mas-overall-dashboard .mas-overall-matrix{min-width:0!important;width:100%!important}.mas-overall-dashboard .mas-overall-matrix th,.mas-overall-dashboard .mas-overall-matrix td{padding:2px!important;font-size:5.4px!important}.mas-overall-dashboard .mas-overall-kpis{grid-template-columns:repeat(7,minmax(0,1fr))!important}.mas-overall-dashboard .mas-overall-insights{grid-template-columns:repeat(5,minmax(0,1fr))!important} }"}</style>
  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 pb-3">
@@ -72,13 +84,13 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
  </div>
 
  <div className="mas-overall-kpis grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-  <Kpi label="Total Quotation" value={number(quotation)} icon={ClipboardList} tone="bg-[#237cdd]"/>
+  <DrillValue target={{metric:"cases",title:"Total Quotation"}} block><Kpi label="Total Quotation" value={number(quotation)} icon={ClipboardList} tone="bg-[#237cdd]"/></DrillValue>
   <Kpi label="Total Produk" value={number(rows.length)} icon={Boxes} tone="bg-[#2a8bef]"/>
-  <Kpi label="Captive Progress Total" value={number(total.captive)} icon={Users} tone="bg-[#1d9f6f]"/>
-  <Kpi label="CRM Progress Total" value={number(total.crm)} icon={Building2} tone="bg-[#269e74]"/>
-  <Kpi label="Captive Total Proyeksi Premi" value={short(total.pcTotal)} icon={ShieldCheck} tone="bg-[#662ebe]"/>
-  <Kpi label="CRM Total Proyeksi Premi" value={short(total.prTotal)} icon={ShieldCheck} tone="bg-[#813acb]"/>
-  <Kpi label="Total Proyeksi Premi Keseluruhan" value={short(total.premium)} icon={Coins} tone="bg-[#1b74df]"/>
+  <DrillValue target={{metric:"cases",unit:"Captive",title:"Total Quotation Captive"}} block><Kpi label="Captive Progress Total" value={number(total.captive)} icon={Users} tone="bg-[#1d9f6f]"/></DrillValue>
+  <DrillValue target={{metric:"cases",unit:"CRM",title:"Total Quotation CRM"}} block><Kpi label="CRM Progress Total" value={number(total.crm)} icon={Building2} tone="bg-[#269e74]"/></DrillValue>
+  <DrillValue target={{metric:"premium",unit:"Captive",title:"Proyeksi Premi Captive"}} block><Kpi label="Captive Total Proyeksi Premi" value={short(total.pcTotal)} icon={ShieldCheck} tone="bg-[#662ebe]"/></DrillValue>
+  <DrillValue target={{metric:"premium",unit:"CRM",title:"Proyeksi Premi CRM"}} block><Kpi label="CRM Total Proyeksi Premi" value={short(total.prTotal)} icon={ShieldCheck} tone="bg-[#813acb]"/></DrillValue>
+  <DrillValue target={{metric:"premium",title:"Total Proyeksi Premi"}} block><Kpi label="Total Proyeksi Premi Keseluruhan" value={short(total.premium)} icon={Coins} tone="bg-[#1b74df]"/></DrillValue>
  </div>
 
  <div className="mt-3 rounded-xl border border-blue-100 bg-white p-4">
@@ -88,7 +100,7 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
    <span className="truncate text-[11px] font-bold text-[#204679]" title={r.product}>{r.product}</span>
    <div className="relative h-5 overflow-hidden rounded bg-[#f0f6ff]">
     <div className="h-full rounded-r bg-gradient-to-r from-[#3198fb] to-[#1467d9]" style={{width:((100*r.premium/max)+"%")}}/>
-    <span className="absolute right-0 top-0 rounded bg-white/95 px-1 text-[10px] font-bold text-[#163a75]">{money(r.premium)}</span>
+    <DrillValue target={{product:r.product,metric:"premium",title:"Top 5 Proyeksi Premi"}} className="absolute right-0 top-0 rounded bg-white/95 px-1 text-[10px] font-bold text-[#163a75]">{money(r.premium)}</DrillValue>
    </div>
   </div>)}
   {!top.length&&<p className="p-6 text-center text-xs text-slate-500">Belum ada data premi positif.</p>}</div>
@@ -120,11 +132,11 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
   <tbody>
    {rows.map((r,i)=><tr key={r.product} className={i%2?"bg-[#f3f8ff]":"bg-white"}>
     <td className="sticky left-0 z-[1] border border-slate-200 bg-inherit px-2 py-2 font-bold text-[#173568]">{r.product}</td>
-    {keys.map((key,j)=><td key={j} className={"whitespace-nowrap border border-slate-200 px-1.5 py-2 text-right tabular-nums "+([4,7,10,13,14].includes(j)?"font-extrabold":"")}>{cell(r[key])}</td>)}
+    {keys.map((key,j)=><td key={j} className={"whitespace-nowrap border border-slate-200 px-1.5 py-2 text-right tabular-nums "+([4,7,10,13,14].includes(j)?"font-extrabold":"")}>{cell(r[key],j,r.product)}</td>)}
    </tr>)}
    <tr className="bg-[#1b4a86] font-extrabold text-white">
     <td className="sticky left-0 z-[1] border border-white/30 bg-[#1b4a86] p-2">Grand Total</td>
-    {keys.map((key,j)=><td key={j} className="whitespace-nowrap border border-white/30 px-1 py-2 text-right tabular-nums">{number(total[key])}</td>)}
+    {keys.map((key,j)=><td key={j} className="whitespace-nowrap border border-white/30 px-1 py-2 text-right tabular-nums">{cell(total[key],j)}</td>)}
    </tr>
   </tbody>
  </table></div>

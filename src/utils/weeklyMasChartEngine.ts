@@ -15,7 +15,21 @@ export type MasMeta = {
   normalizedStatus: number;
   notes: string[];
 };
-export type MasParsed = { buckets: MasBucket[]; meta: MasMeta };
+export type MasSourceDetail = {
+  source_row: number;
+  unit: MasUnit;
+  segment: MasSegment;
+  product: string;
+  status: MasStatus;
+  company_name: string;
+  quotation_date: string;
+  nb_rn: string;
+  participants: string;
+  premium: number;
+  marketing: string;
+  source_sheet: string;
+};
+export type MasParsed = { buckets: MasBucket[]; details: MasSourceDetail[]; meta: MasMeta };
 export type MasOverride = {
   id: string;
   meeting_date: string;
@@ -102,7 +116,7 @@ const valueMoney = (raw: unknown): { amount: number; invalid: boolean } => {
   return { amount: Number.isFinite(result) ? result : 0, invalid: !Number.isFinite(result) };
 };
 
-/** Reads only aggregated values; company, client, and participant identities never leave the browser. */
+/** Reads approved quotation fields for aggregate reporting and secure per-upload drill-down. */
 export const parseWeeklyMasFile = async (file: File): Promise<MasParsed> => {
   if (!/\.xlsx$/i.test(file.name)) throw new Error("Gunakan file Excel .xlsx.");
   if (file.size > 25 * 1024 * 1024) throw new Error("File lebih dari 25 MB. Kurangi ukuran workbook terlebih dahulu.");
@@ -118,6 +132,14 @@ export const parseWeeklyMasFile = async (file: File): Promise<MasParsed> => {
     invalidPremium: 0, unknownSegment: 0, unknownStatus: 0, normalizedStatus: 0, notes: []
   };
   const aggregate = new Map<string, MasBucket>();
+  const details: MasSourceDetail[] = [];
+  const quotationDate = (raw: unknown): string => {
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+    if (typeof raw === "number" && raw > 20000 && raw < 90000) {
+      return new Date(Math.round((raw - 25569) * 86400000)).toISOString().slice(0, 10);
+    }
+    return valueText(raw);
+  };
   for (const config of configs) {
     const sheet = wb.getWorksheet(config.sheet);
     if (!sheet) throw new Error('Sheet "' + config.sheet + '" tidak ditemukan.');
@@ -151,12 +173,26 @@ export const parseWeeklyMasFile = async (file: File): Promise<MasParsed> => {
       existing.cases += 1;
       existing.premium += money.amount;
       aggregate.set(key, existing);
+      details.push({
+        source_row: i,
+        unit: config.unit,
+        segment,
+        product,
+        status,
+        company_name: company || "(Nama perusahaan kosong)",
+        quotation_date: quotationDate(sheet.getCell("C" + i).value),
+        nb_rn: valueText(sheet.getCell("G" + i).value),
+        participants: valueText(sheet.getCell("I" + i).value),
+        premium: money.amount,
+        marketing: valueText(sheet.getCell((config.unit === "Captive" ? "M" : "L") + i).value),
+        source_sheet: config.sheet
+      });
     }
   }
   if (!meta.rows.Captive && !meta.rows.CRM) throw new Error("Tidak ada record quotation yang terbaca pada kedua sheet.");
   if (meta.rows.Captive) meta.notes.push("Captive: " + meta.rows.Captive.toLocaleString("id-ID") + " record sumber.");
   if (meta.rows.CRM) meta.notes.push("CRM: " + meta.rows.CRM.toLocaleString("id-ID") + " record sumber.");
-  return { buckets: [...aggregate.values()], meta };
+  return { buckets: [...aggregate.values()], details, meta };
 };
 
 const adjustValue = (base: number, amount: number | null, method: MasOverride["method"]) => {

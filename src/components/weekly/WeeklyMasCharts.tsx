@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { toast } from "sonner";
 import MasExecutiveSummary from "@/components/weekly/MasExecutiveSummary";
 import WeeklyMasReferenceCharts from "@/components/weekly/WeeklyMasReferenceCharts";
+import { MasDrilldownProvider } from "@/components/weekly/MasDrilldown";
 import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverride, type MasStatus, type MasUnit } from "@/utils/weeklyMasChartEngine";
 import { readMasPeriod, removeMasOverride, resetMasPeriod, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
 
@@ -96,7 +97,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
   };
   const saveFile=async()=>{
     if(!candidate||!canManage)return;setBusy(true);
-    try{await saveMasUpload(meetingDate,candidate.filename,candidate.data.buckets,candidate.data.meta);setCandidate(null);await refresh();toast.success("Data agregat tersimpan. Grafik diperbarui.");}
+    try{await saveMasUpload(meetingDate,candidate.filename,candidate.data.buckets,candidate.data.meta,candidate.data.details);setCandidate(null);await refresh();toast.success("Data agregat tersimpan. Grafik diperbarui.");}
     catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan Excel.");}
     finally{setBusy(false);}
   };
@@ -153,7 +154,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     finally{setBusy(false);}
   };
   return <div id="mas-chart-root" className={full?"fixed inset-0 z-[1000] overflow-auto bg-slate-100 p-3 sm:p-5":"space-y-5"}>
-    <style>{'@media print{@page{size:landscape;margin:10mm}#mas-chart-root{position:static!important;padding:0!important}.mas-controls{display:none!important}.mas-report{box-shadow:none!important;border:0!important;margin-bottom:9mm;break-inside:auto}.mas-report .overflow-auto{max-height:none!important;overflow:visible!important}.mas-report tr{break-inside:avoid}.recharts-responsive-container{height:250px!important}}'}</style>
+    <style>{'@media print{@page{size:landscape;margin:10mm}#mas-chart-root{position:static!important;padding:0!important}.mas-drilldown-modal{display:none!important}.mas-drill-number{text-decoration:none!important}.mas-controls{display:none!important}.mas-report{box-shadow:none!important;border:0!important;margin-bottom:9mm;break-inside:auto}.mas-report .overflow-auto{max-height:none!important;overflow:visible!important}.mas-report tr{break-inside:avoid}.recharts-responsive-container{height:250px!important}}'}</style>
     <section className="mas-controls rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Periode {meetingDate}</p></div>
@@ -170,18 +171,20 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
         {canManage && hasData && <p className="mt-2 text-xs text-slate-500">Untuk mulai ulang sepenuhnya pada periode ini, gunakan <b>Hapus Data CHART</b> di kanan atas. Tindakan itu juga menghapus semua versi upload dan penyesuaian manual periode ini.</p>}
         <input ref={picker} type="file" accept=".xlsx" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void readFile(file);}}/>
         {canManage?<button disabled={busy} onClick={()=>picker.current?.click()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>Pilih Excel</button>:<p className="mt-2 text-xs text-amber-800">Upload hanya untuk MAS atau root Marketing Support.</p>}
-        {upload&&<p className="mt-3 text-xs text-slate-700">Upload aktif: <b>{upload.source_filename}</b> · {new Date(upload.created_at).toLocaleString("id-ID")}</p>}
+        {upload&&<p className="mt-3 text-xs text-slate-700">Upload aktif: <b>{upload.source_filename}</b> · {new Date(upload.created_at).toLocaleString("id-ID")} · {int(upload.details_count||0)} baris rincian tersimpan</p>}
+        {upload&&upload.details_count===0&&<p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Upload lama hanya berisi rekap angka. Upload Excel yang sama sekali lagi untuk mengaktifkan pop-up nama perusahaan pada CHART. Tidak perlu Hapus Data CHART.</p>}
+        <p className="mt-2 text-xs text-slate-500">Mulai upload berikutnya, nama perusahaan dan detail quotation relevan disimpan sebagai data internal yang hanya dapat dilihat pengguna Marketing Support.</p>
       </div>
       {candidate&&<div className="mt-3 rounded-xl border border-blue-300 p-4">
         <p className="text-sm font-bold">Preview: {candidate.filename}</p>
-        <p className="mt-1 text-xs text-slate-600">Captive {int(candidate.data.meta.rows.Captive)} record · CRM {int(candidate.data.meta.rows.CRM)} record · {candidate.data.buckets.length} kelompok agregat</p>
+        <p className="mt-1 text-xs text-slate-600">Captive {int(candidate.data.meta.rows.Captive)} record · CRM {int(candidate.data.meta.rows.CRM)} record · {candidate.data.buckets.length} kelompok agregat · {candidate.data.details.length} detail quotation</p>
         <p className="mt-2 text-xs text-amber-800">Periksa: produk kosong {candidate.data.meta.missingProduct}, jenis bisnis kosong {candidate.data.meta.missingSegment}, status kosong {candidate.data.meta.missingStatus}, premi invalid {candidate.data.meta.invalidPremium}.</p>
         <div className="mt-3 flex gap-2"><button disabled={busy} onClick={()=>void saveFile()} className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white">Simpan Upload & Buat Chart</button><button onClick={()=>setCandidate(null)} className="rounded-lg border px-4 py-2 text-xs">Batal</button></div>
       </div>}
     </section>
     {loading&&<div className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Memuat laporan...</div>}
     {!loading&&!hasData&&<div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-500">Belum ada data CHART pada periode ini. Upload Excel sumber untuk memulai.</div>}
-    {!loading&&hasData&&<>
+    {!loading&&hasData&&<MasDrilldownProvider upload={upload} overrides={manual} results={result}>
       <MasExecutiveSummary meetingDate={meetingDate} results={result}/>
       <WeeklyMasReferenceCharts results={result} meetingDate={meetingDate}/>
       <div className="mas-controls mt-4">
@@ -193,7 +196,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
         </div>
       </Box>
       </div>
-    </>}
+    </MasDrilldownProvider>}
     <section id="mas-manual-form" className="mas-controls rounded-2xl border border-slate-200 bg-white p-5">
       <div className="flex items-center gap-2"><PencilLine className="h-5 w-5 text-blue-700"/><h3 className="text-lg font-black text-[#173f73]">Penyesuaian Data Manual</h3></div>
       <p className="mt-2 text-xs leading-5 text-slate-600">Pilih produk apa pun. <b>Ganti Total</b> mengganti nilai kategori; <b>Tambah Selisih</b> menambah/mengurangi nilai. Jika mengubah total tanpa rincian status, selisihnya dicatat sebagai Belum Terklasifikasi.</p>
