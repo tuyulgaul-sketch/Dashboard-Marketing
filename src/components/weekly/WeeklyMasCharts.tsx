@@ -6,9 +6,10 @@ import MasExecutiveSummary from "@/components/weekly/MasExecutiveSummary";
 import WeeklyMasReferenceCharts from "@/components/weekly/WeeklyMasReferenceCharts";
 import { MasDrilldownProvider } from "@/components/weekly/MasDrilldown";
 import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverride, type MasStatus, type MasUnit } from "@/utils/weeklyMasChartEngine";
-import { readMasPeriod, removeMasOverride, resetMasPeriod, saveMasOverride, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
+import { readMasVersion, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
+import { emptyChartSnapshot, saveWeeklyRevision, type ChartSnapshot, type WeeklyRevision } from "@/services/weeklyReportVersionService";
 
-type Props = { meetingDate: string; canManage: boolean };
+type Props = { meetingDate: string; canManage: boolean; readOnly?: boolean; revisionCutoff?: number | null; reloadTick?: number; onVersionSaved?: () => void };
 const statusNames: (MasStatus | "ALL")[] = ["ALL","Closing","Cancel","Feedback Marketing","Feedback Teknik","On Proses","Belum Terklasifikasi"];
 const colors: Record<MasStatus, string> = {"Closing":"#2ca76b","Cancel":"#da5569","Feedback Marketing":"#edb246","Feedback Teknik":"#6196d7","On Proses":"#8569c3","Belum Terklasifikasi":"#9ca3af"};
 const int = (x:number) => new Intl.NumberFormat("id-ID",{maximumFractionDigits:0}).format(x);
@@ -29,22 +30,35 @@ const Box: React.FC<{title:string;note?:string;children:React.ReactNode}> = ({ti
 const Stat: React.FC<{title:string;value:string;detail?:string}> = ({title,value,detail}) =>
   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">{title}</p><p className="mt-2 text-xl font-black text-slate-900">{value}</p>{detail&&<p className="mt-1 text-[11px] text-slate-500">{detail}</p>}</div>;
 
-const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
+const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage,readOnly=false,revisionCutoff=null,reloadTick=0,onVersionSaved}) => {
   const picker=useRef<HTMLInputElement>(null);
   const [upload,setUpload]=useState<MasUpload|null>(null);
+  const [revision,setRevision]=useState<WeeklyRevision<ChartSnapshot>|null>(null);
   const [manual,setManual]=useState<MasOverride[]>([]);
   const [candidate,setCandidate]=useState<{filename:string;data:MasParsed}|null>(null);
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[full,setFull]=useState(false);
   const [draft,setDraft]=useState<MasManualDraft>(emptyDraft);
   const [caseInput,setCaseInput]=useState(""),[premiumInput,setPremiumInput]=useState("");
-  const refresh=async()=>{const result=await readMasPeriod(meetingDate);setUpload(result.upload);setManual(result.overrides);};
+  const refresh=async()=>{
+    const data=await readMasVersion(meetingDate,revisionCutoff);
+    setUpload(data.upload);setManual(data.overrides);setRevision(data.revision);
+  };
   useEffect(()=>{
-    let alive=true;setLoading(true);setUpload(null);setManual([]);setCandidate(null);
-    readMasPeriod(meetingDate).then(data=>{if(alive){setUpload(data.upload);setManual(data.overrides);}})
-      .catch(err=>{if(alive)toast.error(err instanceof Error?err.message:"CHART gagal dibuka.");})
+    let alive=true;setLoading(true);setUpload(null);setManual([]);setRevision(null);setCandidate(null);
+    readMasVersion(meetingDate,revisionCutoff).then(data=>{
+      if(alive){setUpload(data.upload);setManual(data.overrides);setRevision(data.revision);}
+    }).catch(err=>{if(alive)toast.error(err instanceof Error?err.message:"CHART gagal dibuka.");})
       .finally(()=>{if(alive)setLoading(false);});
     return()=>{alive=false;};
-  },[meetingDate]);
+  },[meetingDate,revisionCutoff,reloadTick]);
+  const persist=async(payload:ChartSnapshot)=>{
+    if(!canManage||readOnly)throw new Error("Riwayat bersifat hanya-baca.");
+    const saved=await saveWeeklyRevision("CHART",meetingDate,payload,revision?.id||null);
+    setRevision(saved);
+    setManual(payload.overrides);
+    onVersionSaved?.();
+    return saved;
+  };
   const result=useMemo(()=>calculateMasResults(upload?.aggregates||[],manual),[upload,manual]);
   const productData=useMemo(()=>{
     const map=new Map<string,{product:string;Captive:number;CRM:number;premium:number}>();
@@ -96,50 +110,51 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     finally{setBusy(false);if(picker.current)picker.current.value="";}
   };
   const saveFile=async()=>{
-    if(!candidate||!canManage)return;setBusy(true);
-    try{await saveMasUpload(meetingDate,candidate.filename,candidate.data.buckets,candidate.data.meta,candidate.data.details);setCandidate(null);await refresh();toast.success("Data agregat tersimpan. Grafik diperbarui.");}
-    catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan Excel.");}
+    if(!candidate||!canManage||readOnly)return;setBusy(true);
+    try {
+      const saved=await saveMasUpload(meetingDate,candidate.filename,candidate.data.buckets,candidate.data.meta,candidate.data.details);
+      await persist({upload_id:saved.id,overrides:manual});
+      setUpload(saved);setCandidate(null);
+      toast.success("Upload baru tersimpan sebagai versi CHART. Data terdahulu tetap ada.");
+    }catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan versi upload.");}
     finally{setBusy(false);}
   };
-  const resetChart = async () => {
-    if (!canManage || busy || (!upload && manual.length === 0)) return;
-    const accepted = window.confirm(
-      "HAPUS DATA CHART — " + meetingDate + "\n\n" +
-      "Seluruh versi upload Excel dan " + manual.length + " penyesuaian manual pada tanggal ini akan DIHAPUS PERMANEN.\n" +
-      "Semua grafik akan kembali kosong sehingga MAS bisa upload ulang.\n\n" +
-      "Data INSPIRE dan laporan tanggal lain tidak akan berubah.\n\n" +
-      "Yakin ingin melanjutkan?"
-    );
-    if (!accepted) return;
+  const resetChart=async()=>{
+    if(!canManage||readOnly||busy||(!upload&&!manual.length))return;
+    if(!window.confirm(
+      "MULAI ULANG CHART · "+meetingDate+"\n\n"+
+      "Tampilan aktif akan dikosongkan sehingga MAS dapat upload dari awal.\n"+
+      "VERSI LAMA TIDAK DIHAPUS dan tetap tersedia di Riwayat Versi.\n\nLanjutkan?"
+    ))return;
     setBusy(true);
     try {
-      const deleted = await resetMasPeriod(meetingDate);
-      setUpload(null);
-      setManual([]);
-      setCandidate(null);
-      setDraft(emptyDraft());
-      setCaseInput("");
-      setPremiumInput("");
-      if (picker.current) picker.current.value = "";
-      await refresh();
-      toast.success(
-        "CHART " + meetingDate + " dikosongkan. " +
-        deleted.upload_versions_deleted + " versi upload dan " +
-        deleted.manual_adjustments_deleted + " penyesuaian manual dihapus."
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menghapus data CHART.");
-    } finally {
-      setBusy(false);
-    }
+      await persist(emptyChartSnapshot());
+      setUpload(null);setCandidate(null);setDraft(emptyDraft());setCaseInput("");setPremiumInput("");
+      if(picker.current)picker.current.value="";
+      toast.success("Versi CHART kosong dibuat. Riwayat dan detail quotation sebelumnya tetap aman.");
+    }catch(err){toast.error(err instanceof Error?err.message:"Gagal mereset CHART.");}
+    finally{setBusy(false);}
   };
   const saveManual=async()=>{
-    if(!canManage)return;
+    if(!canManage||readOnly)return;
     const cases=numeric(caseInput),premi=numeric(premiumInput);
-    if(cases!==null&&!Number.isSafeInteger(cases))return toast.error("Jumlah case harus angka bulat.");
-    if((cases!==null&&!Number.isFinite(cases))||(premi!==null&&!Number.isFinite(premi)))return toast.error("Angka tidak valid.");
-    setBusy(true);try{await saveMasOverride(meetingDate,{...draft,cases,premium:premi});await refresh();setDraft(emptyDraft());setCaseInput("");setPremiumInput("");toast.success("Penyesuaian berhasil disimpan.");}
-    catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan penyesuaian.");}
+    if(!draft.product.trim()||!draft.reason.trim())return toast.error("Produk dan alasan penyesuaian wajib diisi.");
+    if(cases===null&&premi===null)return toast.error("Isi jumlah case dan/atau premi.");
+    if(cases!==null&&(!Number.isSafeInteger(cases)||(draft.method==="REPLACE"&&cases<0)))return toast.error("Jumlah case harus bilangan bulat; total pengganti tidak boleh negatif.");
+    if(premi!==null&&(!Number.isFinite(premi)||(draft.method==="REPLACE"&&premi<0)))return toast.error("Premi tidak valid.");
+    const product=draft.product.trim(),reason=draft.reason.trim();
+    const id=manual.findIndex(x=>x.unit===draft.unit&&x.business_type===draft.business_type&&x.product.toLowerCase()===product.toLowerCase()&&x.status===draft.status);
+    const changed:MasOverride={
+      ...draft,id:id>=0?manual[id].id:crypto.randomUUID(),meeting_date:meetingDate,
+      product,reason,cases,premium:premi
+    };
+    const next=id<0?[...manual,changed]:manual.map((x,i)=>i===id?changed:x);
+    setBusy(true);
+    try {
+      await persist({upload_id:upload?.id||null,overrides:next});
+      setDraft(emptyDraft());setCaseInput("");setPremiumInput("");
+      toast.success("Penyesuaian disimpan sebagai versi baru.");
+    }catch(err){toast.error(err instanceof Error?err.message:"Gagal menyimpan penyesuaian.");}
     finally{setBusy(false);}
   };
   const edit=(x:MasOverride)=>{
@@ -148,18 +163,21 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     document.getElementById("mas-manual-form")?.scrollIntoView({behavior:"smooth",block:"center"});
   };
   const remove=async(x:MasOverride)=>{
-    if(!canManage||!window.confirm("Hapus penyesuaian "+x.product+"?"))return;
-    setBusy(true);try{await removeMasOverride(x.id);await refresh();toast.success("Penyesuaian dihapus.");}
-    catch(err){toast.error(err instanceof Error?err.message:"Gagal menghapus.");}
+    if(!canManage||readOnly||!window.confirm("Hapus penyesuaian "+x.product+" dari versi aktif? Riwayat lama tetap aman."))return;
+    setBusy(true);
+    try {
+      await persist({upload_id:upload?.id||null,overrides:manual.filter(item=>item.id!==x.id)});
+      toast.success("Penyesuaian dihapus pada versi baru; histori sebelumnya tetap tersedia.");
+    }catch(err){toast.error(err instanceof Error?err.message:"Gagal menghapus penyesuaian.");}
     finally{setBusy(false);}
   };
   return <div id="mas-chart-root" className={full?"fixed inset-0 z-[1000] overflow-auto bg-slate-100 p-3 sm:p-5":"space-y-5"}>
     <style>{'@media print{@page{size:landscape;margin:10mm}#mas-chart-root{position:static!important;padding:0!important}.mas-drilldown-modal{display:none!important}.mas-drill-number{text-decoration:none!important}.mas-controls{display:none!important}.mas-report{box-shadow:none!important;border:0!important;margin-bottom:9mm;break-inside:auto}.mas-report .overflow-auto{max-height:none!important;overflow:visible!important}.mas-report tr{break-inside:avoid}.recharts-responsive-container{height:250px!important}}'}</style>
     <section className="mas-controls rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Periode {meetingDate}</p></div>
+        <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Berlaku {revision?.effective_date||"Belum ada"}{readOnly?" · RIWAYAT (BACA SAJA)":""}</p></div>
         <div className="flex flex-wrap gap-2">
-          {hasData&&canManage&&<button type="button" disabled={busy||loading} onClick={()=>void resetChart()} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" title={"Hapus data CHART khusus periode "+meetingDate}><Trash2 className="h-4 w-4"/>Hapus Data CHART</button>}
+          {hasData&&canManage&&<button type="button" disabled={busy||loading} onClick={()=>void resetChart()} className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" title={"Buat versi CHART kosong pada "+meetingDate+" tanpa menghapus histori"}><Trash2 className="h-4 w-4"/>Mulai Ulang CHART</button>}
           {hasData&&<a href="#mas-overall-dashboard" className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs font-bold text-[#1b4a86] hover:bg-blue-100">Lihat Dashboard Overall</a>}
           <button onClick={()=>setFull(v=>!v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold">{full?<Minimize2 className="h-4 w-4"/>:<Maximize2 className="h-4 w-4"/>}{full?"Keluar Full Screen":"Full Screen"}</button>
           <button disabled={!hasData} onClick={()=>window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileDown className="h-4 w-4"/>Cetak / Simpan PDF</button>
@@ -168,7 +186,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
       <div className="mt-4 rounded-xl border border-dashed border-blue-300 bg-blue-50/50 p-4">
         <p className="flex items-center gap-2 text-sm font-bold"><UploadCloud className="h-5 w-5 text-blue-700"/>01 · Upload Excel Sumber</p>
         <p className="mt-2 text-xs text-slate-600">Pilih satu workbook yang memuat sheet <b>DATA CAPTIVE</b> dan <b>DATA CRM</b>. Sistem menyimpan rekap angka, bukan nama perusahaan atau data nasabah.</p>
-        {canManage && hasData && <p className="mt-2 text-xs text-slate-500">Untuk mulai ulang sepenuhnya pada periode ini, gunakan <b>Hapus Data CHART</b> di kanan atas. Tindakan itu juga menghapus semua versi upload dan penyesuaian manual periode ini.</p>}
+        {canManage && hasData && <p className="mt-2 text-xs text-slate-500">Untuk mulai ulang, klik <b>Mulai Ulang CHART</b> di kanan atas. Sistem membuat versi kosong baru tanpa menghapus histori lama.</p>}
         <input ref={picker} type="file" accept=".xlsx" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void readFile(file);}}/>
         {canManage?<button disabled={busy} onClick={()=>picker.current?.click()} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#17487d] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>Pilih Excel</button>:<p className="mt-2 text-xs text-amber-800">Upload hanya untuk MAS atau root Marketing Support.</p>}
         {upload&&<p className="mt-3 text-xs text-slate-700">Upload aktif: <b>{upload.source_filename}</b> · {new Date(upload.created_at).toLocaleString("id-ID")} · {int(upload.details_count||0)} baris rincian tersimpan</p>}

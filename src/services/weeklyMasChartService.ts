@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { readWeeklyRevision, type ChartSnapshot, type WeeklyRevision } from "@/services/weeklyReportVersionService";
 import type { MasBucket, MasMeta, MasOverride, MasSourceDetail, MasStatus, MasUnit, MasSegment } from "@/utils/weeklyMasChartEngine";
 
 export type MasUpload = {
@@ -124,4 +125,25 @@ export const readMasQuotationDetails = async (
   if (error) throw new Error(error.message);
   if (!data || !Array.isArray(data.items)) throw new Error("Daftar quotation tidak dapat dibaca.");
   return data as MasDetailPage;
+};
+
+
+/** Latest CHART snapshot valid as of a selected day, or a precise historical revision.
+ * References stay immutable even when the current CHART is cleared/replaced.
+ */
+export const readMasVersion = async (
+  asOfDate:string,cutoff?:number|null
+):Promise<{upload:MasUpload|null;overrides:MasOverride[];revision:WeeklyRevision<ChartSnapshot>|null}>=>{
+  const revision=await readWeeklyRevision<ChartSnapshot>("CHART",asOfDate,cutoff);
+  const uploadId=revision?.payload?.upload_id;
+  let upload:MasUpload|null=null;
+  if(uploadId){
+    const {data,error}=await supabase.from("weekly_marketing_chart_uploads")
+      .select("id,meeting_date,source_filename,aggregates,details_count,parse_meta,created_at")
+      .eq("id",uploadId).maybeSingle();
+    if(error)throw new Error(error.message);
+    if(!data)throw new Error("File sumber versi historis tidak ditemukan. Hubungi administrator.");
+    upload=data as MasUpload;
+  }
+  return {upload,overrides:revision?.payload?.overrides||[],revision};
 };
