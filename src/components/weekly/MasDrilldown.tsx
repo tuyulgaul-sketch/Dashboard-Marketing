@@ -9,9 +9,13 @@ const fmt=(v:number)=>new Intl.NumberFormat("id-ID",{maximumFractionDigits:0}).f
 const money=(v:number)=>"Rp "+fmt(v);
 const perPage=50;
 
-export const DrillValue:React.FC<{target:MasDrillTarget;children:React.ReactNode;className?:string}> = ({target,children,className=""})=>{
+export const DrillValue:React.FC<{target:MasDrillTarget;children:React.ReactNode;className?:string;block?:boolean}> = ({target,children,className="",block=false})=>{
   const ctx=useContext(DrillContext);
   if(!ctx)return <span>{children}</span>;
+  if(block)return <div role="button" tabIndex={0} title="Klik untuk melihat daftar quotation"
+    onClick={()=>ctx.open(target)}
+    onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();ctx.open(target);}}}
+    className={"block w-full cursor-pointer rounded-lg text-left hover:ring-2 hover:ring-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 "+className}>{children}</div>;
   return <button type="button" onClick={()=>ctx.open(target)} title="Klik untuk melihat daftar quotation"
     className={"cursor-pointer rounded-sm text-inherit underline decoration-dotted decoration-blue-400 underline-offset-2 hover:bg-blue-100 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400 "+className}>{children}</button>;
 };
