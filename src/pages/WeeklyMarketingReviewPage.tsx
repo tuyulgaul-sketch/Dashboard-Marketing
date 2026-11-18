@@ -5,10 +5,11 @@ import { loadExcelJS } from "@/utils/exceljsLoader";
 import { toast } from "sonner";
 import InspireTable from "@/components/weekly/InspireTable";
 import WeeklyMasCharts from "@/components/weekly/WeeklyMasCharts";
-import { deleteWeeklyInspireRow, loadWeeklyInspireRows, reorderWeeklyInspireRows, saveWeeklyInspireRow, type InspireDraft, type InspireRow } from "@/services/weeklyMarketingReviewService";
+import type { InspireDraft, InspireRow } from "@/services/weeklyMarketingReviewService";
+import { listWeeklyRevisions, readInspireVersions, saveWeeklyRevision, type VersionHeader, type WeeklyRevision } from "@/services/weeklyReportVersionService";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ChevronDown,
-  ClipboardList, Download, FileSpreadsheet, FileText, Info, LayoutDashboard,
+  ClipboardList, Download, FileSpreadsheet, FileText, History, Info, LayoutDashboard,
   Maximize2, Megaphone, Minimize2, MonitorPlay, Plus, Printer, ShieldCheck, Trash2, UploadCloud
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -104,6 +105,17 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   const [inspireDragging, setInspireDragging] = useState(false);
   const [view, setView] = useState<View>("inspire");
   const [week, setWeek] = useState(currentDate);
+  const [history, setHistory] = useState<VersionHeader[]>([]);
+  const [selectedRevisionNo, setSelectedRevisionNo] = useState<number | null>(null);
+  const historicalRevision = history.find(item => item.revision_no === selectedRevisionNo) || null;
+  const historicalMode = selectedRevisionNo !== null;
+  const visibleDate = historicalRevision?.effective_date || week;
+  const [areaVersions, setAreaVersions] = useState<Record<Unit,WeeklyRevision<InspireRow[]>|null>>({DA:null,MARCOMM:null,MAS:null});
+  const refreshHistory = async () => {
+    try { setHistory(await listWeeklyRevisions()); }
+    catch (error) { toast.error("Gagal membaca riwayat versi: " + (error instanceof Error ? error.message : "Coba ulang.")); }
+  };
+
   const [demoMode, setDemoMode] = useState(true);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [inspireRows, setInspireRows] = useState<InspireRow[]>([]);
@@ -205,15 +217,20 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   };
 
   useEffect(() => { if (ownUnit) setSelectedInspireUnit(ownUnit); }, [ownUnit]);
+  useEffect(() => { void refreshHistory(); }, [profile?.id]);
   const toActivity = (row: InspireRow): Activity => ({
     id: row.id, unit: row.unit, title: row.title, issue: row.rootCause,
     nextPlan: row.nextPlan, support: row.support, deliverable: row.deliverable, status: row.status
   });
+  const rowsFromVersions = (versions:Record<Unit,WeeklyRevision<InspireRow[]>|null>) =>
+    (["DA","MARCOMM","MAS"] as Unit[]).flatMap(unit => versions[unit]?.payload || []);
   useEffect(() => {
     let alive = true;
     setActionsLoading(true);
-    loadWeeklyInspireRows(week).then(rows => {
+    readInspireVersions(visibleDate,selectedRevisionNo).then(versions => {
       if (!alive) return;
+      const rows = rowsFromVersions(versions);
+      setAreaVersions(versions);
       setInspireRows(rows);
       setActivities(rows.map(toActivity));
     }).catch(error => {
@@ -221,56 +238,50 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       toast.error("Gagal memuat INSPIRE: " + (error instanceof Error ? error.message : "Coba ulang."));
     }).finally(() => { if (alive) setActionsLoading(false); });
     return () => { alive = false; };
-  }, [week, profile?.id]);
+  }, [visibleDate, selectedRevisionNo, profile?.id]);
+
+  const canEditArea = (unit:Unit) => {
+    const latestDate=history.find(item=>item.area===unit)?.effective_date;
+    return !historicalMode && !actionsLoading && (!latestDate || week >= latestDate);
+  };
+  const persistInspire = async (unit:Unit, nextRows:InspireRow[], message:string) => {
+    if (historicalMode || !canEditArea(unit)) throw new Error("Riwayat bersifat hanya-baca. Kembali ke Data Aktif untuk memperbarui laporan.");
+    if (ownUnit && ownUnit !== unit) throw new Error("Tidak boleh mengubah baris unit lain.");
+    const saved=await saveWeeklyRevision(unit,week,nextRows,areaVersions[unit]?.id||null);
+    const updated={...areaVersions,[unit]:saved};
+    setAreaVersions(updated);
+    const rows=rowsFromVersions(updated);
+    setInspireRows(rows);
+    setActivities(rows.map(toActivity));
+    void refreshHistory();
+    toast.success(message+" · Versi baru tersimpan.");
+  };
   const saveInspire = async (draft: InspireDraft, id?: string) => {
-    if (ownUnit && ownUnit !== draft.unit) throw new Error("Tidak boleh mengubah baris unit lain.");
     try {
-      const saved = await saveWeeklyInspireRow(week, draft, id);
-      const next = id ? inspireRows.map(row => row.id === id ? saved : row) : [...inspireRows, saved];
-      setInspireRows(next);
-      setActivities(next.map(toActivity));
-      toast.success("Baris INSPIRE berhasil disimpan.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal menyimpan baris."); throw error; }
+      const unit = draft.unit;
+      const current = areaVersions[unit]?.payload || [];
+      if (id && !current.some(row => row.id === id)) throw new Error("Baris tidak ditemukan di versi aktif.");
+      const value:InspireRow = {...draft,title:draft.title.trim(),id:id||crypto.randomUUID()};
+      const next=id?current.map(row=>row.id===id?value:row):[...current,value];
+      await persistInspire(unit,next,"Baris INSPIRE berhasil disimpan");
+    } catch (error) {toast.error(error instanceof Error?error.message:"Gagal menyimpan.");throw error;}
   };
-  const deleteInspire = async (id: string) => {
-    const existing = inspireRows.find(row => row.id === id);
-    if (!existing || (ownUnit && ownUnit !== existing.unit)) throw new Error("Akses tidak diizinkan.");
+  const deleteInspire = async (id:string) => {
+    const existing=inspireRows.find(row=>row.id===id);
+    if(!existing)throw new Error("Baris tidak ditemukan.");
     try {
-      await deleteWeeklyInspireRow(week, id);
-      const next = inspireRows.filter(row => row.id !== id);
-      setInspireRows(next);
-      setActivities(next.map(toActivity));
-      toast.success("Baris berhasil dihapus.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal menghapus baris."); throw error; }
+      await persistInspire(existing.unit,(areaVersions[existing.unit]?.payload||[]).filter(row=>row.id!==id),"Baris berhasil dihapus dari versi aktif");
+    } catch(error) {toast.error(error instanceof Error?error.message:"Gagal menghapus.");throw error;}
   };
-  const reorderInspire = async (unit: Unit, orderedIds: string[]) => {
-    if (ownUnit && ownUnit !== unit) throw new Error("Urutan unit lain tidak boleh diubah.");
-    const unitRows = inspireRows.filter(row => row.unit === unit);
-    const lookup = new Map(unitRows.map(row => [row.id, row]));
-    if (unitRows.length !== orderedIds.length || new Set(orderedIds).size !== orderedIds.length ||
-        orderedIds.some(id => !lookup.has(id))) {
-      toast.error("Daftar baris berubah. Muat ulang halaman sebelum mengurutkan.");
-      throw new Error("Urutan tidak valid.");
+  const reorderInspire = async (unit:Unit, orderedIds:string[]) => {
+    const current=areaVersions[unit]?.payload||[];
+    const lookup=new Map(current.map(row=>[row.id,row]));
+    if(orderedIds.length!==current.length || new Set(orderedIds).size!==current.length || orderedIds.some(id=>!lookup.has(id))){
+      throw new Error("Daftar baris berubah. Muat ulang untuk mengatur urutan.");
     }
-    const sorted = orderedIds.map(id => lookup.get(id)!);
-    let nextIndex = 0;
-    const updated = inspireRows.map(row => row.unit === unit ? sorted[nextIndex++] : row);
-    setInspireRows(updated);
-    setActivities(updated.map(toActivity));
     try {
-      await reorderWeeklyInspireRows(week, unit, orderedIds);
-      toast.success("Urutan baris INSPIRE tersimpan.");
-    } catch (error) {
-      try {
-        const canonical = await loadWeeklyInspireRows(week);
-        setInspireRows(canonical);
-        setActivities(canonical.map(toActivity));
-      } catch {
-        // Keep the visible rows, but tell the user this order was not saved.
-      }
-      toast.error("Urutan gagal disimpan: " + (error instanceof Error ? error.message : "Coba ulang."));
-      throw error;
-    }
+      await persistInspire(unit,orderedIds.map(id=>lookup.get(id)!),"Urutan baris tersimpan");
+    } catch(error){toast.error(error instanceof Error?error.message:"Gagal mengurutkan.");throw error;}
   };
   const shownActivities = activities;
   const shownProducts = demoMode ? DEMO_PRODUCTS : products;
@@ -454,19 +465,44 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       <div className="no-print overflow-hidden rounded-2xl bg-gradient-to-r from-[#0e2b4f] to-[#155c9f] px-5 py-6 text-white sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-200"><ShieldCheck className="h-4 w-4" /> Khusus Marketing Support</div><h1 className="mt-3 text-2xl font-black sm:text-3xl">Weekly Marketing Review</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100">Satu bahan presentasi gabungan Digital & Affinity, Marketing Communication, dan Marketing Administration.</p></div>
-          <div className="rounded-xl border border-white/20 bg-white/10 p-3"><label htmlFor="weekly-date" className="block text-[10px] font-semibold uppercase text-blue-200">Tanggal meeting</label><input id="weekly-date" type="date" value={week} onChange={e => setWeek(e.target.value)} className="mt-2 block rounded-md border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-900" /></div>
+          <div className="rounded-xl border border-white/20 bg-white/10 p-3"><label htmlFor="weekly-date" className="block text-[10px] font-semibold uppercase text-blue-200">Tanggal Berlaku / Perubahan</label><input id="weekly-date" type="date" value={visibleDate} disabled={historicalMode} onChange={e => setWeek(e.target.value)} className="mt-2 block rounded-md border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-900 disabled:opacity-60" /></div>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{demoMode ? "INSPIRE tersimpan · CHART data contoh" : "INSPIRE tersimpan · CHART sesi browser"}</span>
+          <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">{historicalMode ? "Riwayat Versi · Hanya Baca" : "Data Aktif · Carry Forward Otomatis"}</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">Tanpa approval koordinator</span>
           <span className="rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold">PDF dari tampilan presentasi</span>
         </div>
       </div>
+      <section className="no-print rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><p className="text-sm font-extrabold text-[#17487d]">Versi Laporan · {historicalMode ? "Riwayat" : "Data Aktif"}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {historicalMode ? "Versi historis tidak dapat diubah. Seluruh unit ditampilkan sebagaimana kondisi pada saat versi ini dibuat." :
+                "Laporan menampilkan perubahan terbaru yang berlaku sampai tanggal terpilih. Simpan baru akan membuat versi, bukan menimpa sebelumnya."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={()=>{setSelectedRevisionNo(null);setWeek(currentDate);}} className={"rounded-lg px-3 py-2 text-xs font-bold "+(!historicalMode?"bg-[#17487d] text-white":"border border-slate-200 bg-white text-slate-700")}>Data Aktif</button>
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><History className="h-4 w-4"/>Riwayat Versi
+              <select aria-label="Pilih versi historis" value={selectedRevisionNo??""} onChange={e=>setSelectedRevisionNo(e.target.value?Number(e.target.value):null)} className="max-w-[290px] rounded-lg border border-slate-300 bg-white p-2 text-xs">
+                <option value="">Pilih versi terdahulu</option>
+                {history.map(item=><option key={item.id} value={item.revision_no}>
+                  {item.effective_date} · {item.area} · Versi #{item.revision_no}{item.source==="legacy_baseline"?" (Baseline)":""}
+                </option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+          {(["DA","MARCOMM","MAS"] as Unit[]).map(unit=><span key={unit} className="rounded-full bg-blue-50 px-3 py-1.5 font-semibold text-blue-800">{unit}: {areaVersions[unit]?.effective_date||"Belum ada data"}</span>)}
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 font-medium text-slate-700">Periode tampilan: {visibleDate}</span>
+        </div>
+      </section>
       <div className="no-print flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
         {viewTabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setView(tab.id)} className={"flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition " + (view === tab.id ? "bg-[#154a83] text-white" : "text-slate-500 hover:bg-slate-100")}><Icon className="h-4 w-4" />{tab.label}</button>; })}
         {demoMode && <button type="button" onClick={resetDemo} className="ml-auto rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Kosongkan contoh</button>}
       </div>
-      {view === "chart" && <WeeklyMasCharts meetingDate={week} canManage={department === "marketing administration" || department === ""} />}
+      {view === "chart" && <WeeklyMasCharts meetingDate={visibleDate} revisionCutoff={selectedRevisionNo} readOnly={historicalMode} onVersionSaved={refreshHistory} canManage={!historicalMode && (department === "marketing administration" || department === "")} />}
       {view === "inspire" && <div
         ref={inspireRootRef}
         className={inspireFullscreen
@@ -500,10 +536,10 @@ const WeeklyMarketingReviewPage: React.FC = () => {
         >
           <div style={inspireFullscreen ? { zoom: inspireZoom } : undefined}>
             <InspireTable
-              key={week + selectedInspireUnit}
+              key={visibleDate + ":" + (selectedRevisionNo||"current") + ":" + selectedInspireUnit}
               unit={selectedInspireUnit}
               rows={inspireRows.filter(row => row.unit === selectedInspireUnit)}
-              canEdit={!ownUnit || ownUnit === selectedInspireUnit}
+              canEdit={canEditArea(selectedInspireUnit) && (!ownUnit || ownUnit === selectedInspireUnit)}
               loading={actionsLoading}
               fullscreen={inspireFullscreen}
               onSave={saveInspire}
