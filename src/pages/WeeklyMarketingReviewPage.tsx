@@ -107,6 +107,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   const [week, setWeek] = useState(currentDate);
   const [history, setHistory] = useState<VersionHeader[]>([]);
   const [selectedRevisionNo, setSelectedRevisionNo] = useState<number | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const historicalRevision = history.find(item => item.revision_no === selectedRevisionNo) || null;
   const historicalMode = selectedRevisionNo !== null;
   const visibleDate = historicalRevision?.effective_date || week;
@@ -238,7 +239,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
       toast.error("Gagal memuat INSPIRE: " + (error instanceof Error ? error.message : "Coba ulang."));
     }).finally(() => { if (alive) setActionsLoading(false); });
     return () => { alive = false; };
-  }, [visibleDate, selectedRevisionNo, profile?.id]);
+  }, [visibleDate, selectedRevisionNo, profile?.id, reloadTick]);
 
   const canEditArea = (unit:Unit) => {
     const latestDate=history.find(item=>item.area===unit)?.effective_date;
@@ -483,6 +484,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={()=>{setSelectedRevisionNo(null);setWeek(currentDate);}} className={"rounded-lg px-3 py-2 text-xs font-bold "+(!historicalMode?"bg-[#17487d] text-white":"border border-slate-200 bg-white text-slate-700")}>Data Aktif</button>
+            <button type="button" onClick={()=>{setReloadTick(value=>value+1);void refreshHistory();}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Muat Ulang</button>
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><History className="h-4 w-4"/>Riwayat Versi
               <select aria-label="Pilih versi historis" value={selectedRevisionNo??""} onChange={e=>setSelectedRevisionNo(e.target.value?Number(e.target.value):null)} className="max-w-[290px] rounded-lg border border-slate-300 bg-white p-2 text-xs">
                 <option value="">Pilih versi terdahulu</option>
@@ -502,7 +504,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
         {viewTabs.map(tab => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setView(tab.id)} className={"flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition " + (view === tab.id ? "bg-[#154a83] text-white" : "text-slate-500 hover:bg-slate-100")}><Icon className="h-4 w-4" />{tab.label}</button>; })}
         {demoMode && <button type="button" onClick={resetDemo} className="ml-auto rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Kosongkan contoh</button>}
       </div>
-      {view === "chart" && <WeeklyMasCharts meetingDate={visibleDate} revisionCutoff={selectedRevisionNo} readOnly={historicalMode} onVersionSaved={refreshHistory} canManage={!historicalMode && (department === "marketing administration" || department === "")} />}
+      {view === "chart" && <WeeklyMasCharts meetingDate={visibleDate} revisionCutoff={selectedRevisionNo} reloadTick={reloadTick} readOnly={historicalMode} onVersionSaved={refreshHistory} canManage={!historicalMode && (!history.find(item=>item.area==="CHART") || week >= history.find(item=>item.area==="CHART")!.effective_date) && (department === "marketing administration" || department === "")} />}
       {view === "inspire" && <div
         ref={inspireRootRef}
         className={inspireFullscreen
