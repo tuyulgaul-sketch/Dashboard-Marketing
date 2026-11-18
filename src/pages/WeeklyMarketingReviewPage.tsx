@@ -111,6 +111,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
   const historicalRevision = history.find(item => item.revision_no === selectedRevisionNo) || null;
   const historicalMode = selectedRevisionNo !== null;
   const visibleDate = historicalRevision?.effective_date || week;
+  const chartVersionDate = history.find(item=>item.area==="CHART" && item.effective_date<=visibleDate && (selectedRevisionNo===null || item.revision_no<=selectedRevisionNo))?.effective_date || null;
   const [areaVersions, setAreaVersions] = useState<Record<Unit,WeeklyRevision<InspireRow[]>|null>>({DA:null,MARCOMM:null,MAS:null});
   const refreshHistory = async () => {
     try { setHistory(await listWeeklyRevisions()); }
@@ -497,6 +498,7 @@ const WeeklyMarketingReviewPage: React.FC = () => {
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
           {(["DA","MARCOMM","MAS"] as Unit[]).map(unit=><span key={unit} className="rounded-full bg-blue-50 px-3 py-1.5 font-semibold text-blue-800">{unit}: {areaVersions[unit]?.effective_date||"Belum ada data"}</span>)}
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-800">CHART: {chartVersionDate||"Belum ada data"}</span>
           <span className="rounded-full bg-slate-100 px-3 py-1.5 font-medium text-slate-700">Periode tampilan: {visibleDate}</span>
         </div>
       </section>
