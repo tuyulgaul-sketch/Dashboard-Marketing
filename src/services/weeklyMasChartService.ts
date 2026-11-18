@@ -1,11 +1,12 @@
 import { supabase } from "@/lib/supabase";
-import type { MasBucket, MasMeta, MasOverride } from "@/utils/weeklyMasChartEngine";
+import type { MasBucket, MasMeta, MasOverride, MasSourceDetail, MasStatus, MasUnit, MasSegment } from "@/utils/weeklyMasChartEngine";
 
 export type MasUpload = {
   id: string;
   meeting_date: string;
   source_filename: string;
   aggregates: MasBucket[];
+  details_count: number;
   parse_meta: MasMeta;
   created_at: string;
 };
@@ -23,7 +24,7 @@ export type MasManualDraft = {
 export const readMasPeriod = async (meetingDate: string): Promise<{upload: MasUpload | null; overrides: MasOverride[]}> => {
   const [uploadResult, manualResult] = await Promise.all([
     supabase.from("weekly_marketing_chart_uploads")
-      .select("id,meeting_date,source_filename,aggregates,parse_meta,created_at")
+      .select("id,meeting_date,source_filename,aggregates,details_count,parse_meta,created_at")
       .eq("meeting_date", meetingDate).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("weekly_marketing_chart_overrides")
       .select("id,meeting_date,unit,business_type,product,status,method,cases,premium,reason")
@@ -34,10 +35,10 @@ export const readMasPeriod = async (meetingDate: string): Promise<{upload: MasUp
   return {upload: uploadResult.data as MasUpload | null, overrides: (manualResult.data || []) as MasOverride[]};
 };
 
-export const saveMasUpload = async (date: string, filename: string, buckets: MasBucket[], meta: MasMeta): Promise<MasUpload> => {
+export const saveMasUpload = async (date: string, filename: string, buckets: MasBucket[], meta: MasMeta, details: MasSourceDetail[]): Promise<MasUpload> => {
   // Upload revisions are append-only. Each version stays available for an audit trail.
   const {data, error} = await supabase.from("weekly_marketing_chart_uploads")
-    .insert({meeting_date: date, source_filename: filename, aggregates: buckets, parse_meta: meta})
+    .insert({meeting_date: date, source_filename: filename, aggregates: buckets, parse_meta: meta, details, details_count: details.length})
     .select("id,meeting_date,source_filename,aggregates,parse_meta,created_at").single();
   if (error || !data) throw new Error(error?.message || "Upload gagal disimpan.");
   return data as MasUpload;
@@ -87,4 +88,40 @@ export const resetMasPeriod = async (meetingDate: string): Promise<MasResetResul
     throw new Error("Konfirmasi reset dari server tidak sesuai tanggal laporan.");
   }
   return data as MasResetResult;
+};
+
+
+export type MasDetailFilter = {
+  product?: string;
+  unit?: MasUnit;
+  segment?: MasSegment;
+  status?: MasStatus;
+};
+export type MasDetailPage = {
+  total: number;
+  available: number;
+  items: MasSourceDetail[];
+};
+
+/** Database filters and paginates the company-level quotation snapshot.
+ * The RPC runs with the caller's RLS permissions: only active MS can read it.
+ */
+export const readMasQuotationDetails = async (
+  uploadId: string,
+  filter: MasDetailFilter,
+  offset = 0,
+  limit = 50
+): Promise<MasDetailPage> => {
+  const { data, error } = await supabase.rpc("get_weekly_marketing_chart_details", {
+    p_upload_id: uploadId,
+    p_product: filter.product || null,
+    p_unit: filter.unit || null,
+    p_segment: filter.segment || null,
+    p_status: filter.status || null,
+    p_offset: offset,
+    p_limit: Math.min(100, Math.max(1, limit))
+  });
+  if (error) throw new Error(error.message);
+  if (!data || !Array.isArray(data.items)) throw new Error("Daftar quotation tidak dapat dibaca.");
+  return data as MasDetailPage;
 };
