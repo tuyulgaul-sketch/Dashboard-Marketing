@@ -154,7 +154,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage}) => {
     finally{setBusy(false);}
   };
   return <div id="mas-chart-root" className={full?"fixed inset-0 z-[1000] overflow-auto bg-slate-100 p-3 sm:p-5":"space-y-5"}>
-    <style>{'@media print{@page{size:landscape;margin:10mm}#mas-chart-root{position:static!important;padding:0!important}.mas-controls{display:none!important}.mas-report{box-shadow:none!important;border:0!important;margin-bottom:9mm;break-inside:auto}.mas-report .overflow-auto{max-height:none!important;overflow:visible!important}.mas-report tr{break-inside:avoid}.recharts-responsive-container{height:250px!important}}'}</style>
+    <style>{'@media print{@page{size:landscape;margin:10mm}#mas-chart-root{position:static!important;padding:0!important}.mas-drilldown-modal{display:none!important}.mas-drill-number{text-decoration:none!important}.mas-controls{display:none!important}.mas-report{box-shadow:none!important;border:0!important;margin-bottom:9mm;break-inside:auto}.mas-report .overflow-auto{max-height:none!important;overflow:visible!important}.mas-report tr{break-inside:avoid}.recharts-responsive-container{height:250px!important}}'}</style>
     <section className="mas-controls rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-xl font-extrabold text-[#173f73]">CHART · Marketing Administration</h2><p className="mt-1 text-xs text-slate-500">DATA CAPTIVE + DATA CRM · Periode {meetingDate}</p></div>
