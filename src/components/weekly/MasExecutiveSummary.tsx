@@ -84,13 +84,13 @@ const MasExecutiveSummary: React.FC<Props> = ({meetingDate,results})=>{
  </div>
 
  <div className="mas-overall-kpis grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-  <DrillValue target={{metric:"cases",title:"Total Quotation"}}><Kpi label="Total Quotation" value={number(quotation)} icon={ClipboardList} tone="bg-[#237cdd]"/></DrillValue>
+  <DrillValue target={{metric:"cases",title:"Total Quotation"}} block><Kpi label="Total Quotation" value={number(quotation)} icon={ClipboardList} tone="bg-[#237cdd]"/></DrillValue>
   <Kpi label="Total Produk" value={number(rows.length)} icon={Boxes} tone="bg-[#2a8bef]"/>
-  <DrillValue target={{metric:"cases",unit:"Captive",title:"Total Quotation Captive"}}><Kpi label="Captive Progress Total" value={number(total.captive)} icon={Users} tone="bg-[#1d9f6f]"/></DrillValue>
-  <DrillValue target={{metric:"cases",unit:"CRM",title:"Total Quotation CRM"}}><Kpi label="CRM Progress Total" value={number(total.crm)} icon={Building2} tone="bg-[#269e74]"/></DrillValue>
-  <DrillValue target={{metric:"premium",unit:"Captive",title:"Proyeksi Premi Captive"}}><Kpi label="Captive Total Proyeksi Premi" value={short(total.pcTotal)} icon={ShieldCheck} tone="bg-[#662ebe]"/></DrillValue>
-  <DrillValue target={{metric:"premium",unit:"CRM",title:"Proyeksi Premi CRM"}}><Kpi label="CRM Total Proyeksi Premi" value={short(total.prTotal)} icon={ShieldCheck} tone="bg-[#813acb]"/></DrillValue>
-  <DrillValue target={{metric:"premium",title:"Total Proyeksi Premi"}}><Kpi label="Total Proyeksi Premi Keseluruhan" value={short(total.premium)} icon={Coins} tone="bg-[#1b74df]"/></DrillValue>
+  <DrillValue target={{metric:"cases",unit:"Captive",title:"Total Quotation Captive"}} block><Kpi label="Captive Progress Total" value={number(total.captive)} icon={Users} tone="bg-[#1d9f6f]"/></DrillValue>
+  <DrillValue target={{metric:"cases",unit:"CRM",title:"Total Quotation CRM"}} block><Kpi label="CRM Progress Total" value={number(total.crm)} icon={Building2} tone="bg-[#269e74]"/></DrillValue>
+  <DrillValue target={{metric:"premium",unit:"Captive",title:"Proyeksi Premi Captive"}} block><Kpi label="Captive Total Proyeksi Premi" value={short(total.pcTotal)} icon={ShieldCheck} tone="bg-[#662ebe]"/></DrillValue>
+  <DrillValue target={{metric:"premium",unit:"CRM",title:"Proyeksi Premi CRM"}} block><Kpi label="CRM Total Proyeksi Premi" value={short(total.prTotal)} icon={ShieldCheck} tone="bg-[#813acb]"/></DrillValue>
+  <DrillValue target={{metric:"premium",title:"Total Proyeksi Premi"}} block><Kpi label="Total Proyeksi Premi Keseluruhan" value={short(total.premium)} icon={Coins} tone="bg-[#1b74df]"/></DrillValue>
  </div>
 
  <div className="mt-3 rounded-xl border border-blue-100 bg-white p-4">
