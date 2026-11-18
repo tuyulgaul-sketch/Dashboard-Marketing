@@ -39,7 +39,7 @@ export const saveMasUpload = async (date: string, filename: string, buckets: Mas
   // Upload revisions are append-only. Each version stays available for an audit trail.
   const {data, error} = await supabase.from("weekly_marketing_chart_uploads")
     .insert({meeting_date: date, source_filename: filename, aggregates: buckets, parse_meta: meta, details, details_count: details.length})
-    .select("id,meeting_date,source_filename,aggregates,parse_meta,created_at").single();
+    .select("id,meeting_date,source_filename,aggregates,details_count,parse_meta,created_at").single();
   if (error || !data) throw new Error(error?.message || "Upload gagal disimpan.");
   return data as MasUpload;
 };
