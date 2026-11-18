@@ -9,7 +9,7 @@ import { calculateMasResults, parseWeeklyMasFile, type MasParsed, type MasOverri
 import { readMasVersion, saveMasUpload, type MasManualDraft, type MasUpload } from "@/services/weeklyMasChartService";
 import { emptyChartSnapshot, saveWeeklyRevision, type ChartSnapshot, type WeeklyRevision } from "@/services/weeklyReportVersionService";
 
-type Props = { meetingDate: string; canManage: boolean; readOnly?: boolean; revisionCutoff?: number | null; onVersionSaved?: () => void };
+type Props = { meetingDate: string; canManage: boolean; readOnly?: boolean; revisionCutoff?: number | null; reloadTick?: number; onVersionSaved?: () => void };
 const statusNames: (MasStatus | "ALL")[] = ["ALL","Closing","Cancel","Feedback Marketing","Feedback Teknik","On Proses","Belum Terklasifikasi"];
 const colors: Record<MasStatus, string> = {"Closing":"#2ca76b","Cancel":"#da5569","Feedback Marketing":"#edb246","Feedback Teknik":"#6196d7","On Proses":"#8569c3","Belum Terklasifikasi":"#9ca3af"};
 const int = (x:number) => new Intl.NumberFormat("id-ID",{maximumFractionDigits:0}).format(x);
@@ -30,7 +30,7 @@ const Box: React.FC<{title:string;note?:string;children:React.ReactNode}> = ({ti
 const Stat: React.FC<{title:string;value:string;detail?:string}> = ({title,value,detail}) =>
   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">{title}</p><p className="mt-2 text-xl font-black text-slate-900">{value}</p>{detail&&<p className="mt-1 text-[11px] text-slate-500">{detail}</p>}</div>;
 
-const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage,readOnly=false,revisionCutoff=null,onVersionSaved}) => {
+const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage,readOnly=false,revisionCutoff=null,reloadTick=0,onVersionSaved}) => {
   const picker=useRef<HTMLInputElement>(null);
   const [upload,setUpload]=useState<MasUpload|null>(null);
   const [revision,setRevision]=useState<WeeklyRevision<ChartSnapshot>|null>(null);
@@ -50,7 +50,7 @@ const WeeklyMasCharts:React.FC<Props> = ({meetingDate,canManage,readOnly=false,r
     }).catch(err=>{if(alive)toast.error(err instanceof Error?err.message:"CHART gagal dibuka.");})
       .finally(()=>{if(alive)setLoading(false);});
     return()=>{alive=false;};
-  },[meetingDate,revisionCutoff]);
+  },[meetingDate,revisionCutoff,reloadTick]);
   const persist=async(payload:ChartSnapshot)=>{
     if(!canManage||readOnly)throw new Error("Riwayat bersifat hanya-baca.");
     const saved=await saveWeeklyRevision("CHART",meetingDate,payload,revision?.id||null);
