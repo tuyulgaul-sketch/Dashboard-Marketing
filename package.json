@@ -81,5 +81,19 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
     "vite": "^8.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.18",
+      "nanoid": "3.3.18",
+      "minimatch@^3.0.0": "3.1.4",
+      "minimatch@^9.0.0": "9.0.7",
+      "picomatch@^2.0.0": "2.3.2",
+      "lodash": "4.18.0",
+      "brace-expansion@^1.0.0": "1.1.20",
+      "brace-expansion@^2.0.0": "2.1.6",
+      "glob@^10.0.0": "10.5.0",
+      "source-map-js": "1.2.2"
+    }
   }
 }
