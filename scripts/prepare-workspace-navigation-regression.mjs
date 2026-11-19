@@ -16,6 +16,12 @@ const once = (source, before, after) => {
 // Extend the old source-integrity test only. No runtime code or publisher
 // permission is changed by this preparation.
 const original = readFileSync(path, 'utf8');
+if (original.includes("current live modules remain unchanged while MFA adds an explicit auth guard")) {
+  // Modern regression suite already derives its integrity baseline from main.
+  // Older snapshot transformations would rewrite approved live features and
+  // invalidate tests unrelated to this security patch.
+  console.log("Modern security-aware navigation fixture already current; no rewrite needed.");
+} else {
 let fixture = prepareNavigationFixture(original);
 fixture = once(fixture,
   "'src/services/targetService.ts','src/contexts/AuthContext.tsx','src/pages/BookingPipelinePage.tsx'",
@@ -31,3 +37,5 @@ fixture = once(fixture,
   console.log('Existing business handlers, approvals, documents, TRM and storage remain unchanged; approved auth continuity is pinned.');`);
 writeFileSync(path, fixture);
 console.log('Historical navigation fixture extended for approved wizard, auth and restored-business checks; runtime source unchanged.');
+
+}
