@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import ts from 'typescript';
 
 const root = process.cwd();
-const base = '6b087d9ceccd6a52fd1d83ea6dbaf27bdd9bbcbc';
+const base = execFileSync('git',['merge-base','HEAD','origin/main'],{encoding:'utf8'}).trim();
 const files = ['src/utils/marketingWorkbook.ts', 'src/utils/excelExport.ts', 'src/pages/TargetRkapPage.tsx', 'src/pages/ProduksiPage.tsx'];
 const dir = mkdtempSync(join(tmpdir(), 'xlsx-baseline-'));
 const run = (command, args, cwd) => {
@@ -38,7 +38,7 @@ const compare = (label, before, after) => {
 try {
   run('git',['worktree','add','--detach',dir,base],root);
   symlinkSync(join(root,'node_modules'),join(dir,'node_modules'));
-  const oldFiles=files.filter(path=>path!=='src/utils/marketingWorkbook.ts');
+  const oldFiles=files; // compare same files against the actual current production baseline
   compare('ESLint errors',lint(dir,oldFiles),lint(root,files));
   compare('TypeScript diagnostics',diagnostics(dir),diagnostics(root));
 } finally {

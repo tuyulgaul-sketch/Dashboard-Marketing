@@ -41,6 +41,8 @@ assert.equal(workbook.getMarketingDirectoryRows(users).length, 4);
 assert.equal(workbook.getMarketingDirectoryRows(users).some(row => row['User ID'] === 'USR-SYSADMIN'), false);
 assert.throws(() => workbook.getMarketingDirectoryRows([...users, users[0]]), /duplikat/);
 
+const file = (name, bytes) => ({ name, size: bytes.length, arrayBuffer: async () => Uint8Array.from(bytes).buffer, text: async () => new TextDecoder().decode(bytes) });
+
 async function roundtrip(kind, input, required) {
   const bytes = await workbook.buildMarketingWorkbook(kind, input, users);
   assert.equal(bytes[0], 0x50);
@@ -136,7 +138,6 @@ pipeline['Estimasi Premi'] = 150000000;
 pipeline['Target Closing'] = '2026-08-20';
 await roundtrip('pipeline', [pipeline], workbook.getMarketingTemplateHeaders('pipeline'));
 
-const file = (name, bytes) => ({ name, size: bytes.length, arrayBuffer: async () => Uint8Array.from(bytes).buffer, text: async () => new TextDecoder().decode(bytes) });
 
 // The uploader must consume the official Target Direktorat layout exactly as generated:
 // title rows 1-2, header row 4, and monthly rows 5-16. Footer/TAHUNAN rows are ignored.

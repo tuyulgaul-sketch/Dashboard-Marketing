@@ -58,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const profileRef = useRef<AuthProfile | null>(null);
   const generation = useRef(0);
   const refreshing = useRef<Promise<void> | null>(null);
+  const awaitingMfaBootstrap = useRef(false);
 
   const updateProfile = useCallback((next: AuthProfile | null) => {
     profileRef.current = next;
@@ -69,6 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionRef.current = null;
     profileRef.current = null;
     refreshing.current = null;
+    awaitingMfaBootstrap.current = false;
     setSession(null);
     setProfile(null);
     setRestoredBusinessReady(false);
@@ -121,6 +123,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     const authProfile = data as AuthProfile;
+
+    // Do not hydrate central business data into the browser during an
+    // AAL1 password-only session if this employee has enrolled MFA.
+    // Let ProtectedRoute show the MFA challenge first.
+    const {data:assurance,error:assuranceError} =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (!isCurrent()) return;
+    if (assuranceError || (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2")) {
+      awaitingMfaBootstrap.current = true;
+      setRestoredBusinessReady(false);
+      setRestoredBusinessError(null);
+      clearLiteRuntime();
+      updateProfile(authProfile);
+      return;
+    }
+    if (awaitingMfaBootstrap.current) {
+      // The challenge just upgraded the session to AAL2; force a complete
+      // authoritative runtime initialization even on same-user refreshes.
+      awaitingMfaBootstrap.current = false;
+      background = false;
+    }
     const previous = profileRef.current;
     const unchanged = Boolean(previous && JSON.stringify(previous) === JSON.stringify(authProfile));
     const sameAuthority = Boolean(previous && authoritySignature(previous) === authoritySignature(authProfile));

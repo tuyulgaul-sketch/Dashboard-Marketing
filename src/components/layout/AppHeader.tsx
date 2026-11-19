@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { KeyRound, LogOut, Menu, RotateCcw, UserRoundCog } from "lucide-react";
+import { KeyRound, LogOut, Menu, RotateCcw, UserRoundCog, ShieldCheck } from "lucide-react";
+import { MfaSecurityDialog } from "@/components/auth/MfaSecurityDialog";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +22,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [mfaOpen, setMfaOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [impersonationMarker, setImpersonationMarker] = useState<AdminImpersonationMarker | null>(() => getAdminImpersonationMarker());
 
@@ -117,6 +119,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
             </Button>
           )}
           {profile && !activeImpersonation && (
+            <Button variant="outline" size="sm" className="h-9 w-9 px-0 sm:w-auto sm:px-3" onClick={() => setMfaOpen(true)} aria-label="Keamanan MFA">
+              <ShieldCheck className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">MFA</span>
+            </Button>
+          )}
+          {profile && !activeImpersonation && (
             <Button variant="outline" size="sm" className="h-9 w-9 px-0 sm:w-auto sm:px-3" onClick={() => setPasswordOpen(true)} aria-label="Ubah password">
               <KeyRound className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">Password</span>
             </Button>
@@ -127,7 +134,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
         </div>
       </header>
       {!activeImpersonation && (
-        <PasswordControlDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+        <>
+          <PasswordControlDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+          <MfaSecurityDialog open={mfaOpen} onOpenChange={setMfaOpen} />
+        </>
       )}
     </>
   );
