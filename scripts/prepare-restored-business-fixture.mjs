@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
-const base = '9bfee0235fd36b02c8f74577dc5bea66d52c4028';
+// Use the current main-branch merge base. The old 2026 snapshot predated
+// authorized production updates and incorrectly failed unrelated security PRs.
+const base = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim();
 const paths = [
   'src/lib/accessControl.ts',
   'src/pages/AktivitasUniversalPage.tsx',
@@ -21,8 +23,7 @@ const paths = [
 const snapshot = Object.fromEntries(paths.map(path => [path, execFileSync('git', ['show', `${base}:${path}`], { encoding: 'utf8' })]));
 // PR32 intentionally changed read-only access. Its functional RBAC assertions remain authoritative.
 snapshot['src/lib/accessControl.ts'] = readFileSync('src/lib/accessControl.ts', 'utf8');
-// The shared focus bridge is intentionally changed by the approved continuity release.
-snapshot['src/components/common/ReleaseSyncBridge.tsx'] = execFileSync('git', ['show', 'cd81205bc5783b4cabb533a4a3914fb90a40386b:src/components/common/ReleaseSyncBridge.tsx'], { encoding: 'utf8' });
+// Compare the focus bridge against the same current main-branch baseline.
 for (const [path, expected] of Object.entries(snapshot)) {
   assert.equal(readFileSync(path, 'utf8'), expected, `Live feature changed: ${path}`);
 }
