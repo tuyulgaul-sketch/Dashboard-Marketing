@@ -44,40 +44,14 @@ jobs:
           corepack prepare pnpm@10.28.0 --activate
           pnpm install --no-frozen-lockfile
           git restore -- pnpm-lock.yaml
-      - name: Preserve original live feature baseline
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          import { execFileSync } from 'node:child_process';
-          import assert from 'node:assert/strict';
-          const BASE='9bfee0235fd36b02c8f74577dc5bea66d52c4028';
-          const paths=[
-            'src/lib/accessControl.ts',
-            'src/pages/AktivitasUniversalPage.tsx',
-            'src/pages/MarketingMeetingRoomPage.tsx',
-            'src/pages/DokumenPendukungPage.tsx',
-            'src/pages/DokumenAdministrasiReaderPage.tsx',
-            'src/pages/TandaTerimaV14Page.tsx',
-            'src/pages/AdministrasiPage.tsx',
-            'src/components/common/ReleaseSyncBridge.tsx',
-            'src/services/centralUserRuntime.ts',
-            'src/services/targetService.ts',
-            'src/services/masterDataService.ts',
-            'src/services/businessFileStorage.ts',
-            'src/services/pipelineFileStorage.ts',
-          ];
-          const snapshot=Object.fromEntries(paths.map(path=>[path,execFileSync('git',['show',`${BASE}:${path}`],{encoding:'utf8'})]));
-          snapshot['src/lib/accessControl.ts']=readFileSync('src/lib/accessControl.ts','utf8');
-          writeFileSync('/tmp/restore-preserved-files.json',JSON.stringify(snapshot));
-          for(const [path,expected] of Object.entries(snapshot)) assert.equal(readFileSync(path,'utf8'),expected,`Live feature changed: ${path}`);
-          console.log('Existing live feature files preserved, including Tanda Terima photo preview.');
-          NODE
+      - name: Verify current production feature integrity
+        run: node scripts/prepare-restored-business-fixture.mjs
       - name: Run navigation, upload guard and existing regressions
         run: |
           node scripts/test-bulk-pipeline-single-workflow.mjs
           # Extend only the historical expected upload-hub import. No runtime
           # files are rewritten and no earlier archive transforms are repeated.
-          node scripts/approved-target-wizard-transform.mjs navigation
+          node scripts/prepare-workspace-navigation-regression.mjs
           node --experimental-strip-types --test \
             scripts/test-target-realization-navigation.mjs \
             scripts/test-official-upload-upsert-guard.mjs \
