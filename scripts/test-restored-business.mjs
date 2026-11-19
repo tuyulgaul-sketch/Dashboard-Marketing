@@ -28,13 +28,13 @@ const app = read('src/App.tsx');
 const sidebar = read('src/components/layout/AppSidebar.tsx');
 const auth = read('src/contexts/AuthContext.tsx');
 
-test('all ten restored collections are central and separate from live bootstrap', () => {
+test('all eleven restored collections are central and separate from live bootstrap', () => {
   const lite = evaluatedArray(service, 'LITE_BUSINESS_STORAGE_KEYS');
   const restored = evaluatedArray(service, 'RESTORED_BUSINESS_STORAGE_KEYS');
   assert.equal(lite.length, 8);
-  assert.equal(restored.length, 10);
-  assert.equal(new Set([...lite, ...restored]).size, 18);
-  for (const key of ['pertalife_bookings','pertalife_pipelines','pertalife_appeals','pertalife_productions','pertalife_official_production_summaries','pertalife_official_production_batches','pertalife_official_policy_directory','pertalife_participants','pertalife_historical','pertalife_reimbursements']) assert(restored.includes(key));
+  assert.equal(restored.length, 11);
+  assert.equal(new Set([...lite, ...restored]).size, 19);
+  for (const key of ['pertalife_bookings','pertalife_pipelines','pertalife_appeals','pertalife_productions','pertalife_official_production_summaries','pertalife_official_production_batches','pertalife_official_policy_directory','pertalife_official_production_policy_details','pertalife_participants','pertalife_historical','pertalife_reimbursements']) assert(restored.includes(key));
   assert(!restored.includes('pertalife_approver_delegations'));
   assert.match(read(runtime), /const bootstrapLegacyCollections[\s\S]*?for \([\s\S]*?LITE_BUSINESS_STORAGE_KEYS/);
   assert.doesNotMatch(read(runtime).split('const bootstrapLegacyCollections')[1].split('export const syncCentralBusinessRuntime')[0], /RESTORED_BUSINESS_STORAGE_KEYS|CENTRAL_BUSINESS_STORAGE_KEYS/);
