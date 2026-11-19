@@ -64,7 +64,8 @@ jobs:
             scripts/test-document-handover-sort.mjs
       - name: Reject new TypeScript and lint diagnostics
         run: |
-          git worktree add --detach /tmp/target-baseline 9bfee0235fd36b02c8f74577dc5bea66d52c4028
+          base_sha=$(git merge-base HEAD origin/main)
+          git worktree add --detach /tmp/target-baseline "$base_sha"
           ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/target-baseline/node_modules
           (cd /tmp/target-baseline && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit -p tsconfig.app.json > /tmp/target-ts-before.txt 2>&1 || true)
           pnpm exec tsc --noEmit -p tsconfig.app.json > /tmp/target-ts-after.txt 2>&1 || true
