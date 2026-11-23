@@ -341,135 +341,86 @@ const buildChanges = (
 };
 
 const applyRowsFromServer = (
-  rows:
-    CentralEntityRow[]
+  rows: CentralEntityRow[],
+  storageKeys: readonly CentralBusinessStorageKey[] = CENTRAL_BUSINESS_STORAGE_KEYS
 ) => {
-  const grouped:
-    CollectionMap =
-    new Map();
+  // Partial refreshes must never clear other collections or their concurrency
+  // versions. Previously every Tanda Terima save reread all business modules.
+  const affected = new Set<CentralBusinessStorageKey>(storageKeys);
+  const grouped: CollectionMap = new Map();
 
-  CENTRAL_BUSINESS_STORAGE_KEYS.forEach(
-    key => {
-      grouped.set(
-        key,
-        []
-      );
+  affected.forEach(key => grouped.set(key, []));
+  for (const storedKey of Array.from(versions.keys())) {
+    if (Array.from(affected).some(key => storedKey.startsWith(`${key}::`))) {
+      versions.delete(storedKey);
     }
-  );
+  }
 
-  versions.clear();
+  rows.forEach(row => {
+    if (!affected.has(row.storage_key)) return;
+    grouped.get(row.storage_key)!.push(row.payload);
+    versions.set(
+      versionKey(row.storage_key, row.entity_id),
+      Number(row.version || 1)
+    );
+  });
 
-  rows.forEach(
-    row => {
-      const key =
-        row.storage_key;
-
-      const list =
-        grouped.get(
-          key
-        ) || [];
-
-      list.push(
-        row.payload
-      );
-
-      grouped.set(
-        key,
-        list
-      );
-
-      versions.set(
-        versionKey(
-          key,
-          row.entity_id
-        ),
-        Number(
-          row.version ||
-          1
-        )
-      );
-    }
-  );
-
-  CENTRAL_BUSINESS_STORAGE_KEYS.forEach(
-    key => {
-      const next =
-        cloneRows(
-          grouped.get(
-            key
-          ) || []
-        );
-
-      serverCollections.set(
-        key,
-        next
-      );
-
-      visibleCollections.set(
-        key,
-        cloneRows(
-          next
-        )
-      );
-    }
-  );
+  affected.forEach(key => {
+    const next = cloneRows(grouped.get(key) || []);
+    serverCollections.set(key, next);
+    visibleCollections.set(key, cloneRows(next));
+  });
 
   notifyLegacySubscribers();
 };
 
-export const refreshCentralBusinessRuntime =
-  async () => {
-    const rows =
-      await listCentralBusinessEntities();
+export const refreshCentralBusinessRuntime = async (
+  storageKeys: CentralBusinessStorageKey[] = [...CENTRAL_BUSINESS_STORAGE_KEYS]
+) => {
+  const rows = await listCentralBusinessEntities(storageKeys);
+  applyRowsFromServer(rows, storageKeys);
+};
 
-    applyRowsFromServer(
-      rows
-    );
-  };
+const changedRealtimeKeys = new Set<CentralBusinessStorageKey>();
+let realtimeRequiresFullRefresh = false;
 
-const scheduleRealtimeRefresh =
-  () => {
-    if (
-      realtimeTimer !==
-      null
-    ) {
-      window.clearTimeout(
-        realtimeTimer
-      );
-    }
+const scheduleRealtimeRefresh = (storageKey: CentralBusinessStorageKey | null) => {
+  if (storageKey) {
+    changedRealtimeKeys.add(storageKey);
+  } else {
+    realtimeRequiresFullRefresh = true;
+  }
 
-    realtimeTimer =
-      window.setTimeout(
-        () => {
-          realtimeTimer =
-            null;
+  if (realtimeTimer !== null) {
+    window.clearTimeout(realtimeTimer);
+  }
 
-          // Let a queued local mutation finish first.
-          Promise.all(
-            Array.from(
-              pendingByKey.values()
-            )
-          )
-            .catch(
-              () => undefined
-            )
-            .finally(
-              () => {
-                void refreshCentralBusinessRuntime()
-                  .catch(
-                    error => {
-                      console.error(
-                        "[Central Business] realtime refresh gagal",
-                        error
-                      );
-                    }
-                  );
-              }
-            );
-        },
-        750
-      );
-  };
+  realtimeTimer = window.setTimeout(() => {
+    realtimeTimer = null;
+    const changedKeys = Array.from(changedRealtimeKeys);
+    const fullRefresh = realtimeRequiresFullRefresh;
+    changedRealtimeKeys.clear();
+    realtimeRequiresFullRefresh = false;
+
+    // A local mutation must finish before a realtime refresh is applied.
+    void Promise.all(Array.from(pendingByKey.values()))
+      .catch(() => undefined)
+      .then(async () => {
+        if (fullRefresh || changedKeys.length === 0) {
+          await refreshCentralBusinessRuntime();
+        } else {
+          // Each changed collection is fetched independently. A busy module
+          // cannot force another unrelated module to reload all of its rows.
+          await Promise.all(
+            changedKeys.map(key => refreshCentralBusinessRuntime([key]))
+          );
+        }
+      })
+      .catch(error => {
+        console.error("[Central Business] realtime refresh gagal", error);
+      });
+  }, 750);
+};
 
 const syncDesiredCollection =
   async (
@@ -502,15 +453,56 @@ const syncDesiredCollection =
       return;
     }
 
-    await applyCentralBusinessChanges(
+    // This RPC is the authoritative commit. Never report a failed submit
+    // merely because a subsequent SELECT of other modules times out.
+    const committed = await applyCentralBusinessChanges(
       storageKey,
       upserts,
       deletes
+    ) as {
+      upserts?: Array<{ id: string; version: number }>;
+    };
+
+    const committedById = rowsById(confirmed);
+    const acknowledgedVersions = new Map(
+      (committed?.upserts || []).map(item => [
+        String(item.id),
+        Number(item.version)
+      ])
     );
 
-    // Reload all authorized rows after the transaction so version numbers,
-    // server-normalized metadata, duplicate constraints and RLS are reflected.
-    await refreshCentralBusinessRuntime();
+    deletes.forEach(item => {
+      committedById.delete(item.id);
+      versions.delete(versionKey(storageKey, item.id));
+    });
+
+    upserts.forEach(item => {
+      const id = getEntityId(item.payload);
+      committedById.set(id, item.payload);
+      const reportedVersion = acknowledgedVersions.get(id);
+      // In normal operation the RPC returns an authoritative version.
+      // In the unlikely event of a missing response field, the change was
+      // still committed; refresh through Realtime instead of claiming failure.
+      versions.set(
+        versionKey(storageKey, id),
+        Number.isFinite(reportedVersion)
+          ? reportedVersion!
+          : item.expectedVersion + 1
+      );
+    });
+
+    if (acknowledgedVersions.size !== upserts.length) {
+      console.warn(
+        "[Central Business] RPC committed but returned an incomplete version snapshot",
+        storageKey
+      );
+      scheduleRealtimeRefresh(storageKey);
+    }
+
+    const nextRows = cloneRows(Array.from(committedById.values()));
+    serverCollections.set(storageKey, nextRows);
+    visibleCollections.set(storageKey, cloneRows(nextRows));
+    notifyLegacySubscribers();
   };
 
 const flushCollectionSync =
@@ -569,7 +561,7 @@ const flushCollectionSync =
             );
 
             try {
-              await refreshCentralBusinessRuntime();
+              await refreshCentralBusinessRuntime([storageKey]);
             } catch (
               refreshError
             ) {

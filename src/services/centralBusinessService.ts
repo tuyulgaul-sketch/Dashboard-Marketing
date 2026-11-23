@@ -159,8 +159,7 @@ export async function applyCentralBusinessChanges(
 }
 
 export function subscribeCentralBusinessEntities(
-  onChange:
-    () => void
+  onChange: (storageKey: CentralBusinessStorageKey | null) => void
 ) {
   const channel =
     supabase
@@ -172,10 +171,19 @@ export function subscribeCentralBusinessEntities(
         {
           event: "*",
           schema: "public",
-          table:
-            "central_business_entities",
+          table: "central_business_entities",
         },
-        onChange
+        payload => {
+          // The changed collection can be refreshed on its own, avoiding
+          // an expensive full RLS scan after every Tanda Terima insert.
+          // Delete events can carry only primary keys; fall back to a
+          // complete refresh if the storage key is not available.
+          const next = (payload.new as Record<string, unknown> | undefined)?.storage_key;
+          const previous = (payload.old as Record<string, unknown> | undefined)?.storage_key;
+          const candidate = typeof next === "string" ? next :
+            typeof previous === "string" ? previous : null;
+          onChange(candidate && isCentralBusinessStorageKey(candidate) ? candidate : null);
+        }
       )
       .subscribe();
 
