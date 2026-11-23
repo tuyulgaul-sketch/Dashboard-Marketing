@@ -1286,7 +1286,7 @@ export const DokumenPendukungPage:
     const isAdminDocumentPublisher =
       isAdminOperator || isEndah;
 
-    const isAndi =
+    const isMarcommHead =
       store.canActAsMarketingCommunicationHead(
         currentUser.id
       );
@@ -1296,11 +1296,11 @@ export const DokumenPendukungPage:
       'USR-000031';
 
     // Preserve the existing publisher and final-approval workflow.
-    const isMarketingToolPublisher = isAndi || isKarina;
+    const isMarketingToolPublisher = isMarcommHead || isKarina;
 
     const canManageMarcommStock =
       isArianie ||
-      isAndi ||
+      isMarcommHead ||
       isKarina;
 
     const pendingStockOpnames =
@@ -1347,7 +1347,7 @@ export const DokumenPendukungPage:
         }
 
         if (
-          isAndi ||
+          isMarcommHead ||
           isKarina
         ) {
           setMarcommViewTab(
@@ -1366,7 +1366,7 @@ export const DokumenPendukungPage:
         dashboardFilter,
         focusRequestId,
         focusOpnameId,
-        isAndi,
+        isMarcommHead,
         isKarina,
       ]
     );
@@ -1456,7 +1456,7 @@ export const DokumenPendukungPage:
       ) => {
         if (
           isArianie ||
-          isAndi ||
+          isMarcommHead ||
           isKarina
         ) {
           return true;
@@ -3822,7 +3822,7 @@ export const DokumenPendukungPage:
                     (
                       document.ownerArea ===
                         'MARKETING_COMMUNICATION' &&
-                      isAndi
+                      isMarcommHead
                     )
                   ) && (
                   <Button
@@ -4176,7 +4176,7 @@ export const DokumenPendukungPage:
                 )}
               </div>
 
-              {isAndi &&
+              {isMarcommHead &&
                 pendingMarcommDocs.length >
                   0 && (
                 <Card className="border-amber-300 bg-amber-50">
@@ -4333,7 +4333,7 @@ export const DokumenPendukungPage:
 
               <div className="sticky top-0 z-20 -mx-1 overflow-x-auto bg-gray-50/95 px-1 pb-2 pt-1 backdrop-blur">
                 <div className="inline-flex min-w-max items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-                  {!isAndi &&
+                  {!isMarcommHead &&
                     !isKarina && (
                     <button
                       type="button"
@@ -4414,7 +4414,7 @@ export const DokumenPendukungPage:
               </div>
               {marcommViewTab ===
                 'SERVICES' &&
-                !isAndi &&
+                !isMarcommHead &&
                 !isKarina && (
                 <Card className="overflow-hidden border-blue-200 bg-gradient-to-br from-blue-50 to-white shadow-sm">
                   <CardContent className="p-6">
@@ -4741,7 +4741,7 @@ export const DokumenPendukungPage:
                                       </Button>
                                     )}
 
-                                    {isAndi &&
+                                    {isMarcommHead &&
                                       opname.status ===
                                         'PENDING_ANDI_APPROVAL' && (
                                       <Button
@@ -5167,7 +5167,7 @@ export const DokumenPendukungPage:
                                   Riwayat
                                 </Button>
 
-                                {isAndi &&
+                                {isMarcommHead &&
                                   (
                                     request.status ===
                                       'PENDING_ANDI_APPROVAL' ||
@@ -5248,7 +5248,7 @@ export const DokumenPendukungPage:
                                   </Button>
                                 )}
 
-                                {isAndi &&
+                                {isMarcommHead &&
                                   request.status ===
                                     'PENDING_ANDI_FINAL_REVIEW' && (
                                   <Button
@@ -7214,7 +7214,7 @@ export const DokumenPendukungPage:
                         ) && (
                         <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
                           <div className="text-[10px] font-black uppercase tracking-wide text-indigo-800">
-                            Kewenangan Final Andi Rita
+                            Kewenangan Final DH Marketing Communication
                           </div>
 
                           <p className="mt-1 text-[10px] leading-relaxed text-indigo-700">
