@@ -81,7 +81,8 @@ type ReceiptFilter =
   | "SENT"
   | "RECEIVED"
   | "DISCREPANCY"
-  | "CLOSED";
+  | "CLOSED"
+  | "ARCHIVED";
 
 type FormMode =
   | "CREATE"
@@ -1609,10 +1610,13 @@ const TandaTerimaV14Page:
       useMemo(
         () => ({
           ALL:
-            receipts.length,
+            receipts.filter(receipt => !receipt.duplicateOf).length,
+          ARCHIVED:
+            receipts.filter(receipt => Boolean(receipt.duplicateOf)).length,
           TO_RECEIVE:
             receipts.filter(
               receipt =>
+                !receipt.duplicateOf &&
                 (
                   receipt.receiverUserId ===
                     currentUser.id &&
@@ -1629,18 +1633,21 @@ const TandaTerimaV14Page:
           SENT:
             receipts.filter(
               receipt =>
+                !receipt.duplicateOf &&
                 receipt.senderUserId ===
                 currentUser.id
             ).length,
           RECEIVED:
             receipts.filter(
               receipt =>
+                !receipt.duplicateOf &&
                 receipt.status ===
                 "DITERIMA"
             ).length,
           DISCREPANCY:
             receipts.filter(
               receipt =>
+                !receipt.duplicateOf &&
                 receipt.status ===
                   "SELISIH DOKUMEN" ||
                 receipt.status ===
@@ -1649,6 +1656,7 @@ const TandaTerimaV14Page:
           CLOSED:
             receipts.filter(
               receipt =>
+                !receipt.duplicateOf &&
                 receipt.status ===
                   "DITOLAK" ||
                 receipt.status ===
@@ -1672,7 +1680,11 @@ const TandaTerimaV14Page:
           return sortHandoversBySubmission(receipts.filter(
             receipt => {
               const pass =
-                filter === "ALL"
+                filter === "ARCHIVED"
+                  ? Boolean(receipt.duplicateOf)
+                  : receipt.duplicateOf
+                  ? false
+                  : filter === "ALL"
                   ? true
                   : filter === "TO_RECEIVE"
                   ? (
@@ -1817,7 +1829,7 @@ const TandaTerimaV14Page:
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">
             {[
               ["ALL", "Semua", counts.ALL],
               ["TO_RECEIVE", "Menunggu Saya Terima", counts.TO_RECEIVE],
@@ -1825,6 +1837,7 @@ const TandaTerimaV14Page:
               ["RECEIVED", "Diterima", counts.RECEIVED],
               ["DISCREPANCY", "Selisih", counts.DISCREPANCY],
               ["CLOSED", "Ditolak / Batal", counts.CLOSED],
+              ["ARCHIVED", "Arsip Duplikat", counts.ARCHIVED],
             ].map(
               item => (
                 <button
@@ -2010,8 +2023,15 @@ const TandaTerimaV14Page:
                                       receipt.status
                                     )}`}
                                   >
-                                    {receipt.status}
+                                    {receipt.duplicateOf
+                                    ? "ARSIP DUPLIKAT"
+                                    : receipt.status}
                                   </span>
+                                  {receipt.duplicateOf && (
+                                    <div className="mt-1 text-[10px] font-semibold text-amber-700">
+                                      Nomor utama: {receipt.duplicateOf}
+                                    </div>
+                                  )}
                                   <div className="mt-2">
                                     <SlaBadge receipt={receipt} />
                                   </div>
@@ -2021,7 +2041,7 @@ const TandaTerimaV14Page:
 
                             <td className="p-3">
                               <div className="flex flex-wrap justify-end gap-2">
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "DIKEMBALIKAN" &&
@@ -2041,7 +2061,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "DITERIMA" &&
@@ -2061,7 +2081,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU KONFIRMASI PENGEMBALIAN" && (
@@ -2079,7 +2099,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "SELISIH DOKUMEN" && (
@@ -2098,7 +2118,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "SELISIH PENGEMBALIAN" && (
@@ -2117,7 +2137,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.externalReceiver &&
+                                {!receipt.duplicateOf && receipt.externalReceiver &&
                                   receipt.senderUserId === currentUser.id &&
                                   receipt.externalJourneyState !== "DONE" && (
                                     <Button
@@ -2147,7 +2167,7 @@ const TandaTerimaV14Page:
                                   Detail
                                 </Button>
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -2165,7 +2185,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -2184,7 +2204,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -3324,6 +3344,11 @@ const TandaTerimaV14Page:
                       >
                         {detailReceipt.status}
                       </span>
+                      {detailReceipt.duplicateOf && (
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">
+                          ARSIP DUPLIKAT · Utama {detailReceipt.duplicateOf}
+                        </span>
+                      )}
                       <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600">
                         Siklus {detailReceipt.cycleNumber || 1}
                       </span>
