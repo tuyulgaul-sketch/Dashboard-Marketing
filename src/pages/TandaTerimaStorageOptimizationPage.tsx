@@ -4,13 +4,10 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  isMarketingAdministrationProfile,
-  isMarketingSupportRootProfile,
-} from "@/lib/accessControl";
+import { isTandaTerimaCompressionOperator } from "@/lib/accessControl";
 import { supabase } from "@/lib/supabase";
 import { optimizeTandaTerimaPhotoAggressive } from "@/utils/optimizeTandaTerimaPhotoAggressive";
-import { ArrowLeft, HardDriveDownload, ShieldCheck, Square, RefreshCw } from "lucide-react";
+import { ArrowLeft, HardDriveDownload, ShieldCheck, Square, Loader2 } from "lucide-react";
 
 type StoredRow = {
   file_id: string;
@@ -96,10 +93,9 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
   const [message, setMessage] = useState("");
   const cancel = useRef(false);
 
-  // System administrator accounts intentionally do not have access to
-  // Tanda Terima evidence. Use only existing authorized business profiles.
-  if (!profile || !profile.active ||
-      !(isMarketingAdministrationProfile(profile) || isMarketingSupportRootProfile(profile))) {
+  // This single-account check is UI-only; Edge Function independently
+  // validates the verified Supabase Auth user ID and active profile.
+  if (!isTandaTerimaCompressionOperator(profile)) {
     return <Navigate to="/tanda-terima" replace />;
   }
 
@@ -125,6 +121,11 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  React.useEffect(() => {
+    if (!isTandaTerimaCompressionOperator(profile)) return;
+    void scan();
+  }, [profile?.auth_user_id]);
 
   const start = async () => {
     if (running) return;
@@ -155,10 +156,37 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
     setMigrated(0);
     setFailed(0);
     setLogs([]);
+    let candidates: StoredRow[] = [];
+    try {
+      // Re-scan within the same button flow so the user does not have to
+      // manually scan first. Ignore files with no registry and previously
+      // optimized files.
+      const { data, error } = await supabase
+        .from("central_business_files")
+        .select("file_id,entity_id,storage_path,file_name,file_size,mime_type,metadata")
+        .eq("module", "TANDA_TERIMA")
+        .eq("storage_key", "pertalife_document_handovers")
+        .order("file_id", { ascending: true })
+        .range(0, 499);
+      if (error) throw error;
+      candidates = ((data || []) as StoredRow[]).filter(supported);
+      setRows(candidates);
+      setScanned(true);
+      if (candidates.length === 0) {
+        setRunning(false);
+        setMessage("Semua foto terdaftar sudah menggunakan Extreme atau tidak memerlukan kompresi. Tidak ada file yang diubah.");
+        return;
+      }
+    } catch (err) {
+      setRunning(false);
+      setMessage(err instanceof Error ? err.message : "Gagal mengambil daftar foto");
+      return;
+    }
+
     const manifest: ManifestEntry[] = [];
     let success = 0, failures = 0, saved = 0, completed = 0;
 
-    for (const row of rows) {
+    for (const row of candidates) {
       if (cancel.current) break;
       const entry: ManifestEntry = {
         fileId: row.file_id,
@@ -250,7 +278,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
           <ArrowLeft className="h-4 w-4" /> Kembali ke Tanda Terima
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">Optimasi Storage Foto Tanda Terima</h1>
+          <h1 className="text-2xl font-bold">Kompres Semua Foto Tanda Terima</h1>
           <p className="mt-2 text-sm text-slate-600">
             Mode Extreme: JPEG 42–48%, maksimal 1.200 piksel. Bukti tetap bisa
             dibuka dari dashboard karena registry file diperbarui hanya setelah
@@ -260,27 +288,24 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Backup wajib sebelum optimasi foto lama</CardTitle>
+            <CardTitle>Satu tombol kompresi massal — khusus akun Banjar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>
-              Pilih folder di perangkat atau penyimpanan perusahaan yang <strong>diizinkan untuk
-              dokumen internal</strong>. Sistem akan menyimpan dan memverifikasi salinan asli
-              untuk setiap foto sebelum mengubah versi cloud. Tidak menggunakan PC sebagai
-              server file; file hasil kompresi tetap di Supabase.
+              Klik satu tombol di bawah, lalu <strong>izinkan pemilihan folder backup perusahaan</strong>
+              ketika browser memintanya. Setelah folder dipilih, seluruh foto lama yang
+              memenuhi kriteria akan otomatis di-backup, dikompres, dan diverifikasi
+              satu per satu tanpa tindakan tambahan. Foto hasil kompresi tetap online di
+              Supabase sehingga pengguna lain tetap bisa membukanya.
             </p>
             <p className="font-semibold text-amber-800">
-              Jangan pilih folder publik, folder sinkronisasi pribadi, atau perangkat
-              yang tidak disetujui perusahaan.
+              Simpan backup di folder perusahaan yang aman, bukan folder publik atau sinkronisasi pribadi.
+              Biarkan halaman ini tetap terbuka hingga proses selesai.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={scan} disabled={loading || running}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                {loading ? "Memeriksa..." : "Cek foto lama"}
-              </Button>
-              <Button onClick={start} disabled={running || !scanned || rows.length === 0}>
-                <HardDriveDownload className="mr-2 h-4 w-4" />
-                Backup & optimasi {rows.length} foto
+              <Button onClick={start} disabled={running || loading} className="bg-blue-700 text-white hover:bg-blue-800">
+                {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <HardDriveDownload className="mr-2 h-4 w-4" />}
+                {running ? "Sedang mengompres semua foto..." : "Kompres Semua Foto Tanda Terima"}
               </Button>
               {running && (
                 <Button variant="destructive" onClick={() => { cancel.current = true; }}>
@@ -290,7 +315,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <ShieldCheck className="h-4 w-4 text-emerald-700" />
-              Hanya untuk Marketing Administration / support root berwenang dan login MFA.
+              Tombol hanya tersedia di akun Banjar. Akses server memverifikasi identitas login sebelum perubahan file.
             </div>
           </CardContent>
         </Card>
