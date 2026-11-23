@@ -13,8 +13,13 @@ type Verified = { id:string; friendly_name?:string };
 const formatError = (error:unknown) =>
   error instanceof Error ? error.message : "Verifikasi keamanan gagal. Coba lagi.";
 
-export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolean)=>void}> =
-({open,onOpenChange})=>{
+export const MfaSecurityDialog:React.FC<{
+  open:boolean;
+  onOpenChange:(value:boolean)=>void;
+  onEnrolled?:()=>Promise<void>;
+  recoveryMode?:boolean;
+}> =
+({open,onOpenChange,onEnrolled,recoveryMode=false})=>{
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
@@ -76,6 +81,9 @@ export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolea
       setVerified(v=>[...v,{id:enrollment.id,friendly_name:enrollment.label}]);
       setEnrollment(null);setCode("");
       setMessage("MFA berhasil diaktifkan. Login berikutnya memerlukan kode authenticator.");
+      // For locked-out administrators, the recovery gate must finish the
+      // new AAL2 bootstrap before the application can be shown.
+      if(onEnrolled) await onEnrolled();
     }catch(err){setError(formatError(err));}
     finally{setBusy(false);}
   };
@@ -92,7 +100,9 @@ export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolea
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-900">
           {verified.length>0
             ? <p><strong>MFA aktif.</strong> {verified.length} authenticator terverifikasi pada akun ini.</p>
-            : <p><strong>MFA belum aktif.</strong> Aktifkan segera, terutama untuk akun yang memiliki akses administratif.</p>}
+            : recoveryMode
+              ? <p><strong>Pemulihan akun administrator.</strong> Daftarkan authenticator baru. Akses administrasi tetap terkunci sampai kode pertama berhasil diverifikasi.</p>
+              : <p><strong>MFA belum aktif.</strong> Aktifkan segera, terutama untuk akun yang memiliki akses administratif.</p>}
         </div>
         {verified.length>0&&<div className="space-y-1">
           {verified.map(f=><div className="flex items-center gap-2 text-emerald-800" key={f.id}>
