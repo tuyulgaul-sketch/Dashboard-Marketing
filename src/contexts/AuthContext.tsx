@@ -131,7 +131,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const {data:assurance,error:assuranceError} =
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (!isCurrent()) return;
-    if (assuranceError || (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2")) {
+    if (
+      assuranceError ||
+      (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2") ||
+      // Administrative accounts must complete a verified second factor
+      // even during the narrow recovery window after their old factor was
+      // revoked. Never hydrate SYSTEM_ADMIN data into an AAL1 session.
+      (canAccessFeature(authProfile, 'SYSTEM_ADMIN') && assurance?.currentLevel !== 'aal2')
+    ) {
       awaitingMfaBootstrap.current = true;
       setRestoredBusinessReady(false);
       setRestoredBusinessError(null);
