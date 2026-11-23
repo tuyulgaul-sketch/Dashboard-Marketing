@@ -850,7 +850,7 @@ const TandaTerimaV14Page:
               .toString(36)
               .slice(2, 6)}`;
 
-          await saveDocumentHandoverFile({
+          const savedPhoto = await saveDocumentHandoverFile({
             id:
               fileId,
             transactionId:
@@ -881,7 +881,7 @@ const TandaTerimaV14Page:
             fileName:
               handoverPhoto.name,
             fileSize:
-              handoverPhoto.size,
+              savedPhoto.fileSize,
           };
 
           if (
@@ -1054,7 +1054,7 @@ const TandaTerimaV14Page:
                 .toString(36)
                 .slice(2, 6)}`;
 
-            await saveDocumentHandoverFile({
+            const savedPhoto = await saveDocumentHandoverFile({
               id:
                 fileId,
               transactionId:
@@ -1085,7 +1085,7 @@ const TandaTerimaV14Page:
               fileName:
                 receiptPhoto.name,
               fileSize:
-                receiptPhoto.size,
+                savedPhoto.fileSize,
             };
           }
 
@@ -1190,7 +1190,7 @@ const TandaTerimaV14Page:
               .toString(36)
               .slice(2, 6)}`;
 
-          await saveDocumentHandoverFile({
+          const savedPhoto = await saveDocumentHandoverFile({
             id:
               fileId,
             transactionId:
@@ -1226,7 +1226,7 @@ const TandaTerimaV14Page:
                 fileName:
                   resolutionPhoto.name,
                 fileSize:
-                  resolutionPhoto.size,
+                  savedPhoto.fileSize,
               },
             }
           );
@@ -1397,7 +1397,7 @@ const TandaTerimaV14Page:
                 .toString(36)
                 .slice(2, 6)}`;
 
-            await saveDocumentHandoverFile({
+            const savedPhoto = await saveDocumentHandoverFile({
               id: fileId,
               transactionId:
                 externalJourneyReceipt.id,
@@ -1427,7 +1427,7 @@ const TandaTerimaV14Page:
               fileName:
                 externalJourneyPhoto.name,
               fileSize:
-                externalJourneyPhoto.size,
+                savedPhoto.fileSize,
             };
           }
 
