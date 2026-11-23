@@ -93,12 +93,6 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
   const [message, setMessage] = useState("");
   const cancel = useRef(false);
 
-  // This single-account check is UI-only; Edge Function independently
-  // validates the verified Supabase Auth user ID and active profile.
-  if (!isTandaTerimaCompressionOperator(profile)) {
-    return <Navigate to="/tanda-terima" replace />;
-  }
-
   const scan = async () => {
     setLoading(true);
     setMessage("");
@@ -270,6 +264,12 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
     await scan();
     setMessage(finishedMessage);
   };
+
+  // This single-account check is UI-only; Edge Function independently
+  // validates the verified Supabase Auth user ID and active profile.
+  if (!isTandaTerimaCompressionOperator(profile)) {
+    return <Navigate to="/tanda-terima" replace />;
+  }
 
   return (
     <AppLayout>
