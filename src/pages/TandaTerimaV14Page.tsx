@@ -1,6 +1,7 @@
 import React, {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Link } from "react-router-dom";
@@ -487,6 +488,7 @@ const TandaTerimaV14Page:
       submitting,
       setSubmitting,
     ] = useState(false);
+    const submitFormLocked = useRef(false);
 
     useEffect(
       () => {
@@ -789,6 +791,8 @@ const TandaTerimaV14Page:
           return;
         }
 
+        if (submitFormLocked.current) return;
+        submitFormLocked.current = true;
         try {
           setSubmitting(true);
 
@@ -799,6 +803,40 @@ const TandaTerimaV14Page:
           if (
             formMode === "CREATE"
           ) {
+            // Check the user's actual authenticated sender identity on the
+            // server before reserving a number or uploading any evidence.
+            // This protects against manual retries after a timeout as well
+            // as repeated clicks / a refreshed tab.
+            const { data: existingReceipt, error: duplicateCheckError } =
+              await supabase.rpc(
+                "find_recent_document_handover_duplicate_v1",
+                {
+                  p_handover_date: handoverDate,
+                  p_receiver_user_id: receiverId,
+                  p_external_destination:
+                    receiverId === EXTERNAL_RECEIVER_ID
+                      ? externalDestination.trim() : "",
+                  p_related_module: relatedModule,
+                  p_related_transaction_id: relatedTransactionId.trim(),
+                  p_related_description: relatedDescription.trim(),
+                  p_items: draftItems.map(item => ({
+                    documentType: item.documentType,
+                    description: item.description.trim(),
+                    physicalForm: item.physicalForm,
+                    quantity: Number(item.quantity),
+                    notes: item.notes.trim(),
+                  })),
+                }
+              );
+            if (duplicateCheckError) {
+              throw new Error(duplicateCheckError.message);
+            }
+            if (typeof existingReceipt === "string" && existingReceipt) {
+              throw new Error(
+                `Tanda Terima yang sama sudah tersimpan sebagai ${existingReceipt}. Tidak dibuat nomor baru. Periksa daftar Tanda Terima sebelum submit ulang.`
+              );
+            }
+
             const {
               data,
               error,
@@ -989,13 +1027,18 @@ const TandaTerimaV14Page:
             successMessage
           );
         } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : "Gagal memproses Tanda Terima.";
+          const duplicate = /DUPLICATE_TANDA_TERIMA:(TRM-[0-9]{4}-[0-9]{2}-[0-9]{5})/.exec(message);
           window.alert(
-            error instanceof Error
-              ? error.message
-              : "Gagal memproses Tanda Terima."
+            duplicate
+              ? `Transaksi identik sudah tersimpan sebagai ${duplicate[1]}. Server menolak duplikat; tidak perlu submit ulang.`
+              : message
           );
         } finally {
           setSubmitting(false);
+          submitFormLocked.current = false;
         }
       };
 
