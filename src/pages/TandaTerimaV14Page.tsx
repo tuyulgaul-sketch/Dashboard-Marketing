@@ -1759,7 +1759,7 @@ const TandaTerimaV14Page:
               {isTandaTerimaCompressionOperator(authProfile) && (
                 <Button asChild type="button" variant="outline">
                   <Link to="/tanda-terima/storage-optimization">
-                    Kompres Semua Foto Tanda Terima
+                    Pengelolaan Kompresi Foto
                   </Link>
                 </Button>
               )}
