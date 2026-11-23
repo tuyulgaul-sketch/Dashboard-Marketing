@@ -1,8 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
-// Restricted maintenance API: called only by MFA-ready Marketing Administration
-// or its designated support root. Never exposes service-role credentials.
+// Restricted evidence migration API. Access bound to the single verified
+// Banjar account, validated against user JWT and active database profile.
+// The service-role key remains server-side only.
 const BUCKET = "business-files";
 const MAX_COMPRESSED_BYTES = 1024 * 1024;
 const TRUSTED_PRODUCTION = "https://dashboard-marketing-roan.vercel.app";
@@ -74,15 +75,27 @@ Deno.serve(async (req: Request) => {
     return json(req, 401, { error: "Session invalid" });
   }
 
-  const [mfa, marketingAdmin, supportRoot] = await Promise.all([
+  // Bind this high-risk migration to the exact verified Supabase Auth account.
+  // An ordinary MAS role, SYSTEM_ADMIN, or similarly named account cannot run it.
+  if (authData.user.id !== "22b5481e-ea83-42cb-a9a1-584a52def642") {
+    return json(req, 403, { error: "Akun tidak diizinkan melakukan kompresi massal." });
+  }
+
+  const [mfa, operator] = await Promise.all([
     caller.rpc("is_mfa_session_ready"),
-    caller.rpc("central_is_marketing_administration"),
-    caller.rpc("central_is_target_support_root"),
+    caller.from("profiles")
+      .select("id,auth_user_id,email,active,unit,department")
+      .eq("auth_user_id", authData.user.id)
+      .eq("email", "banjar@pertalife.com")
+      .eq("active", true)
+      .maybeSingle(),
   ]);
-  if (mfa.error || !mfa.data ||
-      ((marketingAdmin.error || !marketingAdmin.data) &&
-       (supportRoot.error || !supportRoot.data))) {
-    return json(req, 403, { error: "Only an authorized Marketing Administration operator with MFA can migrate evidence" });
+  if (mfa.error || !mfa.data || operator.error ||
+      !operator.data ||
+      operator.data.auth_user_id !== authData.user.id ||
+      String(operator.data.unit).trim().toLowerCase() !== "marketing support" ||
+      String(operator.data.department).trim().toLowerCase() !== "digital & affinity") {
+    return json(req, 403, { error: "Akses khusus kompresi hanya tersedia untuk akun Banjar aktif dengan sesi yang valid." });
   }
 
   let form: FormData;

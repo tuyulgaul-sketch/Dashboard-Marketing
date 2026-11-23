@@ -18,6 +18,19 @@ export type AppFeature =
 const normalize = (value?: string | null) =>
   (value || "").trim().toLowerCase();
 
+/**
+ * Bulk photo migration is a privileged maintenance action bound to one
+ * verified Supabase Auth identity, not a department/role (MAS included).
+ * Keeping the check in the server function is mandatory; this only hides UI.
+ */
+export const isTandaTerimaCompressionOperator = (
+  profile?: AuthProfile | null
+) => Boolean(
+  profile?.active &&
+  profile.auth_user_id === "22b5481e-ea83-42cb-a9a1-584a52def642" &&
+  normalize(profile.email) === "banjar@pertalife.com"
+);
+
 export const isSystemAdminProfile = (
   profile?: AuthProfile | null
 ) => {
