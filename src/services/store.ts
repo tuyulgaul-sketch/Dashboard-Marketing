@@ -4736,6 +4736,20 @@ class StoreService {
     delegatorUserId: string,
     userId: string = this.getCurrentUser().id
   ): boolean {
+    // Current Marcomm authority depends on the live directory role.
+    // A former DH retaining an old legacy ID must never retain approval rights.
+    if (delegatorUserId === 'USR-000034') {
+      const owner = this.getUsers().find(user => user.id === delegatorUserId);
+      if (
+        !owner ||
+        owner.status !== 'Active' ||
+        owner.role !== 'DEPARTMENT_HEAD_MARKETING_COMMUNICATION' ||
+        owner.unit !== 'Marketing Support' ||
+        owner.department !== 'Marketing Communication'
+      ) {
+        return false;
+      }
+    }
     if (userId === delegatorUserId) {
       return true;
     }
