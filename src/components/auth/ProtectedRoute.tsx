@@ -6,7 +6,7 @@ import { MfaSessionGuard } from "@/components/auth/MfaSessionGuard";
 const ProtectedRoute: React.FC<{
   children: React.ReactElement;
 }> = ({ children }) => {
-  const { session, profile, loading, signOut } = useAuth();
+  const { session, profile, loading, signOut, completeMfaLogin } = useAuth();
   const location = useLocation();
 
   /**
@@ -67,7 +67,15 @@ const ProtectedRoute: React.FC<{
     );
   }
 
-  return <MfaSessionGuard session={session} signOut={signOut}>{children}</MfaSessionGuard>;
+  return (
+    <MfaSessionGuard
+      session={session}
+      signOut={signOut}
+      onVerified={completeMfaLogin}
+    >
+      {children}
+    </MfaSessionGuard>
+  );
 };
 
 export default ProtectedRoute;
