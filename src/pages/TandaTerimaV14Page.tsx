@@ -3,6 +3,9 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { isMarketingAdministrationProfile, isMarketingSupportRootProfile } from "@/lib/accessControl";
 import { AppLayout } from "@/components/layout/AppLayout";
 import HandoverEvidencePreview from "@/components/tandaTerima/HandoverEvidencePreview";
 import { brandedPrompt } from "@/lib/brandedDialog";
@@ -287,6 +290,8 @@ const SlaBadge:
 
 const TandaTerimaV14Page:
   React.FC = () => {
+    const { profile: authProfile } = useAuth();
+
     const [
       currentUser,
       setCurrentUser,
@@ -1750,6 +1755,15 @@ const TandaTerimaV14Page:
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              {(isMarketingAdministrationProfile(authProfile) ||
+                isMarketingSupportRootProfile(authProfile)) && (
+                <Button asChild type="button" variant="outline">
+                  <Link to="/tanda-terima/storage-optimization">
+                    Optimasi Foto Lama
+                  </Link>
+                </Button>
+              )}
             <Button
               type="button"
               onClick={openCreate}
@@ -1758,6 +1772,7 @@ const TandaTerimaV14Page:
               <Plus className="h-4 w-4" />
               Buat Tanda Terima
             </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
