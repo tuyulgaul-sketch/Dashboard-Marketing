@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { optimizeTandaTerimaPhoto } from "@/utils/optimizeTandaTerimaPhoto";
 import {
   BUSINESS_FILE_BUCKET,
   downloadCentralBusinessFile,
@@ -154,7 +155,7 @@ export const saveDocumentHandoverFile =
         record.transactionId
       );
 
-    const file =
+    const originalFile =
       new File(
         [
           record.blob,
@@ -166,6 +167,13 @@ export const saveDocumentHandoverFile =
             record.blob.type ||
             "application/octet-stream",
         }
+      );
+
+    // Only optimize newly uploaded evidence. Existing storage objects
+    // and their links remain untouched until a separate verified migration.
+    const file =
+      await optimizeTandaTerimaPhoto(
+        originalFile
       );
 
     const existingMetadata =
