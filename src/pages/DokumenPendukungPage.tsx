@@ -1634,7 +1634,7 @@ export const DokumenPendukungPage:
         ? `Request ${focusRequestId}`
         : {
             ANDI_INITIAL:
-              'Approval Awal Andi',
+              'Approval Awal DH Marketing Communication',
             ANDI_FINAL:
               'Final Review Department Head Marketing Communication',
             KARINA_READY:
@@ -5068,13 +5068,13 @@ export const DokumenPendukungPage:
 
                                     {request.approvedQuantity && (
                                       <span className="font-bold text-indigo-700">
-                                        Qty Final Andi: {request.approvedQuantity}
+                                        Qty Final DH Marcomm: {request.approvedQuantity}
                                       </span>
                                     )}
 
                                     {request.approvedGiftTier && (
                                       <span className="font-bold text-indigo-700">
-                                        Jenis Final Andi: {request.approvedGiftTier}
+                                        Jenis Final DH Marcomm: {request.approvedGiftTier}
                                       </span>
                                     )}
 
@@ -6131,7 +6131,7 @@ export const DokumenPendukungPage:
                     }
                     className="bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700"
                   >
-                    Submit Opname ke Andi
+                    Submit Opname ke DH Marcomm
                   </Button>
                 </div>
               </div>
