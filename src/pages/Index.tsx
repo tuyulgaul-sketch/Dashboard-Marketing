@@ -227,9 +227,12 @@ const Index: React.FC = () => {
       currentUser.id
     );
 
-  const isAndi =
-    currentUser.id ===
-    'USR-000030';
+  // DH Marketing Communication follows the active role/department,
+  // never the historical identity of Andi Rita (now DH Captive I).
+  const isMarcommHead =
+    currentUser.role === 'DEPARTMENT_HEAD_MARKETING_COMMUNICATION' &&
+    currentUser.unit === 'Marketing Support' &&
+    currentUser.department === 'Marketing Communication';
 
   const isKarina =
     currentUser.id ===
@@ -247,7 +250,7 @@ const Index: React.FC = () => {
   // ============================================================
   // SPECIALIZED MARKETING SUPPORT DASHBOARDS
   // ============================================================
-  // Endah, Andi Rita, and Karina intentionally do NOT inherit
+  // Marketing Support, the current Marcomm Head, and Karina do NOT inherit
   // Marketing premium target cards. Their landing dashboards show
   // only the queues / operational responsibilities owned by them.
 
@@ -256,7 +259,7 @@ const Index: React.FC = () => {
       isArianie ||
       isEndah ||
       isMarketingAdministrationOperator ||
-      isAndi ||
+      isMarcommHead ||
       isKarina
     )
       ? store.getServiceDocuments()
@@ -264,7 +267,7 @@ const Index: React.FC = () => {
 
   const marcommRequests =
     (
-      isAndi ||
+      isMarcommHead ||
       isKarina
     )
       ? store.getMarcommRequests()
@@ -272,7 +275,7 @@ const Index: React.FC = () => {
 
   const marcommStockOpnames =
     (
-      isAndi ||
+      isMarcommHead ||
       isKarina
     )
       ? store.getMarcommStockOpnames()
@@ -1132,7 +1135,7 @@ const Index: React.FC = () => {
     );
   }
 
-  if (isAndi || isKarina) {
+  if (isMarcommHead || isKarina) {
     const pendingInitial =
       marcommRequests.filter(
         request =>
@@ -1226,7 +1229,7 @@ const Index: React.FC = () => {
       );
 
     const actionQueue =
-      isAndi
+      isMarcommHead
         ? [
             ...pendingInitial.map(
               request => ({
@@ -1323,21 +1326,21 @@ const Index: React.FC = () => {
       <AppLayout>
         <div className="space-y-5">
           {servicePageHeader(
-            isAndi
-              ? 'Dashboard Marketing Communication — Andi Rita'
+            isMarcommHead
+              ? `Dashboard Marketing Communication — ${currentUser.name}`
               : 'Dashboard Marketing Communication — Karina',
-            isAndi
+            isMarcommHead
               ? 'Fokus pada approval request Marcomm, final review hasil, governance Marketing Tools, dan kontrol stock Souvenir/Hampers. Target premi Marketing tidak ditampilkan.'
               : 'Fokus pada antrean eksekusi request, upload hasil/evidence, Marketing Tools, serta operasional stock Souvenir. Target premi Marketing tidak ditampilkan.',
             'Marketing Support • Marketing Communication'
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {isAndi
+            {isMarcommHead
               ? serviceMetricCard(
                   'Approval Awal',
                   pendingInitial.length,
-                  'Request baru dan permintaan revisi yang membutuhkan keputusan Andi.',
+                  'Request baru dan permintaan revisi yang membutuhkan keputusan DH Marcomm.',
                   'AMBER',
                   <ShieldCheck className="h-5 w-5" />,
                   '/dokumen-pendukung?area=marcomm-requests&filter=ANDI_INITIAL#activity-request'
@@ -1345,13 +1348,13 @@ const Index: React.FC = () => {
               : serviceMetricCard(
                   'Siap Dikerjakan',
                   waitingKarina.length,
-                  'Request yang sudah disetujui Andi dan menunggu eksekusi Karina.',
+                  'Request yang sudah disetujui DH Marcomm dan menunggu eksekusi Karina.',
                   'BLUE',
                   <Briefcase className="h-5 w-5" />,
                   '/dokumen-pendukung?area=marcomm-requests&filter=KARINA_READY#activity-request'
                 )}
 
-            {isAndi
+            {isMarcommHead
               ? serviceMetricCard(
                   'Final Review',
                   pendingFinal.length,
@@ -1382,10 +1385,10 @@ const Index: React.FC = () => {
             )}
 
             {serviceMetricCard(
-              isAndi
+              isMarcommHead
                 ? 'Approval Tools / Opname'
                 : 'Menunggu Review Department Head Marketing Communication',
-              isAndi
+              isMarcommHead
                 ? pendingTools.length +
                     pendingOpnames.length
                 : pendingFinal.length +
@@ -1394,12 +1397,12 @@ const Index: React.FC = () => {
                         document.uploadedByUserId ===
                         currentUser.id
                     ).length,
-              isAndi
+              isMarcommHead
                 ? `${pendingTools.length} Marketing Tool + ${pendingOpnames.length} Stock Opname.`
                 : 'Hasil/evidence dan Marketing Tool yang sudah di-submit untuk review Department Head Marketing Communication.',
               'EMERALD',
               <FileCheck2 className="h-5 w-5" />,
-              isAndi
+              isMarcommHead
                 ? (
                     pendingOpnames.length >
                     0
@@ -1416,13 +1419,13 @@ const Index: React.FC = () => {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle className="text-sm font-black text-slate-950">
-                      {isAndi
-                        ? 'Action Queue Andi Rita'
+                      {isMarcommHead
+                        ? `Action Queue ${currentUser.name}`
                         : 'Work Queue Karina'}
                     </CardTitle>
 
                     <CardDescription className="text-[10px]">
-                      {isAndi
+                      {isMarcommHead
                         ? 'Hanya item yang membutuhkan review/approval Marketing Communication.'
                         : 'Request yang sudah menjadi tanggung jawab eksekusi Karina.'}
                     </CardDescription>
