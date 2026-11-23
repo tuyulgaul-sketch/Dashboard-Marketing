@@ -345,31 +345,34 @@ export async function getCentralBusinessFile(
     return null;
   }
 
-  const {
-    data,
-    error,
-  } =
-    await supabase.storage
-      .from(
-        BUSINESS_FILE_BUCKET
-      )
-      .download(
-        metadata.storage_path
-      );
+  let currentMetadata = metadata;
+  let result = await supabase.storage
+    .from(BUSINESS_FILE_BUCKET)
+    .download(currentMetadata.storage_path);
 
-  if (
-    error
-  ) {
+  if (result.error) {
+    // During a verified compression migration the registry path may change
+    // between reading metadata and downloading the object. Retry only when
+    // the database now points at a different physical object.
+    const fresh = await getCentralBusinessFileMetadata(fileId);
+    if (fresh && fresh.storage_path !== currentMetadata.storage_path) {
+      currentMetadata = fresh;
+      result = await supabase.storage
+        .from(BUSINESS_FILE_BUCKET)
+        .download(currentMetadata.storage_path);
+    }
+  }
+
+  if (result.error || !result.data) {
     throw stageError(
       "Gagal download file evidence",
-      error
+      result.error || "File tidak tersedia"
     );
   }
 
   return {
-    metadata,
-    blob:
-      data,
+    metadata: currentMetadata,
+    blob: result.data,
   };
 }
 
