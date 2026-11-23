@@ -240,6 +240,16 @@ export const saveDocumentHandoverFile =
         record.uploadedByName,
       uploadedAt:
         record.uploadedAt,
+      ...(file.type === "image/jpeg" && file.size < originalFile.size
+        ? {
+            compression: {
+              mode: "EXTREME_V1",
+              optimizedAt: new Date().toISOString(),
+              originalBytes: originalFile.size,
+              compressedBytes: file.size,
+            },
+          }
+        : {}),
     };
 
     const {
