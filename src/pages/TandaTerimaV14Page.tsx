@@ -1608,65 +1608,34 @@ const TandaTerimaV14Page:
 
     const counts =
       useMemo(
-        () => ({
-          ALL:
-            receipts.filter(receipt => !receipt.duplicateOf).length,
-          ARCHIVED:
-            receipts.filter(receipt => Boolean(receipt.duplicateOf)).length,
-          TO_RECEIVE:
-            receipts.filter(
-              receipt =>
-                !receipt.duplicateOf &&
-                (
-                  receipt.receiverUserId ===
-                    currentUser.id &&
-                  receipt.status ===
-                    "MENUNGGU PENERIMAAN"
-                ) ||
-                (
-                  receipt.senderUserId ===
-                    currentUser.id &&
-                  receipt.status ===
-                    "MENUNGGU KONFIRMASI PENGEMBALIAN"
-                )
+        () => {
+          const active = receipts.filter(receipt => !receipt.duplicateOf);
+          return {
+            ALL: active.length,
+            ARCHIVED: receipts.length - active.length,
+            TO_RECEIVE: active.filter(receipt =>
+              (receipt.receiverUserId === currentUser.id &&
+                receipt.status === "MENUNGGU PENERIMAAN") ||
+              (receipt.senderUserId === currentUser.id &&
+                receipt.status === "MENUNGGU KONFIRMASI PENGEMBALIAN")
             ).length,
-          SENT:
-            receipts.filter(
-              receipt =>
-                !receipt.duplicateOf &&
-                receipt.senderUserId ===
-                currentUser.id
+            SENT: active.filter(receipt =>
+              receipt.senderUserId === currentUser.id
             ).length,
-          RECEIVED:
-            receipts.filter(
-              receipt =>
-                !receipt.duplicateOf &&
-                receipt.status ===
-                "DITERIMA"
+            RECEIVED: active.filter(receipt =>
+              receipt.status === "DITERIMA"
             ).length,
-          DISCREPANCY:
-            receipts.filter(
-              receipt =>
-                !receipt.duplicateOf &&
-                receipt.status ===
-                  "SELISIH DOKUMEN" ||
-                receipt.status ===
-                  "SELISIH PENGEMBALIAN"
+            DISCREPANCY: active.filter(receipt =>
+              receipt.status === "SELISIH DOKUMEN" ||
+              receipt.status === "SELISIH PENGEMBALIAN"
             ).length,
-          CLOSED:
-            receipts.filter(
-              receipt =>
-                !receipt.duplicateOf &&
-                receipt.status ===
-                  "DITOLAK" ||
-                receipt.status ===
-                  "DIBATALKAN"
+            CLOSED: active.filter(receipt =>
+              receipt.status === "DITOLAK" ||
+              receipt.status === "DIBATALKAN"
             ).length,
-        }),
-        [
-          receipts,
-          currentUser.id,
-        ]
+          };
+        },
+        [receipts, currentUser.id]
       );
 
     const filteredReceipts =
@@ -2032,9 +2001,11 @@ const TandaTerimaV14Page:
                                       Nomor utama: {receipt.duplicateOf}
                                     </div>
                                   )}
-                                  <div className="mt-2">
-                                    <SlaBadge receipt={receipt} />
-                                  </div>
+                                  {!receipt.duplicateOf && (
+                                    <div className="mt-2">
+                                      <SlaBadge receipt={receipt} />
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </td>
