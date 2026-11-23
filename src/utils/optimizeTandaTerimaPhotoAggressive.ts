@@ -1,11 +1,26 @@
 /**
- * Read-only aggressive compression trial for the receipt comparison page.
- * Separate from optimizeTandaTerimaPhoto: the production upload defaults
- * remain unchanged until users approve actual image legibility.
+ * Read-only comparison presets for an existing Tanda Terima evidence photo.
+ * These trial settings are NOT used by the actual upload workflow.
+ * No uploads, metadata updates, or storage replacements occur here.
  */
-const MAX_LONG_EDGE = 1800;
-const TARGET_BYTES = 400 * 1024;
-const QUALITIES = [0.7, 0.67, 0.65] as const;
+export type CompressionTrialMode = "ultra" | "extreme";
+
+const SETTINGS: Record<CompressionTrialMode, {
+  maxLongEdge: number;
+  targetBytes: number;
+  qualities: readonly number[];
+}> = {
+  ultra: {
+    maxLongEdge: 1400,
+    targetBytes: 250 * 1024,
+    qualities: [0.58, 0.55, 0.52],
+  },
+  extreme: {
+    maxLongEdge: 1200,
+    targetBytes: 150 * 1024,
+    qualities: [0.48, 0.45, 0.42],
+  },
+};
 
 export type AggressivePhotoResult = {
   file: File;
@@ -18,12 +33,11 @@ const encodeJpeg = (
   canvas: HTMLCanvasElement,
   quality: number
 ): Promise<Blob | null> =>
-  new Promise(resolve => {
-    canvas.toBlob(blob => resolve(blob), "image/jpeg", quality);
-  });
+  new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
 
 export async function optimizeTandaTerimaPhotoAggressive(
-  file: File
+  file: File,
+  mode: CompressionTrialMode
 ): Promise<AggressivePhotoResult> {
   const unchanged = (): AggressivePhotoResult => ({
     file,
@@ -31,11 +45,11 @@ export async function optimizeTandaTerimaPhotoAggressive(
     width: null,
     height: null,
   });
-
   if (file.type !== "image/jpeg" || typeof createImageBitmap !== "function") {
     return unchanged();
   }
 
+  const setting = SETTINGS[mode];
   let bitmap: ImageBitmap | null = null;
 
   try {
@@ -43,7 +57,7 @@ export async function optimizeTandaTerimaPhotoAggressive(
     const longestEdge = Math.max(bitmap.width, bitmap.height);
     if (!longestEdge) return unchanged();
 
-    const scale = Math.min(1, MAX_LONG_EDGE / longestEdge);
+    const scale = Math.min(1, setting.maxLongEdge / longestEdge);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -52,26 +66,22 @@ export async function optimizeTandaTerimaPhotoAggressive(
     canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) return unchanged();
-
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(bitmap, 0, 0, width, height);
 
     let best: { blob: Blob; quality: number } | null = null;
-
-    for (const quality of QUALITIES) {
+    for (const quality of setting.qualities) {
       const blob = await encodeJpeg(canvas, quality);
       if (!blob || blob.size <= 0) continue;
-      if (!best || blob.size < best.blob.size) {
-        best = { blob, quality };
-      }
-      if (blob.size <= TARGET_BYTES) {
+      if (!best || blob.size < best.blob.size) best = { blob, quality };
+      if (blob.size <= setting.targetBytes) {
         best = { blob, quality };
         break;
       }
     }
 
-    // Avoid keeping a degraded image that is as large as the original.
+    // Never overwrite the original; use it unchanged on encoder failure.
     if (!best || best.blob.size >= file.size) return unchanged();
 
     return {
@@ -84,7 +94,6 @@ export async function optimizeTandaTerimaPhotoAggressive(
       height,
     };
   } catch {
-    // Unsupported image decoding must not remove or alter source evidence.
     return unchanged();
   } finally {
     bitmap?.close();
