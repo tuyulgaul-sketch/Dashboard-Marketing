@@ -5,7 +5,7 @@ import React, {
 } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { isMarketingAdministrationProfile, isMarketingSupportRootProfile } from "@/lib/accessControl";
+import { isTandaTerimaCompressionOperator } from "@/lib/accessControl";
 import { AppLayout } from "@/components/layout/AppLayout";
 import HandoverEvidencePreview from "@/components/tandaTerima/HandoverEvidencePreview";
 import { brandedPrompt } from "@/lib/brandedDialog";
@@ -1756,11 +1756,10 @@ const TandaTerimaV14Page:
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {(isMarketingAdministrationProfile(authProfile) ||
-                isMarketingSupportRootProfile(authProfile)) && (
+              {isTandaTerimaCompressionOperator(authProfile) && (
                 <Button asChild type="button" variant="outline">
                   <Link to="/tanda-terima/storage-optimization">
-                    Optimasi Foto Lama
+                    Kompres Semua Foto Tanda Terima
                   </Link>
                 </Button>
               )}
