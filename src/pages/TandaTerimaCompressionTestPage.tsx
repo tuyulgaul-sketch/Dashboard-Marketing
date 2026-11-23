@@ -4,36 +4,65 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCentralBusinessFile } from "@/services/businessFileStorage";
-import { optimizeTandaTerimaPhotoAggressive } from "@/utils/optimizeTandaTerimaPhotoAggressive";
+import {
+  CompressionTrialMode,
+  optimizeTandaTerimaPhotoAggressive,
+} from "@/utils/optimizeTandaTerimaPhotoAggressive";
 import { ArrowLeft, Download, Image, Loader2, ShieldCheck } from "lucide-react";
 
-// Read-only one-file experiment. Never write to Supabase or replace an object.
+// Authenticated read-only experiment. Original production storage is untouched.
 const FILE_ID = "TRM-SUBMIT-1794532913998-kegn";
 const RECEIPT_ID = "TRM-2026-11-00006";
 
-type Preview = {
-  beforeUrl: string;
-  afterUrl: string;
-  originalBytes: number;
-  optimizedBytes: number;
-  compressed: boolean;
+type Trial = {
+  mode: CompressionTrialMode;
+  label: string;
+  description: string;
+  url: string;
+  bytes: number;
   quality: number | null;
   width: number | null;
   height: number | null;
-  fileName: string;
+  compressed: boolean;
 };
 
-const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2) + " MiB";
+type Preview = {
+  originalUrl: string;
+  originalBytes: number;
+  fileName: string;
+  trials: Trial[];
+};
+
+const formatBytes = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? (bytes / (1024 * 1024)).toFixed(2) + " MiB"
+    : (bytes / 1024).toFixed(0) + " KB";
+
 const savedPercent = (before: number, after: number) =>
-  before > 0 ? Math.max(0, (100 * (before - after)) / before).toFixed(1) : "0.0";
+  before > 0 ? ((100 * (before - after)) / before).toFixed(1) : "0.0";
+
+const OPTIONS: Array<{
+  mode: CompressionTrialMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    mode: "ultra",
+    label: "Ultra Hemat",
+    description: "Maks. 1.400 px · JPEG 52–58% · target sekitar 250 KB",
+  },
+  {
+    mode: "extreme",
+    label: "Ekstrem",
+    description: "Maks. 1.200 px · JPEG 42–48% · target sekitar 150 KB",
+  },
+];
 
 const TandaTerimaCompressionTestPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
 
-  // Revoke previous blob URLs on reload/unmount; these URLs only live in
-  // the authenticated user's browser and are not uploaded anywhere.
   const urls = React.useRef<string[]>([]);
   React.useEffect(() => () => {
     urls.current.forEach(url => URL.revokeObjectURL(url));
@@ -59,28 +88,41 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
         metadata.entity_id !== RECEIPT_ID ||
         metadata.mime_type !== "image/jpeg"
       ) {
-        throw new Error("File terdaftar tidak sesuai dengan bukti Tanda Terima yang diminta.");
+        throw new Error("File terdaftar tidak sesuai dengan foto Tanda Terima yang diminta.");
       }
 
-      const original = new File([stored.blob], metadata.file_name || "image.jpg", {
-        type: "image/jpeg",
-      });
-      const optimized = await optimizeTandaTerimaPhotoAggressive(original);
+      const original = new File(
+        [stored.blob],
+        metadata.file_name || "image.jpg",
+        { type: "image/jpeg" }
+      );
+      const originalUrl = URL.createObjectURL(original);
+      urls.current.push(originalUrl);
 
-      const beforeUrl = URL.createObjectURL(original);
-      const afterUrl = URL.createObjectURL(optimized.file);
-      urls.current = [beforeUrl, afterUrl];
+      const trials: Trial[] = [];
+      for (const option of OPTIONS) {
+        const result = await optimizeTandaTerimaPhotoAggressive(
+          original,
+          option.mode
+        );
+        const url = URL.createObjectURL(result.file);
+        urls.current.push(url);
+        trials.push({
+          ...option,
+          url,
+          bytes: result.file.size,
+          quality: result.quality,
+          width: result.width,
+          height: result.height,
+          compressed: result.file !== original,
+        });
+      }
 
       setPreview({
-        beforeUrl,
-        afterUrl,
+        originalUrl,
         originalBytes: original.size,
-        optimizedBytes: optimized.file.size,
-        compressed: optimized.file !== original,
-        quality: optimized.quality,
-        width: optimized.width,
-        height: optimized.height,
         fileName: metadata.file_name || "image.jpg",
+        trials,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memproses foto.");
@@ -92,108 +134,141 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
   return (
     <AppLayout>
       <div className="space-y-5">
-        <Link to="/tanda-terima" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline">
+        <Link
+          to="/tanda-terima"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline"
+        >
           <ArrowLeft className="h-4 w-4" /> Kembali ke Tanda Terima
         </Link>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-slate-900">Tes Kompresi Agresif — Foto Tanda Terima</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Tes Kompresi Ultra Hemat & Ekstrem
+          </h1>
           <p className="text-sm text-slate-600">
-            Nomor <strong>{RECEIPT_ID}</strong>. Tes hanya membaca foto yang sudah ada di
-            Supabase dan membuat salinan kompresi di browser. Foto asli, metadata,
-            tautan, dan hak akses pengguna <strong>tidak berubah</strong>.
+            Foto <strong>{RECEIPT_ID}</strong>. Bandingkan foto asli dengan dua
+            hasil kompresi. Hanya membaca foto dari Supabase dan memprosesnya
+            di browser; file asli, metadata, dan akses pengguna tidak berubah.
           </p>
         </div>
 
         <Card>
           <CardContent className="flex flex-wrap items-center gap-3 pt-6">
             <Button onClick={run} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Image className="mr-2 h-4 w-4" />}
-              {loading ? "Mengunduh & mengompres..." : "Muat & tes kompresi agresif"}
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Image className="mr-2 h-4 w-4" />
+              )}
+              {loading
+                ? "Mengunduh & membuat dua versi..."
+                : "Muat foto & bandingkan 2 mode"}
             </Button>
             <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Tidak ada upload, update, atau delete
+              Tidak ada upload, update, atau delete di Supabase
             </span>
           </CardContent>
         </Card>
 
-        {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}. Pastikan login dengan akun yang memiliki akses Tanda Terima.
-        </div>}
+        {error && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {error}. Pastikan login dengan akun yang memiliki akses Tanda Terima.
+          </div>
+        )}
 
         {preview && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Card>
-                <CardContent className="pt-5">
-                  <p className="text-sm text-slate-500">Ukuran asli</p>
-                  <p className="text-2xl font-bold">{mb(preview.originalBytes)}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5">
-                  <p className="text-sm text-slate-500">Hasil agresif</p>
-                  <p className="text-2xl font-bold">{mb(preview.optimizedBytes)}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5">
-                  <p className="text-sm text-slate-500">Penghematan</p>
-                  <p className="text-2xl font-bold text-emerald-700">
-                    {savedPercent(preview.originalBytes, preview.optimizedBytes)}%
-                  </p>
-                </CardContent>
-              </Card>
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-white px-4 py-3 text-sm text-slate-700">
+              Ukuran asli: <strong>{formatBytes(preview.originalBytes)}</strong>.
+              Klik gambar untuk melihat ukuran penuh; cek tulisan kecil, cap,
+              dan tanda tangan sebelum memilih tingkat kompresi.
             </div>
-
-            {!preview.compressed && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Foto tidak diperkecil karena proses kompresi tidak memberi penghematan berarti.
-                File asli tetap dipakai.
-              </div>
-            )}
-
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-3">
               <Card>
                 <CardHeader>
-                  <CardTitle>Foto asli</CardTitle>
-                  <p className="text-xs text-slate-500">File yang saat ini tersimpan di Supabase</p>
+                  <CardTitle>Foto Asli</CardTitle>
+                  <p className="text-sm font-semibold text-slate-700">
+                    {formatBytes(preview.originalBytes)}
+                  </p>
+                  <p className="text-xs text-slate-500">Belum dikompres</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <a href={preview.beforeUrl} target="_blank" rel="noreferrer" title="Buka foto asli ukuran penuh">
-                    <img src={preview.beforeUrl} alt="Foto asli Tanda Terima" className="max-h-[640px] w-full cursor-zoom-in rounded-md border bg-slate-100 object-contain" />
+                  <a
+                    href={preview.originalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Buka foto asli ukuran penuh"
+                  >
+                    <img
+                      src={preview.originalUrl}
+                      alt="Foto asli Tanda Terima"
+                      className="max-h-[630px] w-full cursor-zoom-in rounded-md border bg-slate-100 object-contain"
+                    />
                   </a>
-                  <p className="text-xs text-slate-500">Klik gambar untuk cek ketajaman pada ukuran penuh.</p>
                 </CardContent>
               </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Foto hasil kompresi agresif</CardTitle>
-                  <p className="text-xs text-slate-500">Mode tes: maksimal 1.800 px, JPEG 70% → 67% → 65%, sasaran sekitar 400 KB (tidak dijamin).</p>
-                  {preview.quality !== null && (
-                    <p className="text-xs font-semibold text-slate-700">
-                      Hasil aktual: kualitas {Math.round(preview.quality * 100)}%, resolusi {preview.width} × {preview.height} px.
+
+              {preview.trials.map(trial => (
+                <Card key={trial.mode}>
+                  <CardHeader>
+                    <CardTitle>{trial.label}</CardTitle>
+                    <p className="text-xs text-slate-500">{trial.description}</p>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {formatBytes(trial.bytes)}
+                      {" · hemat "}
+                      {savedPercent(preview.originalBytes, trial.bytes)}%
                     </p>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <a href={preview.afterUrl} target="_blank" rel="noreferrer" title="Buka foto kompresi ukuran penuh">
-                    <img src={preview.afterUrl} alt="Foto hasil kompresi Tanda Terima" className="max-h-[640px] w-full cursor-zoom-in rounded-md border bg-slate-100 object-contain" />
-                  </a>
-                  <Button asChild variant="outline">
-                    <a href={preview.afterUrl} download={"AGRESIF_" + RECEIPT_ID + "_" + preview.fileName}>
-                      <Download className="mr-2 h-4 w-4" /> Download hasil kompresi
+                    {trial.quality !== null && (
+                      <p className="text-xs text-slate-600">
+                        Aktual: JPEG {Math.round(trial.quality * 100)}%
+                        {" · "}{trial.width} × {trial.height} px
+                      </p>
+                    )}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <a
+                      href={trial.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={"Buka " + trial.label + " ukuran penuh"}
+                    >
+                      <img
+                        src={trial.url}
+                        alt={"Foto Tanda Terima " + trial.label}
+                        className="max-h-[630px] w-full cursor-zoom-in rounded-md border bg-slate-100 object-contain"
+                      />
                     </a>
-                  </Button>
-                  <p className="text-xs text-slate-500">
-                    Periksa nama, tanda tangan, cap, dan tulisan kecil sebelum memutuskan
-                    apakah kualitasnya memadai.
-                  </p>
-                </CardContent>
-              </Card>
+                    {trial.compressed ? (
+                      <Button asChild variant="outline" className="w-full">
+                        <a
+                          href={trial.url}
+                          download={
+                            trial.mode.toUpperCase() +
+                            "_" + RECEIPT_ID + "_" + preview.fileName
+                          }
+                        >
+                          <Download className="mr-2 h-4 w-4" /> Unduh versi {trial.label}
+                        </a>
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-amber-700">
+                        Tidak menghasilkan versi lebih kecil; foto asli digunakan.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </>
+            <p className="text-xs text-slate-500">
+              Angka target bersifat perkiraan, bukan batas ukuran wajib.
+              Hasil yang terlihat kecil pada layar belum tentu cukup jelas
+              saat dizoom; cek detail sebelum dipakai untuk dokumen bukti.
+            </p>
+          </div>
         )}
       </div>
     </AppLayout>
