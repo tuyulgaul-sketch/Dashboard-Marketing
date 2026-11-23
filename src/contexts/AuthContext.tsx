@@ -31,6 +31,7 @@ type AuthContextValue = {
   restoredBusinessError: string | null;
   retryRestoredBusiness: () => Promise<void>;
   refreshAuthenticatedProfile: () => Promise<void>;
+  completeMfaLogin: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -144,6 +145,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       awaitingMfaBootstrap.current = false;
       background = false;
     }
+    // SYSTEM_ADMIN is not a business Marketing user. Never gate its login on
+    // centrally cached pipeline/target/marketing-document collections. Those
+    // reads may be RLS-restricted for admin and previously could leave the
+    // page without a usable profile until a browser refresh.
+    if (canAccessFeature(authProfile, 'SYSTEM_ADMIN')) {
+      try {
+        await syncGlobalResetState();
+        await syncCentralMasterRuntime(authProfile);
+        if (!isCurrent()) return;
+        syncLegacyIdentityFromSupabase(authProfile);
+      } catch (adminBootstrapError) {
+        // The account administration screen loads its own authorized account
+        // data. A nonessential master-data failure must not blank the UI.
+        console.warn('[SYSTEM_ADMIN] Optional master initialization failed:', adminBootstrapError);
+      }
+      if (!isCurrent()) return;
+      clearCentralTargetRuntime();
+      clearCentralBusinessRuntime();
+      setRestoredBusinessReady(false);
+      setRestoredBusinessError(null);
+      updateProfile(authProfile);
+      return;
+    }
+
     const previous = profileRef.current;
     const unchanged = Boolean(previous && JSON.stringify(previous) === JSON.stringify(authProfile));
     const sameAuthority = Boolean(previous && authoritySignature(previous) === authoritySignature(authProfile));
@@ -178,7 +203,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!isCurrent()) return;
       console.error('Supabase Lite runtime gagal dimuat:', runtimeError);
       clearLiteRuntime();
-      updateProfile(null);
+      setRestoredBusinessReady(false);
+      setRestoredBusinessError(
+        runtimeError instanceof Error
+          ? runtimeError.message
+          : 'Sinkronisasi data bisnis gagal. Silakan coba lagi.'
+      );
+      // A valid, verified employee identity is not invalidated by a failed
+      // business-data request. Protected business pages already have a
+      // RestoredBusinessGuard with retry and an explanatory error state.
+      updateProfile(authProfile);
       return;
     }
     if (isCurrent()) updateProfile(authProfile);
@@ -198,6 +232,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const task = loadProfile(sessionRef.current!, version, true, true);
     refreshing.current = task;
     try { await task; } finally { if (refreshing.current === task) refreshing.current = null; }
+  }, [loadProfile]);
+
+  /**
+   * Called explicitly after a successful TOTP challenge.
+   * Do not rely on TOKEN_REFRESHED/SIGNED_IN timing to finish the AAL2
+   * transition. The protected route must not render before hydration.
+   */
+  const completeMfaLogin = useCallback(async () => {
+    const { data: assurance, error: assuranceError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assuranceError || assurance?.currentLevel !== 'aal2') {
+      throw new Error('Sesi MFA belum terverifikasi. Coba periksa ulang kode authenticator.');
+    }
+
+    const { data: sessionResult, error: sessionError } =
+      await supabase.auth.getSession();
+    const verifiedSession = sessionResult.session;
+    if (sessionError || !verifiedSession ||
+        verifiedSession.user.id !== sessionRef.current?.user.id) {
+      throw new Error('Sesi login berubah setelah MFA. Login ulang untuk melanjutkan.');
+    }
+
+    const version = generation.current;
+    // A token-change listener might be hydrating this same account already.
+    // Serialize instead of clearing caches midway through another bootstrap.
+    const pending = refreshing.current;
+    if (pending) await pending;
+    if (generation.current !== version ||
+        sessionRef.current?.user.id !== verifiedSession.user.id) {
+      throw new Error('Sesi login sudah berubah. Silakan login ulang.');
+    }
+
+    sessionRef.current = verifiedSession;
+    setSession(verifiedSession);
+    // Force one authoritative post-MFA bootstrap. The AAL1 profile is only
+    // for showing the challenge; its business caches were intentionally empty.
+    await loadProfile(verifiedSession, version, false, false);
+    if (profileRef.current?.auth_user_id !== verifiedSession.user.id) {
+      throw new Error('Profil belum berhasil dimuat setelah MFA. Coba periksa ulang.');
+    }
   }, [loadProfile]);
 
   useEffect(() => {
@@ -309,6 +383,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return <AuthContext.Provider value={{
     session, profile, loading, signOut,
     restoredBusinessReady, restoredBusinessError, retryRestoredBusiness, refreshAuthenticatedProfile,
+    completeMfaLogin,
   }}>{children}</AuthContext.Provider>;
 };
 
