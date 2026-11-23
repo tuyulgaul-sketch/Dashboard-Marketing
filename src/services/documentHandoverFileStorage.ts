@@ -149,7 +149,7 @@ export const saveDocumentHandoverFile =
   async (
     record:
       DocumentHandoverStoredFile
-  ): Promise<void> => {
+  ): Promise<{ fileSize: number }> => {
     const context =
       findHandoverContext(
         record.transactionId
@@ -304,6 +304,7 @@ export const saveDocumentHandoverFile =
           existingMetadata.storage_path,
         ]);
     }
+    return { fileSize: file.size };
   };
 
 export const getDocumentHandoverFile =
