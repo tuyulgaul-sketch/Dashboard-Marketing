@@ -1,6 +1,7 @@
 import React, {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Link } from "react-router-dom";
@@ -80,7 +81,8 @@ type ReceiptFilter =
   | "SENT"
   | "RECEIVED"
   | "DISCREPANCY"
-  | "CLOSED";
+  | "CLOSED"
+  | "ARCHIVED";
 
 type FormMode =
   | "CREATE"
@@ -487,6 +489,7 @@ const TandaTerimaV14Page:
       submitting,
       setSubmitting,
     ] = useState(false);
+    const submitFormLocked = useRef(false);
 
     useEffect(
       () => {
@@ -789,6 +792,8 @@ const TandaTerimaV14Page:
           return;
         }
 
+        if (submitFormLocked.current) return;
+        submitFormLocked.current = true;
         try {
           setSubmitting(true);
 
@@ -799,6 +804,40 @@ const TandaTerimaV14Page:
           if (
             formMode === "CREATE"
           ) {
+            // Check the user's actual authenticated sender identity on the
+            // server before reserving a number or uploading any evidence.
+            // This protects against manual retries after a timeout as well
+            // as repeated clicks / a refreshed tab.
+            const { data: existingReceipt, error: duplicateCheckError } =
+              await supabase.rpc(
+                "find_recent_document_handover_duplicate_v1",
+                {
+                  p_handover_date: handoverDate,
+                  p_receiver_user_id: receiverId,
+                  p_external_destination:
+                    receiverId === EXTERNAL_RECEIVER_ID
+                      ? externalDestination.trim() : "",
+                  p_related_module: relatedModule,
+                  p_related_transaction_id: relatedTransactionId.trim(),
+                  p_related_description: relatedDescription.trim(),
+                  p_items: draftItems.map(item => ({
+                    documentType: item.documentType,
+                    description: item.description.trim(),
+                    physicalForm: item.physicalForm,
+                    quantity: Number(item.quantity),
+                    notes: item.notes.trim(),
+                  })),
+                }
+              );
+            if (duplicateCheckError) {
+              throw new Error(duplicateCheckError.message);
+            }
+            if (typeof existingReceipt === "string" && existingReceipt) {
+              throw new Error(
+                `Tanda Terima yang sama sudah tersimpan sebagai ${existingReceipt}. Tidak dibuat nomor baru. Periksa daftar Tanda Terima sebelum submit ulang.`
+              );
+            }
+
             const {
               data,
               error,
@@ -989,13 +1028,18 @@ const TandaTerimaV14Page:
             successMessage
           );
         } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : "Gagal memproses Tanda Terima.";
+          const duplicate = /DUPLICATE_TANDA_TERIMA:(TRM-[0-9]{4}-[0-9]{2}-[0-9]{5})/.exec(message);
           window.alert(
-            error instanceof Error
-              ? error.message
-              : "Gagal memproses Tanda Terima."
+            duplicate
+              ? `Transaksi identik sudah tersimpan sebagai ${duplicate[1]}. Server menolak duplikat; tidak perlu submit ulang.`
+              : message
           );
         } finally {
           setSubmitting(false);
+          submitFormLocked.current = false;
         }
       };
 
@@ -1564,58 +1608,34 @@ const TandaTerimaV14Page:
 
     const counts =
       useMemo(
-        () => ({
-          ALL:
-            receipts.length,
-          TO_RECEIVE:
-            receipts.filter(
-              receipt =>
-                (
-                  receipt.receiverUserId ===
-                    currentUser.id &&
-                  receipt.status ===
-                    "MENUNGGU PENERIMAAN"
-                ) ||
-                (
-                  receipt.senderUserId ===
-                    currentUser.id &&
-                  receipt.status ===
-                    "MENUNGGU KONFIRMASI PENGEMBALIAN"
-                )
+        () => {
+          const active = receipts.filter(receipt => !receipt.duplicateOf);
+          return {
+            ALL: active.length,
+            ARCHIVED: receipts.length - active.length,
+            TO_RECEIVE: active.filter(receipt =>
+              (receipt.receiverUserId === currentUser.id &&
+                receipt.status === "MENUNGGU PENERIMAAN") ||
+              (receipt.senderUserId === currentUser.id &&
+                receipt.status === "MENUNGGU KONFIRMASI PENGEMBALIAN")
             ).length,
-          SENT:
-            receipts.filter(
-              receipt =>
-                receipt.senderUserId ===
-                currentUser.id
+            SENT: active.filter(receipt =>
+              receipt.senderUserId === currentUser.id
             ).length,
-          RECEIVED:
-            receipts.filter(
-              receipt =>
-                receipt.status ===
-                "DITERIMA"
+            RECEIVED: active.filter(receipt =>
+              receipt.status === "DITERIMA"
             ).length,
-          DISCREPANCY:
-            receipts.filter(
-              receipt =>
-                receipt.status ===
-                  "SELISIH DOKUMEN" ||
-                receipt.status ===
-                  "SELISIH PENGEMBALIAN"
+            DISCREPANCY: active.filter(receipt =>
+              receipt.status === "SELISIH DOKUMEN" ||
+              receipt.status === "SELISIH PENGEMBALIAN"
             ).length,
-          CLOSED:
-            receipts.filter(
-              receipt =>
-                receipt.status ===
-                  "DITOLAK" ||
-                receipt.status ===
-                  "DIBATALKAN"
+            CLOSED: active.filter(receipt =>
+              receipt.status === "DITOLAK" ||
+              receipt.status === "DIBATALKAN"
             ).length,
-        }),
-        [
-          receipts,
-          currentUser.id,
-        ]
+          };
+        },
+        [receipts, currentUser.id]
       );
 
     const filteredReceipts =
@@ -1629,7 +1649,11 @@ const TandaTerimaV14Page:
           return sortHandoversBySubmission(receipts.filter(
             receipt => {
               const pass =
-                filter === "ALL"
+                filter === "ARCHIVED"
+                  ? Boolean(receipt.duplicateOf)
+                  : receipt.duplicateOf
+                  ? false
+                  : filter === "ALL"
                   ? true
                   : filter === "TO_RECEIVE"
                   ? (
@@ -1774,7 +1798,7 @@ const TandaTerimaV14Page:
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">
             {[
               ["ALL", "Semua", counts.ALL],
               ["TO_RECEIVE", "Menunggu Saya Terima", counts.TO_RECEIVE],
@@ -1782,6 +1806,7 @@ const TandaTerimaV14Page:
               ["RECEIVED", "Diterima", counts.RECEIVED],
               ["DISCREPANCY", "Selisih", counts.DISCREPANCY],
               ["CLOSED", "Ditolak / Batal", counts.CLOSED],
+              ["ARCHIVED", "Arsip Duplikat", counts.ARCHIVED],
             ].map(
               item => (
                 <button
@@ -1967,18 +1992,27 @@ const TandaTerimaV14Page:
                                       receipt.status
                                     )}`}
                                   >
-                                    {receipt.status}
+                                    {receipt.duplicateOf
+                                    ? "ARSIP DUPLIKAT"
+                                    : receipt.status}
                                   </span>
-                                  <div className="mt-2">
-                                    <SlaBadge receipt={receipt} />
-                                  </div>
+                                  {receipt.duplicateOf && (
+                                    <div className="mt-1 text-[10px] font-semibold text-amber-700">
+                                      Nomor utama: {receipt.duplicateOf}
+                                    </div>
+                                  )}
+                                  {!receipt.duplicateOf && (
+                                    <div className="mt-2">
+                                      <SlaBadge receipt={receipt} />
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </td>
 
                             <td className="p-3">
                               <div className="flex flex-wrap justify-end gap-2">
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "DIKEMBALIKAN" &&
@@ -1998,7 +2032,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "DITERIMA" &&
@@ -2018,7 +2052,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU KONFIRMASI PENGEMBALIAN" && (
@@ -2036,7 +2070,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "SELISIH DOKUMEN" && (
@@ -2055,7 +2089,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "SELISIH PENGEMBALIAN" && (
@@ -2074,7 +2108,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.externalReceiver &&
+                                {!receipt.duplicateOf && receipt.externalReceiver &&
                                   receipt.senderUserId === currentUser.id &&
                                   receipt.externalJourneyState !== "DONE" && (
                                     <Button
@@ -2104,7 +2138,7 @@ const TandaTerimaV14Page:
                                   Detail
                                 </Button>
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -2122,7 +2156,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.receiverUserId ===
+                                {!receipt.duplicateOf && receipt.receiverUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -2141,7 +2175,7 @@ const TandaTerimaV14Page:
                                     </Button>
                                   )}
 
-                                {receipt.senderUserId ===
+                                {!receipt.duplicateOf && receipt.senderUserId ===
                                   currentUser.id &&
                                   receipt.status ===
                                     "MENUNGGU PENERIMAAN" && (
@@ -3281,6 +3315,11 @@ const TandaTerimaV14Page:
                       >
                         {detailReceipt.status}
                       </span>
+                      {detailReceipt.duplicateOf && (
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">
+                          ARSIP DUPLIKAT · Utama {detailReceipt.duplicateOf}
+                        </span>
+                      )}
                       <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600">
                         Siklus {detailReceipt.cycleNumber || 1}
                       </span>

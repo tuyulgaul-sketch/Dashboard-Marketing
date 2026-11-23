@@ -66,6 +66,10 @@ export type V14DocumentHandover =
     externalJourneyClosedByUserId?: string;
     externalJourneyClosedByName?: string;
     cycleNumber?: number;
+    /** Soft-archived duplicate: original status, evidence and audit retained. */
+    duplicateOf?: string;
+    duplicateArchivedAt?: string;
+    duplicateArchiveReason?: string;
   };
 
 type SubmissionItemInput =
@@ -365,6 +369,12 @@ const findReceipt = (
   if (index < 0) {
     throw new Error(
       "Tanda Terima tidak ditemukan."
+    );
+  }
+
+  if (records[index].duplicateOf) {
+    throw new Error(
+      `Tanda Terima ${receiptId} adalah arsip duplikat dan hanya boleh dibaca. Gunakan nomor utama ${records[index].duplicateOf}.`
     );
   }
 
