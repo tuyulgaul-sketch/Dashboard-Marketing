@@ -34,6 +34,7 @@ export const MfaSessionGuard: React.FC<Props> = ({
   // verification promise is still initializing the dashboard.
   const verificationInFlight = useRef(false);
   const mfaWasAccepted = useRef(false);
+  const bootstrapComplete = useRef(false);
   const lastAutoAttempt = useRef("");
 
   useEffect(() => {
@@ -62,7 +63,8 @@ export const MfaSessionGuard: React.FC<Props> = ({
       if (aal?.currentLevel === "aal2" || verified.length === 0) {
         // The explicit post-code bootstrap takes precedence. Never unlock
         // the page in the middle of a password -> MFA token transition.
-        if (!verificationInFlight.current && !mfaWasAccepted.current) {
+        if (!verificationInFlight.current &&
+            (!mfaWasAccepted.current || bootstrapComplete.current)) {
           setStage("ready");
         }
         return;
@@ -112,6 +114,7 @@ export const MfaSessionGuard: React.FC<Props> = ({
       // Hydrates the verified profile explicitly: do not wait for a token
       // refresh callback or require users to refresh the browser.
       await onVerified();
+      bootstrapComplete.current = true;
       setCode("");
       setStage("ready");
     } catch (err) {
@@ -154,6 +157,7 @@ export const MfaSessionGuard: React.FC<Props> = ({
     setError("");
     try {
       await onVerified();
+      bootstrapComplete.current = true;
       setStage("ready");
     } catch (err) {
       setError(
