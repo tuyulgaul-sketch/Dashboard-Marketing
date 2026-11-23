@@ -140,7 +140,7 @@ export const BASELINE_USERS: User[] = [
     position: 'Staff Captive I',
     unit: 'Captive Marketing',
     department: 'Captive I',
-    superiorId: 'USR-000034',
+    superiorId: 'USR-000030',
     status: 'Active'
   },
   {
@@ -151,7 +151,7 @@ export const BASELINE_USERS: User[] = [
     position: 'Staff Captive I',
     unit: 'Captive Marketing',
     department: 'Captive I',
-    superiorId: 'USR-000034',
+    superiorId: 'USR-000030',
     status: 'Active'
   },
   {
@@ -408,7 +408,7 @@ export const BASELINE_USERS: User[] = [
     status: 'Active'
   },
   {
-    id: 'USR-000034',
+    id: 'USR-000030',
     name: 'Andi Rita Anastasya Baso',
     email: 'andi.anastasya@pertalife.com',
     role: 'DEPARTMENT_HEAD_MARKETING',
