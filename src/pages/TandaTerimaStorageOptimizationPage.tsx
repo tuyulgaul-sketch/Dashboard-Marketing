@@ -235,13 +235,12 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
     }
 
     setRunning(false);
-    setMessage(
-      cancel.current
-        ? "Proses dihentikan. Foto yang sudah diproses tetap online, backup lokal tersimpan."
-        : "Proses selesai. Simpan folder backup perusahaan sesuai kebijakan retensi."
-    );
-    // Display the remaining unprocessed subset on the next scan.
+    const finishedMessage = cancel.current
+      ? "Proses dihentikan. Foto yang sudah diproses tetap online, backup lokal tersimpan."
+      : "Proses selesai. Simpan folder backup perusahaan sesuai kebijakan retensi.";
+    // Refresh the remaining candidates without hiding the migration outcome.
     await scan();
+    setMessage(finishedMessage);
   };
 
   return (
