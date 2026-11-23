@@ -79,6 +79,26 @@ async function writeAndCheck(directory: LocalDirectory, name: string, blob: Blob
 }
 const mib = (n: number) => (n / 1048576).toFixed(2) + " MiB";
 
+/** Pages through the complete registered photo catalog (Supabase query cap). */
+async function fetchPendingTandaPhotos(): Promise<StoredRow[]> {
+  const all: StoredRow[] = [];
+  const pageSize = 500;
+  for (let offset = 0; offset < 10000; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("central_business_files")
+      .select("file_id,entity_id,storage_path,file_name,file_size,mime_type,metadata")
+      .eq("module", "TANDA_TERIMA")
+      .eq("storage_key", "pertalife_document_handovers")
+      .order("file_id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const chunk = (data || []) as StoredRow[];
+    all.push(...chunk);
+    if (chunk.length < pageSize) return all.filter(supported);
+  }
+  throw new Error("Terlalu banyak file; proses dihentikan agar tak ada foto terlewat.");
+}
+
 const TandaTerimaStorageOptimizationPage: React.FC = () => {
   const { profile } = useAuth();
   const [rows, setRows] = useState<StoredRow[]>([]);
@@ -97,15 +117,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
     setLoading(true);
     setMessage("");
     try {
-      const { data, error } = await supabase
-        .from("central_business_files")
-        .select("file_id,entity_id,storage_path,file_name,file_size,mime_type,metadata")
-        .eq("module", "TANDA_TERIMA")
-        .eq("storage_key", "pertalife_document_handovers")
-        .order("file_id", { ascending: true })
-        .range(0, 499);
-      if (error) throw error;
-      const candidates = ((data || []) as StoredRow[]).filter(supported);
+      const candidates = await fetchPendingTandaPhotos();
       setRows(candidates);
       setScanned(true);
       setMessage(`Ada ${candidates.length} foto JPEG lama yang belum dikompres Extreme. Foto tanpa metadata registrasi tidak ikut.`);
@@ -155,15 +167,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
       // Re-scan within the same button flow so the user does not have to
       // manually scan first. Ignore files with no registry and previously
       // optimized files.
-      const { data, error } = await supabase
-        .from("central_business_files")
-        .select("file_id,entity_id,storage_path,file_name,file_size,mime_type,metadata")
-        .eq("module", "TANDA_TERIMA")
-        .eq("storage_key", "pertalife_document_handovers")
-        .order("file_id", { ascending: true })
-        .range(0, 499);
-      if (error) throw error;
-      candidates = ((data || []) as StoredRow[]).filter(supported);
+      candidates = await fetchPendingTandaPhotos();
       setRows(candidates);
       setScanned(true);
       if (candidates.length === 0) {
@@ -179,6 +183,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
 
     const manifest: ManifestEntry[] = [];
     let success = 0, failures = 0, saved = 0, completed = 0;
+    let consecutiveFailures = 0;
 
     for (const row of candidates) {
       if (cancel.current) break;
@@ -226,14 +231,20 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
         }
 
         success += 1;
+        consecutiveFailures = 0;
         saved += Math.max(0, blob.size - Number(outcome.optimizedBytes || result.file.size));
         entry.compressedBytes = Number(outcome.optimizedBytes || result.file.size);
         entry.migrated = true;
         setLogs(prev => [{ fileId: row.file_id, outcome: outcome.warning || "Sukses" }, ...prev].slice(0, 30));
       } catch (error) {
         failures += 1;
+        consecutiveFailures += 1;
         entry.error = error instanceof Error ? error.message : "Gagal";
         setLogs(prev => [{ fileId: row.file_id, outcome: "Gagal: " + entry.error }, ...prev].slice(0, 30));
+        if (consecutiveFailures >= 3) {
+          cancel.current = true;
+          setMessage("Proses dihentikan setelah tiga kegagalan beruntun. Cek log dan jangan ubah backup.");
+        }
       }
 
       manifest.push(entry);
@@ -258,7 +269,7 @@ const TandaTerimaStorageOptimizationPage: React.FC = () => {
 
     setRunning(false);
     const finishedMessage = cancel.current
-      ? "Proses dihentikan. Foto yang sudah diproses tetap online, backup lokal tersimpan."
+      ? "Proses dihentikan. Periksa log untuk mengetahui penyebabnya. Foto berhasil tetap online dan backup tersimpan."
       : "Proses selesai. Simpan folder backup perusahaan sesuai kebijakan retensi.";
     // Refresh the remaining candidates without hiding the migration outcome.
     await scan();
