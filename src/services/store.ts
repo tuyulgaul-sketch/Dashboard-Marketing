@@ -130,7 +130,7 @@ export const BASELINE_USERS: User[] = [
     unit: 'Captive Marketing',
     department: 'Captive I',
     superiorId: 'USR-000003',
-    status: 'Active'
+    status: 'Inactive'
   },
   {
     id: 'USR-000005',
@@ -140,7 +140,7 @@ export const BASELINE_USERS: User[] = [
     position: 'Staff Captive I',
     unit: 'Captive Marketing',
     department: 'Captive I',
-    superiorId: 'USR-000004',
+    superiorId: 'USR-000034',
     status: 'Active'
   },
   {
@@ -151,7 +151,7 @@ export const BASELINE_USERS: User[] = [
     position: 'Staff Captive I',
     unit: 'Captive Marketing',
     department: 'Captive I',
-    superiorId: 'USR-000004',
+    superiorId: 'USR-000034',
     status: 'Active'
   },
   {
@@ -408,25 +408,36 @@ export const BASELINE_USERS: User[] = [
     status: 'Active'
   },
   {
-    id: 'USR-000030',
+    id: 'USR-000034',
     name: 'Andi Rita Anastasya Baso',
-    email: 'andi.rita@ptperta.demo',
+    email: 'andi.anastasya@pertalife.com',
+    role: 'DEPARTMENT_HEAD_MARKETING',
+    position: 'Department Head Captive I',
+    unit: 'Captive Marketing',
+    department: 'Captive I',
+    superiorId: 'USR-000003',
+    status: 'Active'
+  },
+  {
+    id: 'USR-000031',
+    name: 'Karina Nur Malika',
+    email: 'karina.malika@pertalife.com',
+    role: 'STAFF_MARKETING_COMMUNICATION',
+    position: 'Staff Marketing Communication',
+    unit: 'Marketing Support',
+    department: 'Marketing Communication',
+    superiorId: 'USR-000034',
+    status: 'Active'
+  },
+  {
+    id: 'USR-000034',
+    name: 'Annisa Husna',
+    email: 'annisa@pertalife.com',
     role: 'DEPARTMENT_HEAD_MARKETING_COMMUNICATION',
     position: 'Department Head Marketing Communication',
     unit: 'Marketing Support',
     department: 'Marketing Communication',
     superiorId: 'USR-000024',
-    status: 'Active'
-  },
-  {
-    id: 'USR-000031',
-    name: 'Karina Malik',
-    email: 'karina.malik@ptperta.demo',
-    role: 'STAFF_MARKETING_COMMUNICATION',
-    position: 'Staff Marketing Communication',
-    unit: 'Marketing Support',
-    department: 'Marketing Communication',
-    superiorId: 'USR-000030',
     status: 'Active'
   }
 ];
@@ -827,7 +838,7 @@ export interface MarcommRequest {
   giftTier?: 'VIP' | 'REGULER';
 
   // Final operational authority for Souvenir / Hampers belongs to
-  // Andi Rita. Original Marketing request remains preserved above.
+  // the current DH Marcomm. Original Marketing request remains preserved above.
   approvedQuantity?: number;
   approvedGiftTier?: 'VIP' | 'REGULER';
   andiOperationalAdjustmentAt?: string;
@@ -4696,7 +4707,7 @@ class StoreService {
       return 'MARKETING_ADMINISTRATION';
     }
 
-    if (userId === 'USR-000030') {
+    if (userId === 'USR-000034') {
       return 'MARKETING_COMMUNICATION';
     }
 
@@ -4767,13 +4778,13 @@ class StoreService {
     userId: string = this.getCurrentUser().id
   ): boolean {
     return this.canActForApprover(
-      'USR-000030',
+      'USR-000034',
       userId
     );
   }
 
   public getEffectiveApproverUserId(
-    delegatorUserId: 'USR-000028' | 'USR-000030'
+    delegatorUserId: 'USR-000028' | 'USR-000034'
   ): string {
     return this.canActForApprover(
       delegatorUserId,
@@ -4798,7 +4809,7 @@ class StoreService {
       input.area ===
         'MARKETING_ADMINISTRATION'
         ? 'USR-000028'
-        : 'USR-000030';
+        : 'USR-000034';
 
     if (
       currentUser.id !==
@@ -5037,7 +5048,7 @@ class StoreService {
     );
   }
 
-  private isAndiMarcommHead(
+  private isMarcommHead(
     user:
       User
   ): boolean {
@@ -5137,7 +5148,7 @@ class StoreService {
             'USR-000028'
           )
         : this.getEffectiveApproverUserId(
-            'USR-000030'
+            'USR-000034'
           );
 
     this.addNotification({
@@ -5225,7 +5236,7 @@ class StoreService {
       (
         document.ownerArea ===
           'MARKETING_COMMUNICATION' &&
-        this.isAndiMarcommHead(
+        this.isMarcommHead(
           currentUser
         )
       );
@@ -5480,7 +5491,7 @@ class StoreService {
       this.isEndahMarketingAdministrationHead(
         currentUser
       ) ||
-      this.isAndiMarcommHead(
+      this.isMarcommHead(
         currentUser
       );
 
@@ -5933,7 +5944,7 @@ class StoreService {
           .slice(2, 6),
       recipientUserId:
         this.getEffectiveApproverUserId(
-          'USR-000030'
+          'USR-000034'
         ),
       title:
         'Stock Opname Menunggu Approval',
@@ -5977,7 +5988,7 @@ class StoreService {
       this.getCurrentUser();
 
     if (
-      !this.isAndiMarcommHead(
+      !this.isMarcommHead(
         currentUser
       )
     ) {
@@ -6218,7 +6229,7 @@ class StoreService {
           .slice(2, 6),
       recipientUserId:
         this.getEffectiveApproverUserId(
-          'USR-000030'
+          'USR-000034'
         ),
       title:
         'Request Marcomm Baru',
@@ -6264,7 +6275,7 @@ class StoreService {
       this.getCurrentUser();
 
     if (
-      !this.isAndiMarcommHead(
+      !this.isMarcommHead(
         currentUser
       )
     ) {
@@ -6734,7 +6745,7 @@ class StoreService {
           .slice(2, 6),
       recipientUserId:
         this.getEffectiveApproverUserId(
-          'USR-000030'
+          'USR-000034'
         ),
       title:
         `Hasil Marcomm V${nextVersion} Menunggu Approval`,
@@ -6774,7 +6785,7 @@ class StoreService {
       this.getCurrentUser();
 
     if (
-      !this.isAndiMarcommHead(
+      !this.isMarcommHead(
         currentUser
       )
     ) {
@@ -7177,7 +7188,7 @@ class StoreService {
           .slice(2, 6),
       recipientUserId:
         this.getEffectiveApproverUserId(
-          'USR-000030'
+          'USR-000034'
         ),
       title:
         `Permintaan Revisi ${request.id}`,
