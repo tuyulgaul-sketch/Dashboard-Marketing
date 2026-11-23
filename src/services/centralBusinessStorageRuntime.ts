@@ -453,15 +453,56 @@ const syncDesiredCollection =
       return;
     }
 
-    await applyCentralBusinessChanges(
+    // This RPC is the authoritative commit. Never report a failed submit
+    // merely because a subsequent SELECT of other modules times out.
+    const committed = await applyCentralBusinessChanges(
       storageKey,
       upserts,
       deletes
+    ) as {
+      upserts?: Array<{ id: string; version: number }>;
+    };
+
+    const committedById = rowsById(confirmed);
+    const acknowledgedVersions = new Map(
+      (committed?.upserts || []).map(item => [
+        String(item.id),
+        Number(item.version)
+      ])
     );
 
-    // Reload all authorized rows after the transaction so version numbers,
-    // server-normalized metadata, duplicate constraints and RLS are reflected.
-    await refreshCentralBusinessRuntime();
+    deletes.forEach(item => {
+      committedById.delete(item.id);
+      versions.delete(versionKey(storageKey, item.id));
+    });
+
+    upserts.forEach(item => {
+      const id = getEntityId(item.payload);
+      committedById.set(id, item.payload);
+      const reportedVersion = acknowledgedVersions.get(id);
+      // In normal operation the RPC returns an authoritative version.
+      // In the unlikely event of a missing response field, the change was
+      // still committed; refresh through Realtime instead of claiming failure.
+      versions.set(
+        versionKey(storageKey, id),
+        Number.isFinite(reportedVersion)
+          ? reportedVersion!
+          : item.expectedVersion + 1
+      );
+    });
+
+    if (acknowledgedVersions.size !== upserts.length) {
+      console.warn(
+        "[Central Business] RPC committed but returned an incomplete version snapshot",
+        storageKey
+      );
+      scheduleRealtimeRefresh(storageKey);
+    }
+
+    const nextRows = cloneRows(Array.from(committedById.values()));
+    serverCollections.set(storageKey, nextRows);
+    visibleCollections.set(storageKey, cloneRows(nextRows));
+    notifyLegacySubscribers();
   };
 
 const flushCollectionSync =
@@ -520,7 +561,7 @@ const flushCollectionSync =
             );
 
             try {
-              await refreshCentralBusinessRuntime();
+              await refreshCentralBusinessRuntime([storageKey]);
             } catch (
               refreshError
             ) {
