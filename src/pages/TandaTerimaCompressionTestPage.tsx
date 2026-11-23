@@ -4,7 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCentralBusinessFile } from "@/services/businessFileStorage";
-import { optimizeTandaTerimaPhoto } from "@/utils/optimizeTandaTerimaPhoto";
+import { optimizeTandaTerimaPhotoAggressive } from "@/utils/optimizeTandaTerimaPhotoAggressive";
 import { ArrowLeft, Download, Image, Loader2, ShieldCheck } from "lucide-react";
 
 // Read-only one-file experiment. Never write to Supabase or replace an object.
@@ -17,6 +17,9 @@ type Preview = {
   originalBytes: number;
   optimizedBytes: number;
   compressed: boolean;
+  quality: number | null;
+  width: number | null;
+  height: number | null;
   fileName: string;
 };
 
@@ -62,18 +65,21 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
       const original = new File([stored.blob], metadata.file_name || "image.jpg", {
         type: "image/jpeg",
       });
-      const optimized = await optimizeTandaTerimaPhoto(original);
+      const optimized = await optimizeTandaTerimaPhotoAggressive(original);
 
       const beforeUrl = URL.createObjectURL(original);
-      const afterUrl = URL.createObjectURL(optimized);
+      const afterUrl = URL.createObjectURL(optimized.file);
       urls.current = [beforeUrl, afterUrl];
 
       setPreview({
         beforeUrl,
         afterUrl,
         originalBytes: original.size,
-        optimizedBytes: optimized.size,
-        compressed: optimized !== original,
+        optimizedBytes: optimized.file.size,
+        compressed: optimized.file !== original,
+        quality: optimized.quality,
+        width: optimized.width,
+        height: optimized.height,
         fileName: metadata.file_name || "image.jpg",
       });
     } catch (err) {
@@ -91,7 +97,7 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
         </Link>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-slate-900">Tes Kompresi Foto Tanda Terima</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Tes Kompresi Agresif — Foto Tanda Terima</h1>
           <p className="text-sm text-slate-600">
             Nomor <strong>{RECEIPT_ID}</strong>. Tes hanya membaca foto yang sudah ada di
             Supabase dan membuat salinan kompresi di browser. Foto asli, metadata,
@@ -103,7 +109,7 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
           <CardContent className="flex flex-wrap items-center gap-3 pt-6">
             <Button onClick={run} disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Image className="mr-2 h-4 w-4" />}
-              {loading ? "Mengunduh & mengompres..." : "Muat & kompres foto contoh"}
+              {loading ? "Mengunduh & mengompres..." : "Muat & tes kompresi agresif"}
             </Button>
             <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
@@ -127,7 +133,7 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
               </Card>
               <Card>
                 <CardContent className="pt-5">
-                  <p className="text-sm text-slate-500">Hasil optimasi</p>
+                  <p className="text-sm text-slate-500">Hasil agresif</p>
                   <p className="text-2xl font-bold">{mb(preview.optimizedBytes)}</p>
                 </CardContent>
               </Card>
@@ -163,15 +169,20 @@ const TandaTerimaCompressionTestPage: React.FC = () => {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Foto hasil kompresi</CardTitle>
-                  <p className="text-xs text-slate-500">Kualitas JPEG minimal 84%, sisi terpanjang maksimal 2560 piksel</p>
+                  <CardTitle>Foto hasil kompresi agresif</CardTitle>
+                  <p className="text-xs text-slate-500">Mode tes: maksimal 1.800 px, JPEG 70% → 67% → 65%, sasaran sekitar 400 KB (tidak dijamin).</p>
+                  {preview.quality !== null && (
+                    <p className="text-xs font-semibold text-slate-700">
+                      Hasil aktual: kualitas {Math.round(preview.quality * 100)}%, resolusi {preview.width} × {preview.height} px.
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <a href={preview.afterUrl} target="_blank" rel="noreferrer" title="Buka foto kompresi ukuran penuh">
                     <img src={preview.afterUrl} alt="Foto hasil kompresi Tanda Terima" className="max-h-[640px] w-full cursor-zoom-in rounded-md border bg-slate-100 object-contain" />
                   </a>
                   <Button asChild variant="outline">
-                    <a href={preview.afterUrl} download={"KOMPRESI_" + RECEIPT_ID + "_" + preview.fileName}>
+                    <a href={preview.afterUrl} download={"AGRESIF_" + RECEIPT_ID + "_" + preview.fileName}>
                       <Download className="mr-2 h-4 w-4" /> Download hasil kompresi
                     </a>
                   </Button>
