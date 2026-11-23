@@ -6,8 +6,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
+import { generateDbmMfaQrCode } from "@/lib/generateDbmMfaQrCode";
 
-type Enrollment = { id:string; qr:string; secret:string };
+type Enrollment = { id:string; qr:string; secret:string; label:string };
 type Verified = { id:string; friendly_name?:string };
 const formatError = (error:unknown) =>
   error instanceof Error ? error.message : "Verifikasi keamanan gagal. Coba lagi.";
@@ -42,12 +43,21 @@ export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolea
   const start = async()=>{
     setBusy(true);setError("");setMessage("");
     try {
+      const {data:userData,error:userError}=await supabase.auth.getUser();
+      if(userError)throw userError;
+      const email=userData.user?.email?.trim().toLowerCase();
+      if(!email)throw new Error("Email login tidak ditemukan. Silakan login kembali.");
+      const friendlyName=`DBM_${email}`;
+
       const {data,error}=await supabase.auth.mfa.enroll({
-        factorType:"totp",friendlyName:"Dashboard Marketing PertaLife"
+        factorType:"totp",friendlyName
       });
       if(error)throw error;
-      if(!data.totp?.qr_code)throw new Error("QR MFA tidak tersedia. Coba ulang.");
-      setEnrollment({id:data.id,qr:data.totp.qr_code,secret:data.totp.secret});
+      if(!data.totp?.uri||!data.totp.secret)
+        throw new Error("Data QR MFA tidak tersedia. Coba ulang.");
+
+      const {qr,label}=generateDbmMfaQrCode(data.totp.uri,email,data.totp.secret);
+      setEnrollment({id:data.id,qr,secret:data.totp.secret,label});
       setCode("");
     }catch(err){setError(formatError(err));}
     finally{setBusy(false);}
@@ -63,7 +73,7 @@ export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolea
         factorId:enrollment.id,code:code.trim()
       });
       if(error)throw error;
-      setVerified(v=>[...v,{id:enrollment.id,friendly_name:"Dashboard Marketing PertaLife"}]);
+      setVerified(v=>[...v,{id:enrollment.id,friendly_name:enrollment.label}]);
       setEnrollment(null);setCode("");
       setMessage("MFA berhasil diaktifkan. Login berikutnya memerlukan kode authenticator.");
     }catch(err){setError(formatError(err));}
@@ -91,6 +101,7 @@ export const MfaSecurityDialog:React.FC<{open:boolean;onOpenChange:(value:boolea
         </div>}
         {enrollment ? <div className="space-y-3">
           <p className="font-semibold">1. Scan QR berikut di aplikasi authenticator.</p>
+          <p className="text-xs text-blue-800">Label otomatis di authenticator: <strong>{enrollment.label}</strong></p>
           <img src={enrollment.qr} alt="QR pendaftaran authenticator" className="mx-auto h-52 w-52 rounded-lg border bg-white p-2" />
           <p className="break-all rounded border bg-slate-50 p-2 text-xs">
             Kode manual (simpan rahasia): <strong>{enrollment.secret}</strong>
