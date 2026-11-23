@@ -72,6 +72,7 @@ const ProtectedRoute: React.FC<{
       session={session}
       signOut={signOut}
       onVerified={completeMfaLogin}
+      requireMfa={profile.role_level.trim().toUpperCase() === "SYSTEM_ADMIN"}
     >
       {children}
     </MfaSessionGuard>
