@@ -2,14 +2,16 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck, LogOut, Loader2 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { MfaSecurityDialog } from "@/components/auth/MfaSecurityDialog";
 
-type Stage = "checking" | "ready" | "challenge" | "error";
+type Stage = "checking" | "ready" | "challenge" | "enroll" | "error";
 type Factor = { id: string; friendly_name?: string };
 
 type Props = {
   session: Session;
   signOut: () => Promise<void>;
   onVerified: () => Promise<void>;
+  requireMfa?: boolean;
   children: React.ReactNode;
 };
 
@@ -21,6 +23,7 @@ export const MfaSessionGuard: React.FC<Props> = ({
   session,
   signOut,
   onVerified,
+  requireMfa = false,
   children,
 }) => {
   const [stage, setStage] = useState<Stage>("checking");
@@ -60,13 +63,20 @@ export const MfaSessionGuard: React.FC<Props> = ({
       const verified = (factors?.totp || []).filter(
         candidate => candidate.status === "verified"
       );
-      if (aal?.currentLevel === "aal2" || verified.length === 0) {
+      if (aal?.currentLevel === "aal2") {
         // The explicit post-code bootstrap takes precedence. Never unlock
         // the page in the middle of a password -> MFA token transition.
         if (!verificationInFlight.current &&
             (!mfaWasAccepted.current || bootstrapComplete.current)) {
           setStage("ready");
         }
+        return;
+      }
+
+      if (verified.length === 0) {
+        // Admins must enroll a new MFA factor before receiving any admin UI,
+        // including after an authorized lost-device recovery.
+        setStage(requireMfa ? "enroll" : "ready");
         return;
       }
 
@@ -86,7 +96,7 @@ export const MfaSessionGuard: React.FC<Props> = ({
     });
 
     return () => { active = false; };
-  }, [session.user.id, session.access_token, retry]);
+  }, [session.user.id, session.access_token, retry, requireMfa]);
 
   const verify = useCallback(async (candidate: string) => {
     if (verificationInFlight.current) return;
@@ -173,6 +183,41 @@ export const MfaSessionGuard: React.FC<Props> = ({
   };
 
   if (stage === "ready") return <>{children}</>;
+
+  if (stage === "enroll") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
+        <div className="max-w-lg text-center text-sm text-white">
+          Akun administrator wajib mendaftarkan MFA baru sebelum mengakses Dashboard Marketing.
+        </div>
+        <MfaSecurityDialog
+          open={true}
+          recoveryMode
+          onOpenChange={open => { if (!open) void signOut(); }}
+          onEnrolled={async () => {
+            verificationInFlight.current = true;
+            mfaWasAccepted.current = true;
+            setStage("checking");
+            setError("");
+            try {
+              await onVerified();
+              bootstrapComplete.current = true;
+              setStage("ready");
+            } catch (err) {
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : "Sesi administrator belum berhasil dimuat. Silakan coba kembali."
+              );
+              setStage("error");
+            } finally {
+              verificationInFlight.current = false;
+            }
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
