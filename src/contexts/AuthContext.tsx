@@ -255,6 +255,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadProfile, revoke, updateProfile]);
 
+  // Revalidate role/department from Supabase when an existing tab returns
+  // to focus. Changes in reporting line must not leave a former Marcomm DH
+  // with stale authorizations. No page reload for unchanged profiles.
+  useEffect(() => {
+    let lastCheckAt = 0;
+    const checkRoleOnReturn = () => {
+      const currentSession = sessionRef.current;
+      if (!currentSession || refreshing.current) return;
+      const now = Date.now();
+      if (now - lastCheckAt < 5000) return;
+      lastCheckAt = now;
+      const task = loadProfile(currentSession, generation.current, true, false);
+      refreshing.current = task;
+      void task.catch(error => {
+        console.error('Active profile validation failed:', error);
+      }).finally(() => {
+        if (refreshing.current === task) refreshing.current = null;
+      });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkRoleOnReturn();
+    };
+    window.addEventListener('focus', checkRoleOnReturn);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', checkRoleOnReturn);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadProfile]);
+
   useEffect(() => {
     if (!profile) return;
     const intervalId = window.setInterval(async () => {
