@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { optimizeTandaTerimaPhoto } from "@/utils/optimizeTandaTerimaPhoto";
 import {
   BUSINESS_FILE_BUCKET,
   downloadCentralBusinessFile,
@@ -148,13 +149,13 @@ export const saveDocumentHandoverFile =
   async (
     record:
       DocumentHandoverStoredFile
-  ): Promise<void> => {
+  ): Promise<{ fileSize: number }> => {
     const context =
       findHandoverContext(
         record.transactionId
       );
 
-    const file =
+    const originalFile =
       new File(
         [
           record.blob,
@@ -166,6 +167,13 @@ export const saveDocumentHandoverFile =
             record.blob.type ||
             "application/octet-stream",
         }
+      );
+
+    // Only optimize newly uploaded evidence. Existing storage objects
+    // and their links remain untouched until a separate verified migration.
+    const file =
+      await optimizeTandaTerimaPhoto(
+        originalFile
       );
 
     const existingMetadata =
@@ -232,6 +240,16 @@ export const saveDocumentHandoverFile =
         record.uploadedByName,
       uploadedAt:
         record.uploadedAt,
+      ...(file.type === "image/jpeg" && file.size < originalFile.size
+        ? {
+            compression: {
+              mode: "EXTREME_V1",
+              optimizedAt: new Date().toISOString(),
+              originalBytes: originalFile.size,
+              compressedBytes: file.size,
+            },
+          }
+        : {}),
     };
 
     const {
@@ -296,6 +314,7 @@ export const saveDocumentHandoverFile =
           existingMetadata.storage_path,
         ]);
     }
+    return { fileSize: file.size };
   };
 
 export const getDocumentHandoverFile =

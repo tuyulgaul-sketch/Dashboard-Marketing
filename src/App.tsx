@@ -46,6 +46,7 @@ import MarketingMeetingRoomPage from "./pages/MarketingMeetingRoomPage";
 import DokumenPendukungPage from "./pages/DokumenPendukungPage";
 import DokumenAdministrasiReaderPage from "./pages/DokumenAdministrasiReaderPage";
 import TandaTerimaV14Page from "./pages/TandaTerimaV14Page";
+import TandaTerimaStorageOptimizationPage from "./pages/TandaTerimaStorageOptimizationPage";
 import AdministrasiPage from "./pages/AdministrasiPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
 import LoginPage from "./pages/LoginPage";
@@ -223,6 +224,17 @@ const AppRoutes = () => (
           <DocumentOnly>
             <DokumenPendukungPage />
           </DocumentOnly>
+        </Protected>
+      }
+    />
+
+    <Route
+      path="/tanda-terima/storage-optimization"
+      element={
+        <Protected>
+          <FeatureOnly feature="TANDA_TERIMA">
+            <TandaTerimaStorageOptimizationPage />
+          </FeatureOnly>
         </Protected>
       }
     />
