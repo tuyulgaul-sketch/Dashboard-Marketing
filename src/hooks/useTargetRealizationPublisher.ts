@@ -9,7 +9,7 @@ type PublisherState = { authUserId: string | null; allowed: boolean; loading: bo
 export const useTargetRealizationPublisher = () => {
   const { session, profile } = useAuth();
   const [state, setState] = useState<PublisherState>({ authUserId: null, allowed: false, loading: false });
-  const [actingUserId, setActingUserId] = useState(() => store.getCurrentUser().id);
+  const [actingUserId, setActingUserId] = useState<string | null>(() => store.getCurrentUser()?.id ?? null);
   const authUserId = session?.user.id || null;
   const candidate = Boolean(
     authUserId && profile?.active && profile.auth_user_id === authUserId &&
@@ -17,7 +17,7 @@ export const useTargetRealizationPublisher = () => {
   );
 
   useEffect(() => {
-    const unsubscribe = store.subscribe(() => setActingUserId(store.getCurrentUser().id));
+    const unsubscribe = store.subscribe(() => setActingUserId(store.getCurrentUser()?.id ?? null));
     return () => { unsubscribe(); };
   }, []);
 
