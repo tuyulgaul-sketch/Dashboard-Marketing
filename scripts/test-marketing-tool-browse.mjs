@@ -127,7 +127,8 @@ test('the integrated reader preserves product-first and read-only UI guards', ()
   assert.match(page, /isMarketingToolPublisher\s*&&\s*\(/);
   assert.match(page, /pendingMarcommDocs/);
   assert.match(page, /handleUploadServiceDocument/);
-  assert.match(page, /isAndi/);
+  assert.match(page, /const isMarcommHead\s*=\s*store\.canActAsMarketingCommunicationHead\(\s*currentUser\.id\s*\)/);
+  assert.match(page, /const isMarketingToolPublisher\s*=\s*isMarcommHead\s*\|\|\s*isKarina/);
   assert.match(page, /isKarina/);
   assert.match(browser, /<AdminProductPicker\b/);
   assert.match(browser, /!view\.productSelected/);
