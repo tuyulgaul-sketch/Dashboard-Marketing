@@ -1,12 +1,13 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
+import AppErrorBoundary from "./components/common/AppErrorBoundary";
 import "./globals.css";
 import { installMeetingRoomAutoDuration } from "@/lib/meetingRoomAutoDuration";
 
 // Deployment marker: 2026-09-14 production retry after Vercel rate limit.
 installMeetingRoomAutoDuration();
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(<AppErrorBoundary><App /></AppErrorBoundary>);
 
 
 if ("serviceWorker" in navigator) {
