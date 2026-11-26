@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { storeLoginAsApproval } from "@/lib/loginAsApproval";
 
 export type AdminImpersonationResult = {
   success: boolean;
@@ -25,6 +26,8 @@ const readError = async (error: unknown): Promise<string> => {
 export const startAdminImpersonation = async (
   profileId: string
 ): Promise<AdminImpersonationResult> => {
+  const { data: approval, error: approvalError } = await supabase.rpc("dashboard_login_as_approve", { p_target_profile_id: profileId });
+  if (approvalError || typeof approval !== "string") throw new Error("Izin Login As tidak tersedia. Pastikan sesi admin telah terverifikasi MFA.");
   const { data, error } = await supabase.functions.invoke("admin-impersonate", {
     body: { profile_id: profileId },
   });
@@ -44,5 +47,6 @@ export const startAdminImpersonation = async (
   if (url.searchParams.get("type") !== "magiclink") {
     throw new Error("Tipe verifikasi Login As tidak sesuai.");
   }
+  storeLoginAsApproval(approval, result.target.email);
   return result;
 };

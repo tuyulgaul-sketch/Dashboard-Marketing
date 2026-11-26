@@ -4,6 +4,7 @@ import { canAccessFeature } from '@/lib/accessControl';
 import { syncCentralMasterRuntime, clearCentralMasterRuntime } from '@/services/centralMasterRuntime';
 import { syncCentralTargetRuntime, clearCentralTargetRuntime } from '@/services/centralTargetRuntime';
 import { supabase } from '@/lib/supabase';
+import { claimPendingLoginAsApproval } from '@/lib/loginAsApproval';
 import { syncLegacyIdentityFromSupabase } from '@/lib/legacyIdentityBridge';
 import { syncGlobalResetState } from '@/lib/globalResetSync';
 import { clearCentralUserRuntime, syncCentralUserRuntime } from '@/services/centralUserRuntime';
@@ -104,6 +105,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadProfile = useCallback(async (currentSession: Session, version: number, background = false, forceDirectory = false) => {
     const isCurrent = () => generation.current === version && sessionRef.current?.user.id === currentSession.user.id;
+    try { await claimPendingLoginAsApproval(currentSession.user.email); }
+    catch { /* The server-side profile permission remains authoritative. */ }
+    if (!isCurrent()) return;
     const { data, error } = await Promise.resolve(supabase.from('profiles')
       .select('id, auth_user_id, full_name, email, role_level, unit, department, manager_id, legacy_user_id, active')
       .eq('auth_user_id', currentSession.user.id).eq('active', true).single()).catch(error => ({ data: null, error }));
@@ -113,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // A temporary network error is not evidence that a valid account was revoked.
       // Preserve its UI but do not grant any new authority. Explicitly inactive or
       // missing profiles still revoke access.
-      if (error && data === null && profileRef.current?.auth_user_id === currentSession.user.id && background && error.code !== 'PGRST116') {
+      if (error && data === null && profileRef.current?.auth_user_id === currentSession.user.id && background && error.code !== 'PGRST116' && error.code !== '42501') {
         console.error('Pemeriksaan profile sementara gagal; sesi lama tidak diubah.');
         return;
       }
@@ -370,12 +374,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!profile) return;
     const intervalId = window.setInterval(async () => {
       try {
+        await refreshAuthenticatedProfile();
+        if (!profileRef.current) return;
         const changed = await syncGlobalResetState();
         if (changed) window.location.reload();
       } catch (error) { console.error('Periodic global reset sync gagal:', error); }
-    }, 60_000);
+    }, 30_000);
     return () => window.clearInterval(intervalId);
-  }, [profile?.id]);
+  }, [profile?.id, refreshAuthenticatedProfile]);
 
   const retryRestoredBusiness = async () => {
     const current = profileRef.current;

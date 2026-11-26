@@ -56,12 +56,12 @@ const ProtectedRoute: React.FC<{
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-lg rounded-xl border border-red-200 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-bold text-slate-900">
-            Akses dashboard belum tersedia
+            Akses dashboard dibatasi
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Akun berhasil login, tetapi tidak ditemukan profile aktif yang terhubung
-            dengan akun ini.
+            Sesi Anda telah berakhir atau akses akun sedang dibatasi. Silakan login kembali atau hubungi administrator.
           </p>
+          <button type="button" className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm text-white" onClick={() => void signOut()}>Kembali ke Login</button>
         </div>
       </div>
     );
