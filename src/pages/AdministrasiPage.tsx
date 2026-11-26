@@ -6,7 +6,6 @@ import React, {
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { store } from "@/services/store";
-import { supabase } from "@/lib/supabase";
 import {
   AdminAccount,
   BulkActivationResult,
@@ -21,7 +20,6 @@ import {
 import { syncGlobalResetState } from "@/lib/globalResetSync";
 import {
   setAdminImpersonationMarker,
-  clearAdminImpersonationMarker,
 } from "@/lib/adminImpersonation";
 import {
   ProductMaster,
@@ -836,16 +834,9 @@ Browser akan berpindah ke sesi Supabase user tersebut tanpa mengubah password us
               new Date().toISOString(),
           });
 
-          if (result.session) {
-            const { error } = await supabase.auth.setSession(result.session);
-            if (error) { clearAdminImpersonationMarker(); throw new Error("Gagal membuka sesi Login As. Silakan login ulang."); }
-            window.location.replace("/");
-          } else if (result.action_link) {
-            window.location.assign(result.action_link);
-          } else {
-            clearAdminImpersonationMarker();
-            throw new Error("Sesi Login As tidak tersedia.");
-          }
+          window.location.assign(
+            result.action_link
+          );
         } catch (error) {
           console.error(error);
 
