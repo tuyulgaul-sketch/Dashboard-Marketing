@@ -56,11 +56,10 @@ const ProtectedRoute: React.FC<{
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-lg rounded-xl border border-red-200 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-bold text-slate-900">
-            Akses dashboard belum tersedia
+            Akses dashboard dibatasi sementara
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Akun berhasil login, tetapi tidak ditemukan profile aktif yang terhubung
-            dengan akun ini.
+            Akun ini belum memiliki izin untuk mengakses Dashboard Marketing saat ini. Silakan hubungi administrator.
           </p>
         </div>
       </div>

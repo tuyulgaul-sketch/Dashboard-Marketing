@@ -2,7 +2,8 @@ import { supabase } from "@/lib/supabase";
 
 export type AdminImpersonationResult = {
   success: boolean;
-  action_link: string;
+  action_link?: string;
+  session?: { access_token: string; refresh_token: string };
   admin: { profile_id: string; full_name: string; email: string };
   target: { profile_id: string; full_name: string; email: string; role_level: string; unit: string };
 };
@@ -26,16 +27,21 @@ export const startAdminImpersonation = async (
   profileId: string
 ): Promise<AdminImpersonationResult> => {
   const { data, error } = await supabase.functions.invoke("admin-impersonate", {
-    body: { profile_id: profileId },
+    body: { profile_id: profileId, session_handoff: true },
   });
   if (error) throw new Error(await readError(error));
   if (data && typeof data === "object" && "error" in data && data.error) {
     throw new Error(String(data.error));
   }
-  if (!data || typeof data !== "object" || !data.success || !data.action_link || !data.target?.profile_id) {
+  if (!data || typeof data !== "object" || !data.success || (!data.action_link && !data.session) || !data.target?.profile_id) {
     throw new Error("Server tidak mengembalikan Login As link yang valid.");
   }
   const result = data as AdminImpersonationResult;
+  if (result.session) {
+    if (!result.session.access_token || !result.session.refresh_token) throw new Error('Sesi Login As tidak valid.');
+    return result;
+  }
+  if (!result.action_link) throw new Error('Login As link tidak tersedia.');
   const url = new URL(result.action_link);
   const expected = new URL(import.meta.env.VITE_SUPABASE_URL);
   if (url.origin !== expected.origin || !url.pathname.startsWith("/auth/v1/verify")) {

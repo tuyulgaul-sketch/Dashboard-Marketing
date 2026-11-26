@@ -113,7 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // A temporary network error is not evidence that a valid account was revoked.
       // Preserve its UI but do not grant any new authority. Explicitly inactive or
       // missing profiles still revoke access.
-      if (error && data === null && profileRef.current?.auth_user_id === currentSession.user.id && background && error.code !== 'PGRST116') {
+      if (error && data === null && profileRef.current?.auth_user_id === currentSession.user.id && background && error.code !== 'PGRST116' && error.code !== '42501') {
         console.error('Pemeriksaan profile sementara gagal; sesi lama tidak diubah.');
         return;
       }
@@ -370,12 +370,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!profile) return;
     const intervalId = window.setInterval(async () => {
       try {
+        await refreshAuthenticatedProfile();
+        if (!profileRef.current) return;
         const changed = await syncGlobalResetState();
         if (changed) window.location.reload();
       } catch (error) { console.error('Periodic global reset sync gagal:', error); }
     }, 60_000);
     return () => window.clearInterval(intervalId);
-  }, [profile?.id]);
+  }, [profile?.id, refreshAuthenticatedProfile]);
 
   const retryRestoredBusiness = async () => {
     const current = profileRef.current;
